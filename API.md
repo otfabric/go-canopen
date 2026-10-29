@@ -51,7 +51,7 @@ Conventions shared by every package:
 | `Client.Upload`, `Client.Download` | Raw transfers; per call `UseBlockMode` |
 | `ReadUint`, `ReadInt`, `ReadString`, `ReadValue`, `WriteUint8/16/32`, `WriteUint`, `WriteValue` | Typed helpers |
 | `NewServer(bus, d, opts...)` | Server for a dictionary (COB-IDs from 0x1200 or defaults); `SetEnabled`, `COBIDs` |
-| Options | `WithTimeout`, `WithLogger`, `WithCOBIDs`, `WithBlockSize`, `WithCRC`, `WithMaxSize` (both); `WithBlockMode` (`BlockNever`, `BlockAlways`, `BlockAuto`), `WithBlockThreshold`, `WithProtocolSwitch`, `WithRetries` (client); `WithResetFence` (server: no answer after an NMT reset command, used by `node`) |
+| Options | `WithTimeout`, `WithLogger`, `WithCOBIDs`, `WithBlockSize`, `WithCRC`, `WithMaxSize` (both); `WithBlockMode` (`BlockNever`, `BlockAlways`, `BlockAuto`), `WithBlockThreshold`, `WithProtocolSwitch`, `WithRetries` (client); `WithResetFence` (server: no answer after an NMT reset command, used by `node`); `Server.Fence` (ignore requests received earlier, by receive timestamp) |
 | `CRC16` | The block transfer CRC (CRC-16-CCITT) |
 | `ClientStats`, `ServerStats` | Counters |
 
@@ -60,7 +60,7 @@ Conventions shared by every package:
 | Type / function | Purpose |
 |-----------------|---------|
 | `NewMaster(bus)` | `Send(ctx, node, cmd)`: NMT commands (node 0 = all) |
-| `NewSlave(bus, node, opts...)` | State machine: `Start` (boot-up), `State`, `SetState`, `Reset(ctx, ResetApplication or ResetCommunication)` (reset node, reset communication), `SetNodeID` (pending); `WithStateHandler`, `WithResetHandler`; node-ID `Unconfigured` (0xFF): no boot-up until a reset applies a pending node-ID |
+| `NewSlave(bus, node, opts...)` | State machine: `Start` (boot-up), `State`, `SetState`, `Reset(ctx, ResetApplication or ResetCommunication)` (reset node, reset communication), `SetNodeID` (pending); `WithStateHandler`, `WithResetHandler`, `WithBootUpHandler` (just before every boot-up message); node-ID `Unconfigured` (0xFF): no boot-up until a reset applies a pending node-ID |
 | `WithFD(brs)` | CANopen FD: commands, boot-up and heartbeats in CAN FD frames, CAN FD frames accepted (master, slave, heartbeat producer and consumer) |
 | `NewHeartbeatProducer(bus, node, stateFunc, opts...)` | Heartbeat every `WithHeartbeatPeriod` or 0x1017; `SetPeriod`, `SetNodeID` |
 | `NewHeartbeatConsumer(bus, opts...)` | State of every node; supervision (`Monitor`, or 0x1016); `State`, `Status`, `Nodes`, `WaitState`, `WaitBootUp`, `Restart`; `HeartbeatEvent` (boot-up, state change, timeout, resumed) |

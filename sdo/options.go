@@ -148,11 +148,9 @@ func WithCOBIDs(clientToServer, serverToClient canopen.COBID) Option {
 // requests reach the server in the order they arrived, so a request
 // received after the command is never answered by this server: the node
 // is resetting (Initialising) and answers again with the server it
-// starts after the reset (CiA 301). The server also ignores requests the
-// transport received before it started (by the frame's receive
-// timestamp): a server started at a reset, before the boot-up message,
-// does not answer a request that arrived during the reset. Package node
-// uses it for its SDO server, which it replaces at every reset.
+// starts after the reset (CiA 301). Package node uses it for its SDO
+// server, which it replaces at every reset, together with
+// [Server.Fence] at the boot-up message.
 func WithResetFence(node canopen.NodeID) ServerOption {
 	return serverOption(func(c *config) { c.resetNode = node })
 }

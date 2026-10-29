@@ -246,3 +246,25 @@ func TestServerResetFence(t *testing.T) {
 		t.Fatal("disabled without WithResetFence")
 	}
 }
+
+// TestServerFence: requests received before Fence are ignored, later ones
+// are answered.
+func TestServerFence(t *testing.T) {
+	a, b := testbus.Pair(t)
+	s := startServer(t, b, testDict(t))
+	p := newPeer(t, a, canopen.NewCOBID(0x585), canopen.NewCOBID(0x605))
+	// A fence in the future stands for frames received before the fence.
+	s.since.Store(time.Now().Add(time.Hour).UnixNano())
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if f, ok := p.tryRecv(100 * time.Millisecond); ok {
+		t.Fatalf("answered a request received before the fence: %v", f)
+	}
+	if st := s.Stats(); st.Ignored != 1 {
+		t.Errorf("stats %+v", st)
+	}
+	s.Fence()
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if _, ok := p.tryRecv(time.Second); !ok {
+		t.Fatal("no answer after the fence")
+	}
+}

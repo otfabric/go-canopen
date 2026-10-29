@@ -182,7 +182,7 @@ func (n *Node) build(id canopen.NodeID) error {
 	if n.cfg.fd {
 		nopts = append(nopts, nmt.WithFD(n.cfg.brs))
 	}
-	n.slave, err = nmt.NewSlave(n.bus, id, append(nopts, nmt.WithStateHandler(n.onState), nmt.WithResetHandler(n.onReset))...)
+	n.slave, err = nmt.NewSlave(n.bus, id, append(nopts, nmt.WithStateHandler(n.onState), nmt.WithResetHandler(n.onReset), nmt.WithBootUpHandler(n.onBootUp))...)
 	if err != nil {
 		return err
 	}
@@ -533,6 +533,19 @@ func (n *Node) onState(sc nmt.StateChange) {
 	}
 	if bootUp && n.cfg.autoStart {
 		_ = n.slave.SetState(canopen.StateOperational)
+	}
+}
+
+// onBootUp fences the SDO server just before the boot-up message: the
+// node was Initialising until then, and a request received meanwhile is
+// not answered (the server is started before the boot-up message so that
+// a master reacting to it at once finds it ready).
+func (n *Node) onBootUp() {
+	n.mu.Lock()
+	srv := n.srv
+	n.mu.Unlock()
+	if srv != nil {
+		srv.Fence()
 	}
 }
 

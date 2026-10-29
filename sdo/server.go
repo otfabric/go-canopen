@@ -59,7 +59,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	started  bool
-	since    time.Time // WithResetFence: requests received earlier are ignored
+	since    atomic.Int64 // Fence: requests received earlier (Unix ns) are ignored
 	closed   bool
 	c2s, s2c canopen.COBID
 	sub      *canbus.Subscription
@@ -140,7 +140,6 @@ func (s *Server) Start() error {
 	if s.cfg.resetNode != 0 {
 		filters = append(filters, canbus.ExactStandard(canopen.FuncNMT))
 	}
-	s.since = time.Now()
 	sub, err := s.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: filters}))
 	if err != nil {
 		return fmt.Errorf("sdo: subscribe: %w", err)
@@ -172,6 +171,13 @@ func (s *Server) Close() error {
 	}
 	return nil
 }
+
+// Fence makes the server ignore the requests the transport received
+// before now (by the frames' receive timestamps; frames without one are
+// handled). Package node fences its SDO server just before the boot-up
+// message: a request that arrived while the node was Initialising is not
+// answered, one sent in reaction to the boot-up message is.
+func (s *Server) Fence() { s.since.Store(time.Now().UnixNano()) }
 
 // SetEnabled enables (the default) or disables the server. A disabled
 // server ignores requests and drops a transfer in progress without an
@@ -271,9 +277,8 @@ func (s *Server) run(ctx context.Context) {
 			m.reset()
 			continue
 		}
-		if s.cfg.resetNode != 0 && !cf.Timestamp.IsZero() && cf.Timestamp.Before(s.since) {
-			// Received before this server started: during the reset that
-			// replaced the previous one (WithResetFence).
+		if since := s.since.Load(); since != 0 && !cf.Timestamp.IsZero() && cf.Timestamp.UnixNano() < since {
+			// Received before the fence (Server.Fence).
 			s.st.ignored.Add(1)
 			continue
 		}

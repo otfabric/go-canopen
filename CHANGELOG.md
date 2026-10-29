@@ -39,8 +39,10 @@ found by it: `lss.Master.AssignAll` failed with `ErrNoNodeID` when the
 last device took node-ID 127, and gave every node-ID to a device that
 keeps answering Fastscan with a pending node-ID (Lely); a node answered
 an SDO request received after an NMT reset command from its state
-before the reset and lost the next one (new `sdo.WithResetFence`, used
-by `node`); the SYNC window was measured on the wall clock (now the
+before the reset and lost the next one, and could answer a request
+received during the reset before its boot-up message (new
+`sdo.WithResetFence`, `sdo.Server.Fence` and `nmt.WithBootUpHandler`,
+used by `node`); the SYNC window was measured on the wall clock (now the
 monotonic clock).
 
 ## v0.2.0 (2026-10-29)

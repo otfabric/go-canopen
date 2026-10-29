@@ -85,6 +85,7 @@ type config struct {
 	guardSet    bool
 	onState     func(StateChange)
 	onReset     func(ResetKind)
+	onBootUp    func()
 	onHeartbeat func(HeartbeatEvent)
 	onGuard     func(GuardEvent)
 	fd, brs     bool
@@ -158,6 +159,12 @@ func WithStateHandler(h func(StateChange)) Option { return func(c *config) { c.o
 // boot-up message: the place to reload stored parameters or reinitialise
 // the application. It must not call [Slave.Reset].
 func WithResetHandler(h func(ResetKind)) Option { return func(c *config) { c.onReset = h } }
+
+// WithBootUpHandler calls h just before a [Slave] sends its boot-up
+// message (at Start and after every reset), on the goroutine that sends
+// it: the moment the node stops being Initialising, for services that
+// must not act on frames received earlier. It must not block.
+func WithBootUpHandler(h func()) Option { return func(c *config) { c.onBootUp = h } }
 
 // WithHeartbeatHandler calls h for the events of a [HeartbeatConsumer],
 // on its goroutine; h must not block for long.

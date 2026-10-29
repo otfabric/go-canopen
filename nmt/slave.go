@@ -164,6 +164,9 @@ func (s *Slave) bootUp(ctx context.Context) error {
 	f := s.cfg.frame(ErrorControlFrame(node, canopen.StateInitialising, false))
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
+	if h := s.cfg.onBootUp; h != nil {
+		h()
+	}
 	if err := s.bus.Send(sctx, &f); err != nil {
 		return fmt.Errorf("nmt: node %d boot-up: %w", node, err)
 	}
