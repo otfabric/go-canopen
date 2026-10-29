@@ -672,7 +672,11 @@ func (g *manager) checkSoftware(ctx context.Context, id canopen.NodeID, a Assign
 		return false, BootUpdateFailed, fmt.Errorf("%w: no program data (0x1F58:%02X)", ErrProgram, uint8(id))
 	}
 	g.m.log.Info("master: updating the software of a slave", "node", int(id), "bytes", len(data))
-	if err := g.m.DownloadProgram(ctx, id, data, ProgramOptions{Identification: want}); err != nil {
+	// The update (stop, clear, download, start) is not interrupted by a
+	// network boot-up that cancels this process: stopped half-way, the
+	// slave would keep the new program stopped (the next process finds
+	// it up to date). Only the master's Close stops it.
+	if err := g.m.DownloadProgram(g.m.bootCtx, id, data, ProgramOptions{Identification: want}); err != nil {
 		return false, BootUpdateFailed, err
 	}
 	return false, BootOK, nil

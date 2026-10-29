@@ -23,6 +23,13 @@ Fix of the CiA 302 network boot-up in `master`.
   slave boots again at its boot-up message after the reset. Found by CI
   (Windows) after v0.3.0; regression test
   `TestBootNetworkCancelsRunningBoot`.
+- A software update in progress (stop, clear, download, start) is not
+  interrupted by that cancellation: stopped after the download, the slave
+  kept the new program stopped, and the next boot slave process found it
+  up to date. Only the master's Close stops an update. Regression test
+  `TestBootNetworkCompletesSoftwareUpdate`.
+- Tests: the store tests give the SDO client 2 s (a file store fsyncs
+  at every store and restore, longer than 150 ms on a loaded CI runner).
 - Test: `TestManagerKeepAlive` lets the nodes' start-up boot-up messages
   pass before the manager starts, so that its first boot events are the
   network boot-up's.

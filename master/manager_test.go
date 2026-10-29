@@ -701,9 +701,10 @@ func TestManagerSoftwareUpdate(t *testing.T) {
 // flasher is a program handler keeping the image in memory; the
 // identification is the CRC-32 of the image.
 type flasher struct {
-	mu    sync.Mutex
-	calls []string
-	image []byte
+	mu         sync.Mutex
+	calls      []string
+	image      []byte
+	onDownload func() // optional, called (outside mu) before storing
 }
 
 func (f *flasher) Control(_ uint8, cmd program.Command) error {
@@ -714,6 +715,9 @@ func (f *flasher) Control(_ uint8, cmd program.Command) error {
 }
 
 func (f *flasher) Download(_ uint8, data []byte) error {
+	if f.onDownload != nil {
+		f.onDownload()
+	}
 	f.mu.Lock()
 	f.calls = append(f.calls, "download")
 	f.image = bytes.Clone(data)

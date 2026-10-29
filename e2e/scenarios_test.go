@@ -284,7 +284,8 @@ func runSyncWindow(t *testing.T, open opener) {
 // effect at the next restart.
 func runStoreRestart(t *testing.T, open opener) {
 	ctx := nettest.Ctx(t)
-	m, ev := newMaster(t, open(t, false))
+	// Store and restore fsync a file: give them time on a loaded runner.
+	m, ev := newMaster(t, open(t, false), master.WithSDOOptions(sdo.WithTimeout(2*time.Second)))
 	s := store.NewFile(t.TempDir() + "/node5.cdcf")
 	dict := func() *od.Dictionary {
 		d := nettest.Dict(t, 5, nil)
