@@ -25,8 +25,9 @@ import (
 func TestNoSDOAnswerAfterResetCommand(t *testing.T) {
 	ports := testbus.Ports(t, 2)
 	d := nettest.Dict(t, 5, nil)
-	startNode(t, ports[0], d)
 	raw := ports[1]
+	// Subscribe before the start: the start's own boot-up message must not
+	// be taken for the boot-up of the first reset.
 	sub, err := raw.Subscribe()
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +35,18 @@ func TestNoSDOAnswerAfterResetCommand(t *testing.T) {
 	defer sub.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	startNode(t, ports[0], d)
+	for {
+		rctx, rcancel := context.WithTimeout(ctx, 5*time.Second)
+		f, err := sub.Receive(rctx)
+		rcancel()
+		if err != nil {
+			t.Fatalf("no boot-up at the start: %v", err)
+		}
+		if f.ID == 0x705 && f.Len == 1 && f.Data[0] == 0 {
+			break
+		}
+	}
 	send := func(id canbus.ID, data ...byte) {
 		t.Helper()
 		f, err := canbus.NewStandard(id, data)
