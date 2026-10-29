@@ -11,7 +11,9 @@ import (
 )
 
 // SDO is the access to a remote node's dictionary that [Configure] and
-// [ReadConfig] need. The sdo package's client satisfies it.
+// [ReadConfig] need. The sdo package's client takes extra call options,
+// so it needs an adapter (as cia402.SDOFuncs, whose method set is this
+// interface's).
 type SDO interface {
 	Upload(ctx context.Context, index uint16, sub uint8) ([]byte, error)
 	Download(ctx context.Context, index uint16, sub uint8, data []byte) error

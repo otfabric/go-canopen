@@ -1,0 +1,19 @@
+# Codecov configuration for go-canopen.
+# CI uploads coverage for the library packages; examples/, test helpers and the
+# tools under internal/cmd are not tested there.
+coverage:
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 1%
+    patch:
+      default:
+        target: 70%
+
+ignore:
+  - "examples/**"
+  - "internal/leak/**"
+  - "internal/golden/**"
+  - "interop/**"
+  - "internal/cmd/**"
