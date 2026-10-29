@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,6 +61,7 @@ type Server struct {
 	mu       sync.Mutex
 	started  bool
 	since    atomic.Int64 // Fence: requests received earlier (Unix ns) are ignored
+	fenced   atomic.Bool  // WithResetFence: a reset of the node was received
 	closed   bool
 	c2s, s2c canopen.COBID
 	sub      *canbus.Subscription
@@ -147,6 +149,9 @@ func (s *Server) Start() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.c2s, s.s2c, s.sub, s.cancel = c2s, s2c, sub, cancel
 	s.done = make(chan struct{})
+	if s.cfg.fenced && s.since.Load() == 0 {
+		s.since.Store(math.MaxInt64) // until Fence
+	}
 	s.started = true
 	go s.run(ctx)
 	s.log.Debug("sdo: server started", "rx", c2s, "tx", s2c)
@@ -185,7 +190,7 @@ func (s *Server) Fence() { s.since.Store(time.Now().UnixNano()) }
 func (s *Server) SetEnabled(on bool) { s.enabled.Store(on) }
 
 // Enabled reports whether the server answers requests.
-func (s *Server) Enabled() bool { return s.enabled.Load() }
+func (s *Server) Enabled() bool { return s.enabled.Load() && !s.fenced.Load() }
 
 // Stats returns a snapshot of the counters.
 func (s *Server) Stats() ServerStats {
@@ -263,6 +268,9 @@ func (s *Server) run(ctx context.Context) {
 		}
 		if s.cfg.resetNode != 0 && cf.ID == canopen.FuncNMT && cf.Flags&canbus.FlagExtended == 0 {
 			if s.resetCommand(&cf) {
+				// Sticky: SetEnabled does not undo it (a late state change
+				// from before the reset must not reopen the server).
+				s.fenced.Store(true)
 				s.enabled.Store(false)
 				m.reset()
 			}
@@ -272,12 +280,12 @@ func (s *Server) run(ctx context.Context) {
 		if !ok {
 			continue
 		}
-		if !s.enabled.Load() {
+		if !s.enabled.Load() || s.fenced.Load() {
 			s.st.ignored.Add(1)
 			m.reset()
 			continue
 		}
-		if since := s.since.Load(); since != 0 && !cf.Timestamp.IsZero() && cf.Timestamp.UnixNano() < since {
+		if since := s.since.Load(); since == math.MaxInt64 || since != 0 && !cf.Timestamp.IsZero() && cf.Timestamp.UnixNano() < since {
 			// Received before the fence (Server.Fence).
 			s.st.ignored.Add(1)
 			continue

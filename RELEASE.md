@@ -92,8 +92,10 @@ unchanged.
   `WithUSDOClient`, `USDO()`, `ErrNoUSDO`; `Stats` gains `lss` and `usdo`.
 - **`sdo`**: `WithResetFence` (server): the server also receives the NMT
   commands and stops answering at a reset of its node, in the order the
-  frames arrived; `Server.Fence` ignores requests received before it (by
-  receive timestamp). `node` uses both: its SDO server answers neither a
+  frames arrived, and stays silent until closed; `WithFenced` starts a
+  server that ignores every request until `Server.Fence`, which ignores
+  the requests received before it (by receive timestamp). `node` uses
+  them: its SDO server answers neither a
   request received after a reset command nor one received before its
   boot-up message.
 - **`nmt`**: `WithBootUpHandler` (slave): runs just before every boot-up

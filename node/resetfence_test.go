@@ -11,6 +11,8 @@ import (
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/internal/nettest"
 	"github.com/otfabric/go-canopen/internal/testbus"
+	"github.com/otfabric/go-canopen/nmt"
+	"github.com/otfabric/go-canopen/node"
 )
 
 // TestNoSDOAnswerAfterResetCommand: an SDO request that arrives right
@@ -35,7 +37,15 @@ func TestNoSDOAnswerAfterResetCommand(t *testing.T) {
 	defer sub.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	startNode(t, ports[0], d)
+	// The reset holds Initialising long enough for the request sent right
+	// after the command to arrive during the reset: without it, a slow
+	// test goroutine can send it after the boot-up message, where an
+	// answer is correct.
+	startNode(t, ports[0], d, node.WithStateHandler(func(sc nmt.StateChange) {
+		if sc.To == canopen.StateInitialising {
+			time.Sleep(20 * time.Millisecond)
+		}
+	}))
 	for {
 		rctx, rcancel := context.WithTimeout(ctx, 5*time.Second)
 		f, err := sub.Receive(rctx)

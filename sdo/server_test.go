@@ -229,9 +229,17 @@ func TestServerResetFence(t *testing.T) {
 	if upload() || s.Enabled() {
 		t.Fatal("answered after a reset communication of its node")
 	}
+	// Sticky: a late SetEnabled (a state change from before the reset)
+	// does not reopen it.
 	s.SetEnabled(true)
-	nmtFrame(byte(canopen.NMTResetNode), 0)
 	if upload() || s.Enabled() {
+		t.Fatal("enabled again after a reset of its node")
+	}
+	// Reset node of all nodes also fences.
+	s3 := startServer(t, b, testDict(t), WithResetFence(testNode))
+	_ = s.Close()
+	nmtFrame(byte(canopen.NMTResetNode), 0)
+	if upload() || s3.Enabled() {
 		t.Fatal("answered after a reset node of all nodes")
 	}
 	// Without the option NMT commands do not reach the server.
@@ -266,5 +274,22 @@ func TestServerFence(t *testing.T) {
 	p.send(muxFrame(0x40, 0x1000, 0, 0))
 	if _, ok := p.tryRecv(time.Second); !ok {
 		t.Fatal("no answer after the fence")
+	}
+}
+
+// TestServerWithFenced: a server started fenced answers nothing until
+// Fence.
+func TestServerWithFenced(t *testing.T) {
+	a, b := testbus.Pair(t)
+	s := startServer(t, b, testDict(t), WithFenced())
+	p := newPeer(t, a, canopen.NewCOBID(0x585), canopen.NewCOBID(0x605))
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if f, ok := p.tryRecv(100 * time.Millisecond); ok {
+		t.Fatalf("answered before Fence: %v", f)
+	}
+	s.Fence()
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if _, ok := p.tryRecv(time.Second); !ok {
+		t.Fatal("no answer after Fence")
 	}
 }

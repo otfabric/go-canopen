@@ -290,7 +290,7 @@ func (n *Node) build(id canopen.NodeID) error {
 func (n *Node) newServer() (*sdo.Server, error) {
 	// The reset fence: a request that arrives after an NMT reset command
 	// is not answered by this server, which the reset replaces.
-	opts := append([]sdo.ServerOption{sdo.WithLogger(n.log), sdo.WithResetFence(n.slave.NodeID())}, n.cfg.sdoOpts...)
+	opts := append([]sdo.ServerOption{sdo.WithLogger(n.log), sdo.WithResetFence(n.slave.NodeID()), sdo.WithFenced()}, n.cfg.sdoOpts...)
 	srv, err := sdo.NewServer(n.bus, n.d, opts...)
 	if err != nil {
 		return nil, err
