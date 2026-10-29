@@ -5,6 +5,134 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.3.0
+
+**Date:** 2026-10-29
+**Previous release:** v0.2.0
+
+## Summary
+
+go-canopen grows from CiA 301 into the rest of a CANopen network: LSS
+(CiA 305) to give unconfigured devices their node-IDs, multiplexed PDOs,
+the synchronous window, store and restore of parameters, the CiA 302
+manager (network boot-up, configuration from concise DCFs, program
+download) and CANopen FD (CiA 1301: the USDO, 64-byte PDOs and 20-byte
+emergencies). The device (`node`) and the manager (`master`) integrate
+every one of them. The new features are implemented from public sources
+and tested against go-canopen itself (unit, fuzz, chaos, end-to-end on
+the virtual bus and Linux vcan); their interoperability with other
+stacks is pending canopen-interop contract 1.1, and CANopen FD has no
+independent oracle yet. The public API of v0.2.0 is unchanged.
+
+## New packages
+
+- **`lss`**: LSS master (switch state global and selective, configure
+  node-ID and bit timing, activate bit timing, store, inquire identity and
+  node-ID, identify remote and non-configured slaves, Fastscan of one or
+  all unconfigured devices, `AssignAll` with safeguards against duplicate
+  node-IDs) and LSS slave; interpretations where CANopenNode, Lely and
+  python canopen differ are documented.
+- **`mpdo`**: MPDO producer (DAM `SendDAM`, SAM `Send` checked against the
+  object scanner lists) and consumer (DAM writes, SAM through the object
+  dispatcher lists, EMCY 0x8230), list objects, validation hooks and the
+  MPDO reconfiguration rules, after Lely CANopen.
+- **`usdo`**: USDO client and server of CANopen FD: unicast, group and
+  broadcast addressing, several sessions, expedited, segmented and bulk
+  transfers, one-byte abort codes mapped to and from the SDO codes.
+  Segmented layouts are inferred (the public sources show bulk and
+  expedited only); remote (routed) services are not supported.
+- **`store`**: a `Store` (memory, file holding a concise DCF, replaced
+  atomically), parameter snapshots per group and the objects 0x1010,
+  0x1011, 0x1020.
+- **`cdcf`**: the concise DCF of CiA 302-3: encode, decode, from an EDS/DCF,
+  PDO sequencing.
+- **`program`**: the program download objects of CiA 302-3 on the device
+  side (0x1F50, 0x1F51, 0x1F56, 0x1F57) with a pluggable flash handler.
+
+## Changes in existing packages
+
+- **`pdo`**: CANopen FD PDOs (`WithFD`, `PackFD`, `UnpackFD`, up to 512
+  bits, no RTR, `ProtectFD`); the synchronous window 0x1007 enforced
+  (`OnSyncWindow`, `TPDOStats.WindowMissed`, `RPDOStats.OutsideWindow`);
+  MPDO mappings (0xFE, 0xFF) accepted and treated as inactive.
+- **`sync`**, **`emcy`**: `WithFD` (SYNC in CAN FD frames; the 20-byte
+  CANopen FD emergency with logical device, CiA specification, status and
+  time, `WithFDLayout` because the public sources disagree on its layout).
+- **`nmt`**: `WithFD` (commands, boot-up and heartbeats in CAN FD frames,
+  CAN FD frames accepted), `ParseCommandFD`, `ParseErrorControlFD`,
+  `ToFD`; a slave can start with node-ID `Unconfigured` (0xFF): no boot-up
+  until a reset applies a pending node-ID. Fixed: a data race between
+  concurrent subscriptions (a shared `canbus.WithFilters` option, which
+  writes to its captured filter set).
+- **`node`**: `WithLSS` (LSS slave wired to NMT: pending node-ID, reset
+  communication of an unconfigured device, node-ID persisted with
+  `WithStore` under the pseudo index 0x0000 and applied at `New`,
+  `StoredLSS`; bit timing handlers for the application; dictionary
+  node-ID 0xFF starts the node unconfigured and silent), MPDO producers and
+  consumers for every PDO configured as an MPDO (also when a mapping
+  becomes one later; `MPDOProducer`, `MPDOConsumer`, gated by NMT,
+  emergencies), the SYNC window from each received SYNC, `WithFD` (every
+  service in CAN FD frames, a USDO server instead of the SDO server,
+  `USDOServer`, `WithUSDOServerOptions`, `WithEMCYOptions`), `WithStore`
+  (`SaveParameters`, `RestoreDefaults`), `WithProgram`; `Stats` gains
+  `mpdoProducer`, `mpdoConsumer`, `lss`, `usdo`.
+- **`master`**: CiA 302 manager with `WithDictionary`: objects
+  0x1F80..0x1F89, network boot-up and boot slave process (error status
+  letters A..O, `BootError`), configuration date check, restore, concise
+  DCF (`ConfigureConcise`), store after configuration, program download
+  (`DownloadProgram`), `StoreParameters`, `RestoreDefaults`. New: `LSS()`
+  (an LSS master started and closed with the master, `WithLSSOptions`),
+  `WithLSSBoot` (LSS step of the network boot-up: Fastscan, node-ID by
+  expected identity, `EventLSSAssigned`), `ConfigureMPDO`,
+  `WriteScannerList`, `WriteDispatcherList`, `WithFD` (every procedure
+  over the master's USDO client, USDO aborts reported as SDO aborts, FD
+  heartbeat and EMCY consumers, FD PDO listeners and senders),
+  `WithUSDOClient`, `USDO()`, `ErrNoUSDO`; `Stats` gains `lss` and `usdo`.
+- **`dissect`**: USDO requests and responses and 20-byte FD emergencies in
+  CAN FD frames; LSS command names from `lss.Command.String` (cosmetic:
+  "product code" instead of "product-code").
+
+## Verification
+
+- 392 tests, 25 fuzz targets (12 new: CANopen FD emergency and SYNC,
+  MPDO messages, entries and consumer, LSS slave and responses, USDO
+  messages, server and client, concise DCF, dissector in CAN FD),
+  13 examples (3 new: lss-assign, canopen-fd, network-boot), race
+  detector on every package, goroutine leak checks;
+  `go test -race -count=10 ./node ./master ./e2e` without failure.
+- End-to-end scenarios on the virtual bus and on Linux vcan (amd64,
+  arm64; CAN FD with MTU 72): LSS Fastscan and AssignAll on three
+  unconfigured nodes followed by the CiA 302 network boot-up from concise
+  DCFs; MPDO DAM and SAM between nodes; a CANopen FD network (master and
+  nodes with USDO, 64-byte PDOs, FD emergencies); the SYNC window; store
+  and restore across a node restart; program download.
+- Chaos: USDO through a CAN FD chaos bridge; LSS Fastscan and AssignAll;
+  `TestMonkeyLSSBoot` (the network boot-up of unconfigured devices with
+  the LSS step through random frame loss, duplication and delay).
+- Coverage 97.0 % total (11,183 statements, macOS), gate 90 %; every
+  package at least 90 % (lowest: `node` 92.6 %, `master` 94.6 %).
+- Interoperability: unchanged from v0.2.0 for the CiA 301 services; the
+  new features have no interop results yet (pending canopen-interop
+  contract 1.1; no reference stack implements CANopen FD).
+
+## Compatibility
+
+No API removed or changed; additions only. Behaviour changes: a node
+enforces the synchronous window when 0x1007 is set (it was only
+reported); `nmt.NewSlave` and `Slave.SetNodeID` accept `Unconfigured`;
+`dissect` LSS names use spaces. Go 1.23 or later; go-canbus v0.7.0.
+
+## Known limitations
+
+No flying master or SDO manager (CiA 302-5), no 0x1F20 DCF storage, no
+0x1F52..0x1F54; USDO segmented layouts inferred, remote USDO unsupported;
+the CANopen FD emergency layout is selectable because the public sources
+conflict; MPDOs and TIME stay classical on CANopen FD; nothing tested on
+real hardware; no CiA conformance claim. See LIMITATIONS.md and
+ROADMAP.md.
+
+---
+
 ## v0.2.0
 
 **Date:** 2026-10-29

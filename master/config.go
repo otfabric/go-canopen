@@ -11,7 +11,6 @@ import (
 	"github.com/otfabric/go-canopen/cdcf"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/pdo"
-	"github.com/otfabric/go-canopen/sdo"
 )
 
 // Entry is one value to write into a node's dictionary: the neutral form
@@ -53,7 +52,7 @@ func pdoOf(index uint16) (k pdoKey, mapping, ok bool) {
 // since devices refuse that change (CiA 301). The first failure stops
 // the configuration; the error names the entry or the PDO.
 func (m *Master) Configure(ctx context.Context, node canopen.NodeID, entries []Entry) error {
-	c, err := m.SDO(node)
+	c, err := m.remote(node)
 	if err != nil {
 		return err
 	}
@@ -75,7 +74,7 @@ func (m *Master) Configure(ctx context.Context, node canopen.NodeID, entries []E
 		}
 	}
 	for _, k := range order {
-		base, err := pdo.ReadConfig(ctx, client{c}, k.transmit, k.n)
+		base, err := pdo.ReadConfig(ctx, c, k.transmit, k.n)
 		if err != nil {
 			return fmt.Errorf("master: node %d: %s: %w", node, pdoName(k), err)
 		}
@@ -83,7 +82,7 @@ func (m *Master) Configure(ctx context.Context, node canopen.NodeID, entries []E
 		if err != nil {
 			return fmt.Errorf("master: node %d: %s: %w", node, pdoName(k), err)
 		}
-		if err := pdo.Configure(ctx, client{c}, k.transmit, k.n, cfg); err != nil {
+		if err := pdo.Configure(ctx, c, k.transmit, k.n, cfg); err != nil {
 			return fmt.Errorf("master: node %d: %w", node, err)
 		}
 	}
@@ -127,7 +126,7 @@ func released(index uint16, cob canopen.COBID) canopen.COBID {
 // the entry, written next, sets the new CAN-ID and bits together. Other
 // entries need nothing. When the current value cannot be read, nothing
 // is done and the entry's own write reports the device's answer.
-func releaseCOBID(ctx context.Context, c *sdo.Client, e Entry) error {
+func releaseCOBID(ctx context.Context, c remote, e Entry) error {
 	if e.SubIndex != 0 || len(e.Data) != 4 {
 		return nil
 	}

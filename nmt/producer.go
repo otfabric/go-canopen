@@ -46,7 +46,7 @@ type HeartbeatProducer struct {
 
 // NewHeartbeatProducer returns the heartbeat producer of a node. Options:
 // [WithLogger], [WithHeartbeatPeriod], [WithDictionary] (0x1017, which
-// must exist).
+// must exist), [WithFD].
 func NewHeartbeatProducer(bus canopen.Bus, node canopen.NodeID, state func() canopen.NMTState, opts ...Option) (*HeartbeatProducer, error) {
 	if err := node.Check(); err != nil {
 		return nil, err
@@ -139,7 +139,7 @@ func (p *HeartbeatProducer) send(ctx context.Context) {
 		return
 	}
 	p.mu.Unlock()
-	f := ErrorControlFrame(node, st, false)
+	f := p.cfg.frame(ErrorControlFrame(node, st, false))
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	err := p.bus.Send(sctx, &f)
 	cancel()

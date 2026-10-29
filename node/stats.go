@@ -5,11 +5,14 @@ package node
 import (
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/lss"
+	"github.com/otfabric/go-canopen/mpdo"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/pdo"
 	"github.com/otfabric/go-canopen/sdo"
 	syncobj "github.com/otfabric/go-canopen/sync"
 	"github.com/otfabric/go-canopen/timestamp"
+	"github.com/otfabric/go-canopen/usdo"
 )
 
 // Stats is a snapshot of the counters of a [Node] and its services.
@@ -36,6 +39,15 @@ type Stats struct {
 	// TPDO and RPDO are keyed by PDO number.
 	TPDO map[int]pdo.TPDOStats `json:"tpdo"`
 	RPDO map[int]pdo.RPDOStats `json:"rpdo"`
+	// MPDOProducer and MPDOConsumer are keyed by PDO number (TPDO and
+	// RPDO respectively).
+	MPDOProducer map[int]mpdo.ProducerStats `json:"mpdoProducer"`
+	MPDOConsumer map[int]mpdo.ConsumerStats `json:"mpdoConsumer"`
+	// LSS counts the LSS slave of WithLSS.
+	LSS lss.SlaveStats `json:"lss"`
+	// USDO counts the USDO server of WithFD (which replaces the SDO
+	// server).
+	USDO usdo.ServerStats `json:"usdo"`
 }
 
 // Stats returns a snapshot of the counters.
@@ -75,6 +87,13 @@ func (n *Node) Stats() Stats {
 	}
 	for _, r := range n.rpdos {
 		s.RPDO[r.Number()] = r.Stats()
+	}
+	s.MPDOProducer, s.MPDOConsumer = n.mp.stats()
+	if n.lssS != nil {
+		s.LSS = n.lssS.Stats()
+	}
+	if n.usdoS != nil {
+		s.USDO = n.usdoS.Stats()
 	}
 	return s
 }

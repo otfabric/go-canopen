@@ -4,7 +4,8 @@
 // services a CiA 302 manager uses): NMT commands, heartbeat supervision,
 // emergency reception, SDO clients for every node, network scan, node
 // configuration (from entries or a DCF), a boot procedure, remote PDOs,
-// SYNC and TIME production and CiA 402 drive control.
+// SYNC and TIME production, CiA 402 drive control, an LSS master, MPDO
+// configuration, CANopen FD (USDO) and the CiA 302 manager.
 //
 //	m, _ := master.New(bus, master.WithEventHandler(func(e master.Event) { log.Print(e) }))
 //	_ = m.Start()
@@ -119,9 +120,39 @@
 // configuration as defaults (e.g. built from the manager's DCF), or keep
 // it with node.WithStore and save it.
 //
+// With [WithLSSBoot] the network boot-up starts with an LSS step: the
+// master lists the unconfigured devices with LSS Fastscan and gives each
+// the node-ID of the slave of 0x1F81 whose expected identity
+// (0x1F85..0x1F88) it has (EventLSSAssigned); the devices then reset with
+// it and are booted like the others.
+//
 // The behaviour follows Lely lely-core's NMT master (src/co/nmt.c,
 // nmt_boot.c, nmt_cfg.c), CiA 302 being a member document. Not
 // implemented: the flying master and redundancy (0x1F80 bit 5 is
-// ignored), the SDO manager of CiA 302-5 (dynamic SDO connections), LSS
-// during the boot-up, and the configuration file 0x1F20 (DCF text).
+// ignored), the SDO manager of CiA 302-5 (dynamic SDO connections), the
+// configuration file 0x1F20 (DCF text) and the program objects
+// 0x1F52..0x1F54.
+//
+// # LSS
+//
+// [Master.LSS] is an LSS master (package lss) started and closed with the
+// master: Fastscan, AssignAll, node-ID and bit timing configuration.
+//
+// # MPDO
+//
+// [Master.ConfigureMPDO] makes a node's PDO a multiplexed PDO;
+// [Master.WriteScannerList] and [Master.WriteDispatcherList] write its
+// object scanner and dispatcher lists.
+//
+// # CANopen FD
+//
+// With [WithFD] the master sends NMT commands, SYNC and its heartbeat in
+// CAN FD frames, accepts CAN FD heartbeats and 20-byte emergencies, and
+// reads and writes the nodes' dictionaries with its USDO client
+// ([Master.USDO]) in every procedure (scan, configuration, boot
+// procedures, the CiA 302 boot-up, program download with bulk transfer,
+// remote PDO configuration, CiA 402), since CANopen FD devices serve the
+// USDO in place of the SDO; USDO aborts are reported as SDO aborts
+// (errors.As finds a *canopen.AbortError). Listen and Sender use CANopen
+// FD PDOs.
 package master

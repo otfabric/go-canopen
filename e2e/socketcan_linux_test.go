@@ -53,3 +53,32 @@ func TestPlantSocketCAN(t *testing.T) {
 		return b
 	})
 }
+
+// TestScenariosSocketCAN runs the scenarios over SocketCAN, every
+// participant on its own CAN_RAW socket (CAN FD sockets for the CANopen FD
+// scenario: the interface needs MTU 72).
+func TestScenariosSocketCAN(t *testing.T) {
+	name := iface(t)
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) {
+			nettest.CheckLeaks(t)
+			sc.run(t, func(t *testing.T, fd bool) canopen.Bus {
+				opts := []socketcan.Option{socketcan.WithReceiveBuffer(1 << 20)}
+				if fd {
+					opts = append(opts, socketcan.WithFD())
+				}
+				c, err := socketcan.Open(name, opts...)
+				if err != nil {
+					t.Fatal(err)
+				}
+				b, err := canbus.NewBus(c)
+				if err != nil {
+					_ = c.Close()
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = b.Close() })
+				return b
+			})
+		})
+	}
+}

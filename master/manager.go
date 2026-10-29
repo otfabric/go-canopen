@@ -12,6 +12,7 @@ import (
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/cdcf"
+	"github.com/otfabric/go-canopen/lss"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/node"
 	"github.com/otfabric/go-canopen/od"
@@ -49,6 +50,10 @@ type manager struct {
 	netCancel context.CancelFunc
 	guarded   map[canopen.NodeID]bool
 	unhook    []func()
+	// lssBusy is set during the LSS step of the network boot-up: the
+	// boot-ups of the devices it configures are not booted (the reset
+	// that follows the step boots them).
+	lssBusy bool
 }
 
 // newManager builds the manager and the master's node on d.
@@ -211,6 +216,21 @@ func (g *manager) bootNetwork(ctx context.Context) error {
 		keep = keep || a.Has(AssignKeepAlive)
 	}
 	g.m.log.Info("master: network boot-up", "slaves", len(list))
+	if g.m.cfg.lssBoot {
+		g.mu.Lock()
+		g.lssBusy = true
+		g.mu.Unlock()
+		g.lssAssign(ctx, own)
+		now := time.Now()
+		g.mu.Lock()
+		g.lssBusy = false
+		for _, e := range list {
+			if s := g.slave(e.id); s.quiet.Before(now) {
+				s.quiet = now
+			}
+		}
+		g.mu.Unlock()
+	}
 	g.mu.Lock()
 	for _, e := range list {
 		if s := g.slave(e.id); !s.booting {
@@ -345,7 +365,7 @@ func (g *manager) startAll() {
 func (g *manager) request(id canopen.NodeID, at time.Time) {
 	g.mu.Lock()
 	s := g.slave(id)
-	if s.booting || !at.IsZero() && (at.Before(s.ended) || at.Before(s.quiet)) {
+	if s.booting || !at.IsZero() && (g.lssBusy || at.Before(s.ended) || at.Before(s.quiet)) {
 		g.mu.Unlock()
 		return
 	}
@@ -441,7 +461,7 @@ func (g *manager) bootSlave(ctx context.Context, id canopen.NodeID) (canopen.NMT
 	if !a.Has(AssignBoot) {
 		return g.errorControl(ctx, id, ms, BootOK)
 	}
-	c, err := g.m.SDO(id)
+	c, err := g.m.remote(id)
 	if err != nil {
 		return canopen.StateUnknown, BootNoResponse, err
 	}
@@ -477,7 +497,7 @@ identity:
 		if want == 0 {
 			continue
 		}
-		got, err := c.ReadUint(ctx, od.IndexIdentity, uint8(i+1))
+		got, err := readUint(ctx, c, od.IndexIdentity, uint8(i+1))
 		if err != nil {
 			return canopen.StateUnknown, ck.status, err
 		}
@@ -548,7 +568,7 @@ func (g *manager) checkSoftware(ctx context.Context, id canopen.NodeID, a Assign
 	if want == 0 {
 		return false, BootProgramObjects, errors.New("master: no expected application software identification (0x1F55)")
 	}
-	c, err := g.m.SDO(id)
+	c, err := g.m.remote(id)
 	if err != nil {
 		return false, BootProgramObjects, err
 	}
@@ -585,7 +605,7 @@ func (g *manager) checkSoftware(ctx context.Context, id canopen.NodeID, a Assign
 // written, followed by a store request when [WithStoreAfterConfigure] is
 // set.
 func (g *manager) configure(ctx context.Context, id canopen.NodeID, a Assignment) (BootStatus, error) {
-	c, err := g.m.SDO(id)
+	c, err := g.m.remote(id)
 	if err != nil {
 		return BootConfiguration, err
 	}
@@ -594,7 +614,7 @@ func (g *manager) configure(ctx context.Context, id canopen.NodeID, a Assignment
 	if date != 0 && tod != 0 {
 		d, err := uploadRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 1)
 		if err == nil && uint32(canopen.DecodeUint(d)) == date {
-			if tm, err := c.ReadUint(ctx, cdcf.IndexVerifyConfiguration, 2); err == nil && uint32(tm) == tod {
+			if tm, err := readUint(ctx, c, cdcf.IndexVerifyConfiguration, 2); err == nil && uint32(tm) == tod {
 				g.m.log.Debug("master: configuration up to date", "node", int(id))
 				return BootOK, nil
 			}
@@ -896,4 +916,79 @@ func (g *manager) readRequestGuarding(v *od.Variable, stored []byte) ([]byte, er
 		return []byte{1}, nil
 	}
 	return []byte{0}, nil
+}
+
+// lssAssign is the LSS step of the network boot-up (WithLSSBoot): every
+// unconfigured device gets the node-ID of the slave of the network list
+// whose expected identity it matches.
+func (g *manager) lssAssign(ctx context.Context, own canopen.NodeID) {
+	used := map[canopen.NodeID]bool{}
+	// A lost frame can hide a device from a Fastscan: scan again while a
+	// round assigns node-IDs (the configured devices no longer answer).
+	for round := 0; round < lssRounds && ctx.Err() == nil; round++ {
+		if g.lssRound(ctx, own, used) == 0 {
+			return
+		}
+	}
+}
+
+// lssRounds bounds the Fastscan rounds of the LSS step.
+const lssRounds = 4
+
+// lssRound runs one Fastscan and assigns the node-IDs it can; it returns
+// how many it assigned.
+func (g *manager) lssRound(ctx context.Context, own canopen.NodeID, used map[canopen.NodeID]bool) int {
+	addrs, err := g.m.lssM.Fastscan(ctx, g.m.cfg.lssFS)
+	if err != nil {
+		g.m.log.Warn("master: LSS Fastscan", "error", err)
+	}
+	assigned := 0
+	for _, a := range addrs {
+		var match []canopen.NodeID
+		for id := canopen.NodeID(1); id <= canopen.MaxNodeID; id++ {
+			if id != own && g.assignment(id).Has(AssignSlave) && g.identityMatches(id, a) {
+				match = append(match, id)
+			}
+		}
+		if len(match) != 1 || used[match[0]] {
+			g.m.log.Warn("master: LSS: no single slave of the network list for an unconfigured device", "address", a.String(), "matches", len(match))
+			continue
+		}
+		id := match[0]
+		if err := g.m.lssM.ConfigureNodeID(ctx, a, id); err != nil {
+			g.m.log.Warn("master: LSS: configure node-ID", "address", a.String(), "node", int(id), "error", err)
+			continue
+		}
+		used[id] = true
+		assigned++
+		g.m.log.Info("master: LSS node-ID assigned", "address", a.String(), "node", int(id))
+		g.m.disp.push(Event{Kind: EventLSSAssigned, Node: id, LSS: &lss.Assignment{Address: a, NodeID: id}})
+	}
+	return assigned
+}
+
+// identityMatches compares the non-zero expected identity of a slave
+// (0x1F85..0x1F88) with an LSS address; false when none is set.
+func (g *manager) identityMatches(id canopen.NodeID, a lss.Address) bool {
+	parts := []struct {
+		index uint16
+		part  lss.Part
+	}{
+		{IndexExpectedVendorID, lss.PartVendor},
+		{IndexExpectedProductCode, lss.PartProduct},
+		{IndexExpectedRevision, lss.PartRevision},
+		{IndexExpectedSerialNumber, lss.PartSerial},
+	}
+	set := false
+	for _, p := range parts {
+		want := g.u32(p.index, uint8(id))
+		if want == 0 {
+			continue
+		}
+		if a.Part(p.part) != want {
+			return false
+		}
+		set = true
+	}
+	return set
 }

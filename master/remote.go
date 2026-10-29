@@ -36,7 +36,7 @@ func retry(ctx context.Context, retries int, f func() error) error {
 }
 
 // uploadRetry uploads with [retry].
-func uploadRetry(ctx context.Context, c *sdo.Client, retries int, index uint16, sub uint8) ([]byte, error) {
+func uploadRetry(ctx context.Context, c remote, retries int, index uint16, sub uint8) ([]byte, error) {
 	var b []byte
 	err := retry(ctx, retries, func() error {
 		var err error
@@ -66,7 +66,7 @@ func sleep(ctx context.Context, d time.Duration) error {
 // sequence the node needs (see cdcf.PDOSequence). The first failure stops
 // it; the error names the entry.
 func (m *Master) ConfigureConcise(ctx context.Context, node canopen.NodeID, entries []Entry) error {
-	c, err := m.SDO(node)
+	c, err := m.remote(node)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (m *Master) ConfigureConcise(ctx context.Context, node canopen.NodeID, entr
 // the signature "save" to 0x1010 sub-index group (store.All,
 // store.Communication, store.Application, store.Manufacturer).
 func (m *Master) StoreParameters(ctx context.Context, node canopen.NodeID, group uint8) error {
-	c, err := m.SDO(node)
+	c, err := m.remote(node)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (m *Master) StoreParameters(ctx context.Context, node canopen.NodeID, group
 // its parameters from its next reset on: it writes the signature "load" to
 // 0x1011 sub-index group.
 func (m *Master) RestoreDefaults(ctx context.Context, node canopen.NodeID, group uint8) error {
-	c, err := m.SDO(node)
+	c, err := m.remote(node)
 	if err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 	if n == 0 {
 		n = 1
 	}
-	c, err := m.SDO(node)
+	c, err := m.remote(node)
 	if err != nil {
 		return err
 	}
@@ -176,14 +176,10 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 		return fail("clear", err)
 	}
 	// 3. Program data: block transfer, segmented when refused.
-	err = retry(ctx, t.SDORetries, func() error {
-		return c.Download(ctx, program.IndexData, n, data, sdo.UseBlockMode(sdo.BlockAlways))
-	})
+	err = retry(ctx, t.SDORetries, func() error { return downloadProgramData(ctx, c, n, data, true) })
 	if err != nil && !timedOut(err) && ctx.Err() == nil {
-		m.log.Debug("master: block download of the program refused, trying segmented", "node", int(node), "error", err)
-		err = retry(ctx, t.SDORetries, func() error {
-			return c.Download(ctx, program.IndexData, n, data, sdo.UseBlockMode(sdo.BlockNever))
-		})
+		m.log.Debug("master: block (bulk) download of the program refused, trying segmented", "node", int(node), "error", err)
+		err = retry(ctx, t.SDORetries, func() error { return downloadProgramData(ctx, c, n, data, false) })
 	}
 	if err != nil {
 		return fail("program data", err)
@@ -193,7 +189,7 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 		if err := sleep(ctx, t.PollInterval); err != nil {
 			return fail("flash status", err)
 		}
-		v, err := c.ReadUint(ctx, program.IndexFlashStatus, n)
+		v, err := readUint(ctx, c, program.IndexFlashStatus, n)
 		if err != nil {
 			continue
 		}
@@ -208,7 +204,7 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 	}
 	// 5. Identification.
 	if want := opts.Identification; want != 0 {
-		got, err := c.ReadUint(ctx, program.IndexIdentification, n)
+		got, err := readUint(ctx, c, program.IndexIdentification, n)
 		if err != nil {
 			return fail("identification", err)
 		}
@@ -239,4 +235,19 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 			return nil
 		}
 	}
+}
+
+// downloadProgramData writes the program data 0x1F50: over SDO with a
+// block transfer (block) or a segmented one; over USDO (WithFD) with a bulk
+// transfer (block) or a segmented one.
+func downloadProgramData(ctx context.Context, c remote, n uint8, data []byte, block bool) error {
+	if r, ok := c.(usdoRemote); ok {
+		r.bulk = block
+		return r.Download(ctx, program.IndexData, n, data)
+	}
+	mode := sdo.BlockNever
+	if block {
+		mode = sdo.BlockAlways
+	}
+	return c.(client).c.Download(ctx, program.IndexData, n, data, sdo.UseBlockMode(mode))
 }

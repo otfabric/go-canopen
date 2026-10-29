@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/otfabric/go-canbus"
-	"github.com/otfabric/go-canbus/chaos"
 	"github.com/otfabric/go-canbus/virtual"
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/internal/testbus"
@@ -54,44 +53,6 @@ func device(t testing.TB, node canopen.NodeID) *od.Dictionary {
 func fdPorts(t testing.TB, n int) []*canbus.Bus {
 	t.Helper()
 	return testbus.Ports(t, n, virtual.WithFD())
-}
-
-// fdChaos returns two CAN FD buses on separate virtual buses joined by a
-// chaos bridge (testbus.Chaos opens classical ports only).
-func fdChaos(t testing.TB, cfg chaos.Config) (a, b *canbus.Bus, br *chaos.Bridge) {
-	t.Helper()
-	va := virtual.New(virtual.Config{Name: "vcan-a"})
-	vb := virtual.New(virtual.Config{Name: "vcan-b"})
-	t.Cleanup(func() { _ = va.Close(); _ = vb.Close() })
-	ia, err := va.Open(virtual.WithFD())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ib, err := vb.Open(virtual.WithFD())
-	if err != nil {
-		t.Fatal(err)
-	}
-	br, err = chaos.New(cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { defer close(done); _ = br.Both(ctx, ia, ib) }()
-	t.Cleanup(func() { cancel(); <-done })
-	open := func(v *virtual.Bus) *canbus.Bus {
-		p, err := v.Open(virtual.WithFD())
-		if err != nil {
-			t.Fatal(err)
-		}
-		b, err := canbus.NewBus(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { _ = b.Close() })
-		return b
-	}
-	return open(va), open(vb), br
 }
 
 // startServer starts a server for a new device on bus.

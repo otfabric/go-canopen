@@ -3,8 +3,10 @@
 // Package dissect interprets CAN frames as CANopen messages by the
 // predefined connection set (CiA 301 7.3.5, [canopen.Classify]): NMT,
 // SYNC, TIME, EMCY, PDOs, SDO requests and responses, NMT error control
-// (heartbeat, boot-up, node guarding) and LSS (CiA 305). It is meant for
-// bus monitors and traces.
+// (heartbeat, boot-up, node guarding) and LSS (CiA 305). In CAN FD
+// frames it decodes the CANopen FD services (CiA 1301) on the same
+// identifiers: USDO requests and responses, and the 20-byte CANopen FD
+// emergency message. It is meant for bus monitors and traces.
 //
 // [Decode] is stateless: each frame is decoded on its own. SDO segments
 // do not carry the object they belong to, and the data segments of an SDO
@@ -23,6 +25,7 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/lss"
 )
 
 // Kind is what a message is, as a JSON-friendly string.
@@ -36,8 +39,10 @@ const (
 	KindEMCY          Kind = "emcy"
 	KindTPDO          Kind = "tpdo"
 	KindRPDO          Kind = "rpdo"
-	KindSDORequest    Kind = "sdo-request"  // client to server (0x600 + node)
-	KindSDOResponse   Kind = "sdo-response" // server to client (0x580 + node)
+	KindSDORequest    Kind = "sdo-request"   // client to server (0x600 + node)
+	KindSDOResponse   Kind = "sdo-response"  // server to client (0x580 + node)
+	KindUSDORequest   Kind = "usdo-request"  // CANopen FD, client to server (0x600 + client)
+	KindUSDOResponse  Kind = "usdo-response" // CANopen FD, server to client (0x580 + server)
 	KindHeartbeat     Kind = "heartbeat"
 	KindBootUp        Kind = "boot-up"
 	KindGuardRequest  Kind = "guard-request"  // node guarding RTR
@@ -66,7 +71,10 @@ type Message struct {
 	ID       canbus.ID `json:"id"`
 	Extended bool      `json:"extended,omitempty"`
 	Remote   bool      `json:"rtr,omitempty"`
-	Data     Bytes     `json:"data"`
+	// FD marks a CAN FD frame, BRS one sent with bit rate switching.
+	FD   bool  `json:"fd,omitempty"`
+	BRS  bool  `json:"brs,omitempty"`
+	Data Bytes `json:"data"`
 	// Kind and Service say what the frame is; Node is the node-ID the
 	// identifier carries (0 for NMT, SYNC, TIME and LSS).
 	Kind    Kind            `json:"kind"`
@@ -79,6 +87,7 @@ type Message struct {
 	EMCY         *EMCY         `json:"emcy,omitempty"`
 	PDO          *PDO          `json:"pdo,omitempty"`
 	SDO          *SDO          `json:"sdo,omitempty"`
+	USDO         *USDO         `json:"usdo,omitempty"`
 	ErrorControl *ErrorControl `json:"errorControl,omitempty"`
 	LSS          *LSS          `json:"lss,omitempty"`
 
@@ -137,6 +146,9 @@ type EMCY struct {
 	// MSEF is the manufacturer-specific error field.
 	MSEF  Bytes `json:"msef"`
 	Reset bool  `json:"reset,omitempty"`
+	// FD holds the other fields of a CANopen FD emergency message; MSEF
+	// is then its device-specific error information (bytes 7..11).
+	FD *EMCYFD `json:"fd,omitempty"`
 }
 
 // PDO is a process data object.
@@ -177,16 +189,38 @@ func (m Message) MarshalJSON() ([]byte, error) {
 
 // Decode interprets a frame by the predefined connection set. It never
 // fails: frames it cannot interpret are KindUnknown, malformed ones carry
-// an Error.
+// an Error. CAN FD frames decode as USDO messages on the SDO identifiers
+// and as CANopen FD emergency messages (more than 8 bytes, else as
+// classical ones) on the EMCY identifiers; other CAN FD frames are
+// KindUnknown.
 func Decode(f *canbus.Frame) Message {
 	m := Message{Time: f.Timestamp, ID: f.ID, Extended: f.IsExtended(), Remote: f.IsRemote(), Kind: KindUnknown}
+	m.FD, m.BRS = f.IsFD(), f.IsFD() && f.Flags&canbus.FlagBRS != 0
 	m.Data = Bytes(append([]byte(nil), f.Payload()...))
-	if f.IsExtended() || f.IsError() || f.IsFD() {
+	if f.IsExtended() || f.IsError() {
 		return m
 	}
 	svc, node, pdo := canopen.Classify(f.ID)
-	m.Service, m.Node = svc, node
 	d := []byte(m.Data)
+	if f.IsFD() {
+		switch {
+		case svc == canopen.ServiceSDORx || svc == canopen.ServiceSDOTx:
+			client := svc == canopen.ServiceSDORx
+			m.Service, m.Node, m.Kind = svc, node, KindUSDOResponse
+			if client {
+				m.Kind = KindUSDORequest
+			}
+			m.USDO, m.Error = decodeUSDO(d, client)
+			return m
+		case svc == canopen.ServiceEMCY && len(d) > 8:
+			m.Service, m.Node, m.Kind = svc, node, KindEMCY
+			m.EMCY, m.Error = decodeFDEMCY(d)
+			return m
+		case svc != canopen.ServiceEMCY:
+			return m
+		}
+	}
+	m.Service, m.Node = svc, node
 	if f.IsRemote() {
 		switch svc {
 		case canopen.ServiceTPDO, canopen.ServiceRPDO:
@@ -292,7 +326,7 @@ func Decode(f *canbus.Frame) Message {
 		if len(d) > 1 {
 			copy(v[:], d[1:])
 		}
-		m.LSS = &LSS{CS: d[0], Command: LSSCommand(d[0]), Value: uint32(v[0]) | uint32(v[1])<<8 | uint32(v[2])<<16 | uint32(v[3])<<24}
+		m.LSS = &LSS{CS: d[0], Command: lss.Command(d[0]).String(), Value: uint32(v[0]) | uint32(v[1])<<8 | uint32(v[2])<<16 | uint32(v[3])<<24}
 		if len(d) != 8 {
 			m.Error = fmt.Sprintf("LSS needs 8 bytes, got %d", len(d))
 		}
@@ -301,41 +335,9 @@ func Decode(f *canbus.Frame) Message {
 	return m
 }
 
-var lssCommands = map[uint8]string{
-	0x04: "switch state global",
-	0x11: "configure node-ID",
-	0x13: "configure bit timing",
-	0x15: "activate bit timing",
-	0x17: "store configuration",
-	0x40: "switch state selective vendor-ID",
-	0x41: "switch state selective product-code",
-	0x42: "switch state selective revision-number",
-	0x43: "switch state selective serial-number",
-	0x44: "switch state selective response",
-	0x46: "identify remote slave vendor-ID",
-	0x47: "identify remote slave product-code",
-	0x48: "identify remote slave revision-number low",
-	0x49: "identify remote slave revision-number high",
-	0x4A: "identify remote slave serial-number low",
-	0x4B: "identify remote slave serial-number high",
-	0x4C: "identify non-configured remote slave",
-	0x4F: "identify slave",
-	0x50: "identify non-configured slave",
-	0x51: "fastscan",
-	0x5A: "inquire vendor-ID",
-	0x5B: "inquire product-code",
-	0x5C: "inquire revision-number",
-	0x5D: "inquire serial-number",
-	0x5E: "inquire node-ID",
-}
-
 // LSSCommand names an LSS command specifier (CiA 305).
-func LSSCommand(cs uint8) string {
-	if s, ok := lssCommands[cs]; ok {
-		return s
-	}
-	return fmt.Sprintf("LSS command 0x%02X", cs)
-}
+// It is [lss.Command.String].
+func LSSCommand(cs uint8) string { return lss.Command(cs).String() }
 
 // String returns a one-line summary of the message, e.g. "NMT start node
 // 5", "SDO request node 5: initiate upload 0x1018:01".
@@ -355,6 +357,14 @@ func (m Message) String() string {
 		}
 	case m.Kind == KindTIME && m.TIME != nil:
 		s = "TIME " + m.TIME.Time.Format("2006-01-02 15:04:05.000")
+	case m.Kind == KindEMCY && m.EMCY != nil && m.EMCY.FD != nil:
+		x := m.EMCY.FD
+		what := fmt.Sprintf("error 0x%04X register 0x%02X info %s", m.EMCY.Code, m.EMCY.Register, m.EMCY.MSEF)
+		if m.EMCY.Reset {
+			what = fmt.Sprintf("error reset, register 0x%02X", m.EMCY.Register)
+		}
+		s = fmt.Sprintf("EMCY FD node %d: %s, logical device %d, CiA %d, status 0x%02X, time %s",
+			m.Node, what, x.LogicalDevice, x.CiASpec, x.Status, x.Time.Format("2006-01-02 15:04:05.000"))
 	case m.Kind == KindEMCY && m.EMCY != nil:
 		if m.EMCY.Reset {
 			s = fmt.Sprintf("EMCY node %d: error reset, register 0x%02X", m.Node, m.EMCY.Register)
@@ -377,6 +387,12 @@ func (m Message) String() string {
 			dir = "request"
 		}
 		s = fmt.Sprintf("SDO %s node %d: %s", dir, m.Node, m.SDO)
+	case m.USDO != nil:
+		dir := "response"
+		if m.USDO.Client {
+			dir = "request"
+		}
+		s = fmt.Sprintf("USDO %s node %d: %s", dir, m.Node, m.USDO)
 	case m.Kind == KindGuardRequest:
 		s = fmt.Sprintf("node guarding request node %d", m.Node)
 	case m.Kind == KindBootUp:

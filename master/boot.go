@@ -114,12 +114,12 @@ func (m *Master) Boot(ctx context.Context, node canopen.NodeID, cfg BootConfig) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	c, err := m.SDO(node)
+	c, err := m.remote(node)
 	if err != nil {
 		return err
 	}
 	if cfg.DeviceType != 0 {
-		dt, err := c.ReadUint(ctx, od.IndexDeviceType, 0)
+		dt, err := readUint(ctx, c, od.IndexDeviceType, 0)
 		if err != nil {
 			return fmt.Errorf("master: node %d: device type: %w", node, err)
 		}

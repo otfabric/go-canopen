@@ -191,6 +191,20 @@ By area:
   now accept the end of a transfer before any segment; unit tests in
   `sdo` (`TestClientBlockUploadEmpty`, `TestMachine`).
 
+## Features of v0.3.0: interop pending
+
+LSS (CiA 305), MPDOs, CANopen FD (USDO, FD PDOs, FD emergencies), the
+SYNC window, store and restore of parameters, the CiA 302 network
+boot-up with the concise DCF and program download are **not yet tested
+against another stack**. Their scenarios are pending canopen-interop's
+container contract 1.1, which is to expose them where the reference
+stacks implement them (none of the three references implements CANopen
+FD in the versions used, so CANopen FD has no oracle there). Until then they are tested against go-canopen
+itself: unit, fuzz and chaos tests, the e2e scenarios on the virtual bus
+and on Linux vcan (CAN FD with MTU 72), and the LSS/boot-up chaos monkey
+([TESTING.md](TESTING.md)). No result is claimed here before that suite
+has run.
+
 ## What vcan proves
 
 All stacks share the Linux SocketCAN code on a vcan interface: such

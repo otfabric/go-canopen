@@ -11,6 +11,9 @@ them as a check.
 | [sdo-block](sdo-block/main.go) | A 64 KiB DOMAIN downloaded and uploaded with SDO block transfer (CRC-checked), then with segmented transfer, with timings. |
 | [cia402-drive](cia402-drive/main.go) | A simulated CiA 402 drive as a node (`node.WithDrive`) operated by `master.Drive`: enable, profile position moves, a fault reported by EMCY, fault reset, disable. |
 | [eds-dictionary](eds-dictionary/main.go) | A device built from an EDS (`eds.ParseBytes`, `File.Dictionary`), scanned, configured from a DCF (`master.ConfigureFromDCF`), started, and exported as a DCF (`eds.FromDictionary`, `eds.Write`). |
+| [lss-assign](lss-assign/main.go) | Three devices without node-ID (`node.WithLSS`, node-ID 0xFF): LSS Fastscan lists them, `AssignAll` gives them node-IDs and stores them, the devices boot. |
+| [canopen-fd](canopen-fd/main.go) | A CANopen FD network (`node.WithFD`, `master.WithFD`) on a CAN FD virtual bus: identity and device name over USDO, a 64-byte TPDO mapped and received, a 20-byte FD emergency. |
+| [network-boot](network-boot/main.go) | The CiA 302 network boot-up: a manager (`master.WithDictionary`) with 0x1F80/0x1F81, expected identities, heartbeat consumption and concise DCFs boots two slaves, one of them unconfigured and given its node-ID by the LSS step (`master.WithLSSBoot`). |
 | [socketcan-node](socketcan-node/main.go) | *Hardware*: a node on a Linux SocketCAN interface (`-iface`, `-node`, `-heartbeat`) until Ctrl-C, with a counter in TPDO 1. Try it on vcan with `cansend`/`candump`. |
 
 Run one with `go run ./examples/<name>` from the repository root, or all

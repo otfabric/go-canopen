@@ -125,7 +125,7 @@ type hbNode struct {
 // NewHeartbeatConsumer returns a heartbeat consumer. Options:
 // [WithLogger], [WithHeartbeatHandler], [WithDictionary] (0x1016, which
 // must exist; its write hook is registered at once and refuses duplicate
-// node-IDs).
+// node-IDs), [WithFD].
 func NewHeartbeatConsumer(bus canopen.Bus, opts ...Option) (*HeartbeatConsumer, error) {
 	c := &HeartbeatConsumer{
 		bus:      bus,
@@ -298,7 +298,7 @@ func (c *HeartbeatConsumer) Restart() {
 // supervision; with a dictionary it follows writes of 0x1016 from then on.
 func (c *HeartbeatConsumer) Start() error {
 	return c.lc.start(func(context.Context) (func(context.Context), error) {
-		sub, err := c.bus.Subscribe(errorControlFilter)
+		sub, err := c.bus.Subscribe(errorControlFilter())
 		if err != nil {
 			return nil, fmt.Errorf("nmt: subscribe: %w", err)
 		}
@@ -374,7 +374,7 @@ func (c *HeartbeatConsumer) checkTimeouts(now time.Time) []HeartbeatEvent {
 
 // receive processes one frame of the subscription.
 func (c *HeartbeatConsumer) receive(f *canbus.Frame, now time.Time) []HeartbeatEvent {
-	node, st, _, err := ParseErrorControl(f)
+	node, st, _, err := parseErrorControl(f, c.cfg.fd)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {

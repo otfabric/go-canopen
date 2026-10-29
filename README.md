@@ -8,10 +8,14 @@
 
 A pure Go implementation of CANopen (CiA 301 application layer and
 communication profile): the object dictionary, SDO client and server with
-block transfer, NMT master and slave, heartbeat and node guarding, PDOs,
-SYNC, EMCY and TIME, a complete device (`node`) built from an object
-dictionary, a network manager (`master`), EDS/DCF (CiA 306) files, a Go
-code generator, the CiA 402 drive profile and a frame dissector. No cgo.
+block transfer, NMT master and slave, heartbeat and node guarding, PDOs
+and multiplexed PDOs, SYNC (with the synchronous window), EMCY and TIME,
+LSS (CiA 305), CANopen FD (CiA 1301: USDO, 64-byte PDOs, FD emergencies),
+store and restore of parameters, a complete device (`node`) built from an
+object dictionary, a network manager (`master`) with the CiA 302 network
+boot-up, configuration manager and program download, EDS/DCF (CiA 306)
+files, a Go code generator, the CiA 402 drive profile and a frame
+dissector. No cgo.
 
 It is layered on [go-canbus](https://github.com/otfabric/go-canbus)
 v0.7.0: every service runs on a `canbus.Bus`, so the same code runs on
@@ -26,12 +30,16 @@ virtual bus, which the tests and examples use.
 | [`nmt`](https://pkg.go.dev/github.com/otfabric/go-canopen/nmt) | NMT commands, the NMT slave state machine with both resets, heartbeat producer and consumer, node guarding and life guarding |
 | [`pdo`](https://pkg.go.dev/github.com/otfabric/go-canopen/pdo) | Bit-exact mapping, TPDO and RPDO services (all transmission types, inhibit time, event timer, RTR, deadline monitoring), the CiA 301 reconfiguration rules, remote configuration, decoding and sending |
 | [`sync`](https://pkg.go.dev/github.com/otfabric/go-canopen/sync) (package `syncobj`), [`emcy`](https://pkg.go.dev/github.com/otfabric/go-canopen/emcy), [`timestamp`](https://pkg.go.dev/github.com/otfabric/go-canopen/timestamp) | SYNC producer and consumer (counter), emergency producer (error register, error history, inhibit time) and consumer, TIME producer and consumer with TIME_OF_DAY |
-| [`node`](https://pkg.go.dev/github.com/otfabric/go-canopen/node) | A complete device: chooses its services from the dictionary, gates them by NMT state, raises the CiA 301 emergencies on its own |
-| [`master`](https://pkg.go.dev/github.com/otfabric/go-canopen/master) | A network manager: NMT, heartbeat supervision, EMCY, SDO clients per node, scan, configuration from entries or a DCF, boot procedure, remote PDOs, SYNC/TIME, CiA 402 drive control, one ordered event stream |
+| [`mpdo`](https://pkg.go.dev/github.com/otfabric/go-canopen/mpdo) | Multiplexed PDOs: DAM and SAM producer and consumer, object scanner and dispatcher lists (0x1FA0..0x1FFF) |
+| [`lss`](https://pkg.go.dev/github.com/otfabric/go-canopen/lss) | Layer setting services (CiA 305): LSS master (switch, configure node-ID and bit timing, store, inquire, identify, Fastscan, AssignAll) and slave |
+| [`usdo`](https://pkg.go.dev/github.com/otfabric/go-canopen/usdo) | The universal SDO of CANopen FD (CiA 1301): client (unicast, group, broadcast, several sessions) and server; expedited, segmented and bulk transfers |
+| [`store`](https://pkg.go.dev/github.com/otfabric/go-canopen/store), [`cdcf`](https://pkg.go.dev/github.com/otfabric/go-canopen/cdcf), [`program`](https://pkg.go.dev/github.com/otfabric/go-canopen/program) | Parameter persistence behind 0x1010/0x1011 (memory, file); the concise DCF of CiA 302-3; the program download objects of CiA 302-3 (device side) |
+| [`node`](https://pkg.go.dev/github.com/otfabric/go-canopen/node) | A complete device: chooses its services from the dictionary (PDOs, MPDOs, LSS, CANopen FD with USDO), gates them by NMT state, raises the CiA 301 emergencies on its own, stores its parameters, serves program download |
+| [`master`](https://pkg.go.dev/github.com/otfabric/go-canopen/master) | A network manager: NMT, heartbeat supervision, EMCY, SDO (or, in CANopen FD, USDO) access to every node, scan, configuration from entries, a DCF or a concise DCF, boot procedure, CiA 302 manager (network boot-up with an optional LSS step, 0x1F80..0x1F89, program download), LSS master, MPDO list configuration, remote PDOs, SYNC/TIME, CiA 402 drive control, one ordered event stream |
 | [`eds`](https://pkg.go.dev/github.com/otfabric/go-canopen/eds) | EDS and DCF (CiA 306-1): parse, validate, write (round trip), to and from an object dictionary |
 | [`codegen`](https://pkg.go.dev/github.com/otfabric/go-canopen/codegen) | Typed Go code from an EDS (deterministic, golden-tested) |
 | [`cia402`](https://pkg.go.dev/github.com/otfabric/go-canopen/cia402) | CiA 402 drive profile: state machine, modes of operation, a simulated drive (device side) and a controller (master side) |
-| [`dissect`](https://pkg.go.dev/github.com/otfabric/go-canopen/dissect) | Decoding of CAN frames as CANopen messages (NMT, SYNC, TIME, EMCY, PDO, SDO with transfer tracking, heartbeat, node guarding, LSS), checked against Wireshark's dissector |
+| [`dissect`](https://pkg.go.dev/github.com/otfabric/go-canopen/dissect) | Decoding of CAN frames as CANopen messages (NMT, SYNC, TIME, EMCY including the 20-byte CANopen FD emergency, PDO, SDO with transfer tracking, USDO, heartbeat, node guarding, LSS), checked against Wireshark's dissector for classical CAN |
 
 ## CiA 301 services
 
@@ -39,19 +47,19 @@ virtual bus, which the tests and examples use.
 |---------|---------|--------|-------|
 | Object dictionary, data types | 7.1, 7.4 | Implemented: all basic types (BOOLEAN to UNSIGNED64, REAL32/64, strings, DOMAIN, TIME_OF_DAY, TIME_DIFFERENCE), access rights, limits, `$NODEID` defaults | `canopen`, `od` |
 | SDO (expedited, segmented, block) | 7.2.4 | Implemented, client and server, one server channel (0x1200) per node | `sdo` |
-| PDO | 7.2.2 | Implemented: synchronous (cyclic, acyclic), event-driven, RTR, inhibit time, event timer, SYNC start value, RPDO deadline monitoring; classical CAN, 64 bits | `pdo` |
-| SYNC | 7.2.5 | Implemented, producer and consumer with counter; the SYNC window is reported, not enforced | `sync` |
+| PDO | 7.2.2 | Implemented: synchronous (cyclic, acyclic), event-driven, RTR, inhibit time, event timer, SYNC start value, RPDO deadline monitoring; classical CAN (64 bits) and CANopen FD (512 bits) | `pdo` |
+| SYNC | 7.2.5 | Implemented, producer and consumer with counter; the synchronous window (0x1007) is enforced for synchronous PDOs in a node (late TPDOs discarded, RPDOs received after the window discarded) | `sync`, `pdo`, `node` |
 | TIME | 7.2.6 | Implemented, producer and consumer | `timestamp` |
 | EMCY | 7.2.7 | Implemented, producer (0x1001, 0x1003, 0x1014, 0x1015) and consumer | `emcy` |
 | NMT module control | 7.2.8 | Implemented, master and slave (both resets, pending node-ID) | `nmt` |
 | Heartbeat | 7.2.8 | Implemented, producer (0x1017) and consumer (0x1016) | `nmt` |
 | Node guarding, life guarding | 7.2.8 | Implemented, master and responder (0x100C, 0x100D) | `nmt` |
 | Error behaviour (0x1029) | 7.5 | Implemented in `node` (sub-index 1) | `node` |
-| Store/restore parameters (0x1010, 0x1011) | 7.5 | Not implemented | — |
-| Multiplexed PDO (MPDO, SAM/DAM) | 7.2.3 | Not implemented | — |
-| LSS (CiA 305) | — | Dissected only; no LSS master or slave | `dissect` |
-| CANopen FD, USDO (CiA 1301) | — | Not implemented | — |
-| CiA 302 network management | — | Partly: boot procedure, configuration and heartbeat supervision in `master`; no flying master, configuration manager or SDO manager | `master` |
+| Store/restore parameters (0x1010, 0x1011) | 7.5 | Implemented: groups all, communication, application, manufacturer; memory or file store; verify configuration 0x1020 | `store`, `node` |
+| Multiplexed PDO (MPDO, SAM/DAM) | 7.2.3 | Implemented: DAM and SAM producer and consumer, object scanner (0x1FA0..) and dispatcher (0x1FD0..) lists, EMCY 0x8230; created by `node` for every PDO configured as an MPDO; classical 8-byte frames | `mpdo`, `node`, `master` |
+| LSS (CiA 305) | — | Implemented: master (switch state global/selective, configure node-ID and bit timing, activate bit timing, store, inquire identity and node-ID, identify (non-)configured slaves, Fastscan, AssignAll) and slave; `node.WithLSS` starts a device unconfigured (node-ID 0xFF) and persists the node-ID; LSS step in the CiA 302 boot-up (`master.WithLSSBoot`) | `lss`, `node`, `master` |
+| CANopen FD (CiA 1301) | — | Implemented from public sources: USDO client and server (expedited, segmented, bulk; unicast, group and broadcast), PDOs up to 64 bytes, 20-byte FD emergency, SYNC/NMT/heartbeat in CAN FD frames, `node.WithFD` and `master.WithFD`; segmented USDO layouts inferred, remote (routed) USDO not supported | `usdo`, `pdo`, `emcy`, `sync`, `nmt`, `node`, `master` |
+| CiA 302 network management | — | Implemented: NMT master objects 0x1F80..0x1F89 (start-up, slave assignment, NMT and guarding requests, expected identification, boot time), the network boot-up and boot slave process of CiA 302-2 with error status letters A..O, configuration manager (concise DCF 0x1F22, 0x1F26/0x1F27 configuration date and time, restore 0x1F8A) and program download (CiA 302-3, 0x1F50..0x1F58); not implemented: flying master and redundancy, SDO manager (CiA 302-5), DCF storage 0x1F20, 0x1F52..0x1F54 | `master`, `cdcf`, `program` |
 | CiA 306 EDS/DCF | — | Implemented (modular-device sections kept, not interpreted) | `eds` |
 | CiA 402 drives | — | Implemented: state machine, PP, PV, PT, HM, CSP, CSV, CST (simulated drive and controller) | `cia402` |
 
@@ -106,7 +114,8 @@ does not change.
 
 More in [examples/](examples): a node and a master exchanging PDOs, SDO
 block transfer, a CiA 402 drive, a device built from an EDS and
-configured from a DCF, and a node on SocketCAN.
+configured from a DCF, LSS node-ID assignment, a CANopen FD network, the
+CiA 302 network boot-up, and a node on SocketCAN.
 
 ## Documentation
 
@@ -124,7 +133,7 @@ layer), [canopen-interop](https://github.com/otfabric/canopen-interop)
 
 ## Standards
 
-The CiA specifications (CiA 301, 302, 305, 306, 402) are documents of CAN
+The CiA specifications (CiA 301, 302, 305, 306, 402, 1301) are documents of CAN
 in Automation, available to its members. This library is implemented
 from public material (public descriptions of the protocol, the behaviour
 of open-source stacks such as CANopenNode, Lely CANopen and python

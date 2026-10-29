@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/otfabric/go-canbus/chaos"
+	"github.com/otfabric/go-canbus/virtual"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/testbus"
 )
 
 // clean reports whether a transfer error is one a lossy bus may cause: an
@@ -33,7 +35,7 @@ func TestChaos(t *testing.T) {
 	before := runtime.NumGoroutine()
 	for _, cfg := range cfgs {
 		t.Run(fmt.Sprintf("seed%d", cfg.Seed), func(t *testing.T) {
-			a, b, br := fdChaos(t, cfg)
+			a, b, br := testbus.Chaos(t, cfg, virtual.WithFD())
 			srv, d := startServer(t, a, 5, WithTimeout(100*time.Millisecond))
 			c := startClient(t, b, 1, WithTimeout(50*time.Millisecond))
 			ok, failed := 0, 0
@@ -77,7 +79,7 @@ func TestChaos(t *testing.T) {
 
 // TestChaosCorrupt flips bits: the services must not hang or panic.
 func TestChaosCorrupt(t *testing.T) {
-	a, b, _ := fdChaos(t, chaos.Config{Seed: 7, Corrupt: 0.2})
+	a, b, _ := testbus.Chaos(t, chaos.Config{Seed: 7, Corrupt: 0.2}, virtual.WithFD())
 	startServer(t, a, 5, WithTimeout(50*time.Millisecond))
 	c := startClient(t, b, 1, WithTimeout(30*time.Millisecond))
 	for i := range 30 {

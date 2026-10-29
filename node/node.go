@@ -16,6 +16,7 @@ import (
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/cia402"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/lss"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/pdo"
@@ -23,6 +24,7 @@ import (
 	"github.com/otfabric/go-canopen/sdo"
 	syncobj "github.com/otfabric/go-canopen/sync"
 	"github.com/otfabric/go-canopen/timestamp"
+	"github.com/otfabric/go-canopen/usdo"
 )
 
 // IndexErrorBehaviour is the error behaviour object (CiA 301 7.5.2.31):
@@ -70,15 +72,22 @@ type Node struct {
 	drive  *cia402.Drive
 	// program serves the program download objects of WithProgram.
 	program *program.Device
+	lssS    *lss.Slave    // WithLSS, or nil
+	usdoS   *usdo.Server  // WithFD, or nil
+	mp      mpdoServices  // the MPDO producers and consumers
+	lssSet  *lss.Settings // LSS settings found in the store at New
 
 	lcMu    sync.Mutex // serialises Start and Close
 	started bool
 	closed  atomic.Bool
 
-	mu   sync.Mutex // guards srv and stop
+	mu   sync.Mutex // guards srv, stop and deferred
 	srv  *sdo.Server
 	stop context.CancelFunc
 	wg   sync.WaitGroup
+	// deferred is set while the services wait for a node-ID (started
+	// unconfigured): the reset that applies one starts them.
+	deferred bool
 
 	errMu      sync.Mutex
 	lost       map[canopen.NodeID]bool // heartbeat (node-ID) and life guarding (0) losses
@@ -111,13 +120,16 @@ func New(bus canopen.Bus, d *od.Dictionary, opts ...Option) (*Node, error) {
 	if bus == nil || d == nil {
 		return nil, errors.New("node: New needs a bus and a dictionary")
 	}
-	id := d.NodeID()
-	if err := id.Check(); err != nil {
-		return nil, fmt.Errorf("node: dictionary node-ID %d: %w", id, err)
-	}
 	n := &Node{
 		bus: bus, d: d, cfg: newConfig(opts),
 		lost: map[canopen.NodeID]bool{}, pdoErr: map[uint16]map[int]bool{},
+	}
+	if err := n.loadLSS(); err != nil {
+		return nil, err
+	}
+	id := d.NodeID()
+	if err := id.Check(); err != nil && (id != lss.Unconfigured || !n.cfg.lssOn) {
+		return nil, fmt.Errorf("node: dictionary node-ID %d: %w", id, err)
 	}
 	n.log = n.cfg.log.With("node", int(id))
 	if err := n.loadStored(0); err != nil {
@@ -129,6 +141,10 @@ func New(bus canopen.Bus, d *od.Dictionary, opts ...Option) (*Node, error) {
 	}
 	n.installStore()
 	if err := n.installProgram(); err != nil {
+		n.closeServices()
+		return nil, err
+	}
+	if err := n.installMPDO(); err != nil {
 		n.closeServices()
 		return nil, err
 	}
@@ -156,14 +172,25 @@ func (n *Node) has(idx ...uint16) bool {
 	return true
 }
 
-// build creates the services.
+// build creates the services. An unconfigured node (LSS) builds them
+// with node-ID 1 in place of its own: they stay silent (not started, then
+// gated by the NMT state) until a reset gives them the real one.
 func (n *Node) build(id canopen.NodeID) error {
 	var err error
 	lg := n.log
-	n.slave, err = nmt.NewSlave(n.bus, id, nmt.WithLogger(lg), nmt.WithDictionary(n.d),
-		nmt.WithStateHandler(n.onState), nmt.WithResetHandler(n.onReset))
+	nopts := []nmt.Option{nmt.WithLogger(lg), nmt.WithDictionary(n.d)}
+	if n.cfg.fd {
+		nopts = append(nopts, nmt.WithFD(n.cfg.brs))
+	}
+	n.slave, err = nmt.NewSlave(n.bus, id, append(nopts, nmt.WithStateHandler(n.onState), nmt.WithResetHandler(n.onReset))...)
 	if err != nil {
 		return err
+	}
+	if err := n.buildLSS(id); err != nil {
+		return err
+	}
+	if id == lss.Unconfigured {
+		id = 1
 	}
 	if n.cfg.drive != nil {
 		dc := *n.cfg.drive
@@ -182,31 +209,39 @@ func (n *Node) build(id canopen.NodeID) error {
 	if n.has(od.IndexCOBIDEmcy) {
 		eopts = append(eopts, emcy.WithDictionary(n.d))
 	}
+	if n.cfg.fd {
+		eopts = append(eopts, emcy.WithFD(n.cfg.brs), emcy.WithFDInfo(0, 301), emcy.WithFDClock(time.Now))
+	}
+	eopts = append(eopts, n.cfg.emcyOpts...)
 	if n.emcy, err = emcy.NewProducer(n.gated(nil), id, eopts...); err != nil {
 		return err
 	}
 	if n.has(od.IndexProducerHeartbeat) {
-		if n.hbProd, err = nmt.NewHeartbeatProducer(n.bus, id, n.slave.State, nmt.WithLogger(lg), nmt.WithDictionary(n.d)); err != nil {
+		if n.hbProd, err = nmt.NewHeartbeatProducer(n.bus, id, n.slave.State, nopts...); err != nil {
 			return err
 		}
 	}
 	if n.has(od.IndexConsumerHeartbeat) && !n.cfg.noHBCons {
-		if n.hbCons, err = nmt.NewHeartbeatConsumer(n.bus, nmt.WithLogger(lg), nmt.WithDictionary(n.d), nmt.WithHeartbeatHandler(n.onHeartbeat)); err != nil {
+		if n.hbCons, err = nmt.NewHeartbeatConsumer(n.bus, append(nopts, nmt.WithHeartbeatHandler(n.onHeartbeat))...); err != nil {
 			return err
 		}
 	}
-	if n.has(od.IndexGuardTime, od.IndexLifeTimeFactor) {
+	if n.has(od.IndexGuardTime, od.IndexLifeTimeFactor) && !n.cfg.fd {
 		if n.guard, err = nmt.NewGuardResponder(n.bus, id, n.slave.State, nmt.WithLogger(lg), nmt.WithDictionary(n.d), nmt.WithGuardHandler(n.onGuard)); err != nil {
 			return err
 		}
 	}
+	sopts := []syncobj.Option{syncobj.WithLogger(lg), syncobj.WithDictionary(n.d)}
+	if n.cfg.fd {
+		sopts = append(sopts, syncobj.WithFD(n.cfg.brs))
+	}
 	if n.has(od.IndexCOBIDSync) {
-		if n.syncC, err = syncobj.NewConsumer(n.bus, syncobj.WithLogger(lg), syncobj.WithDictionary(n.d), syncobj.WithHandler(n.onSync)); err != nil {
+		if n.syncC, err = syncobj.NewConsumer(n.bus, append(sopts, syncobj.WithHandler(n.onSync))...); err != nil {
 			return err
 		}
 	}
 	if n.has(od.IndexCOBIDSync, od.IndexCyclePeriod, od.IndexSyncOverflow) {
-		if n.syncP, err = syncobj.NewProducer(n.gated(n.ownSync), syncobj.WithLogger(lg), syncobj.WithDictionary(n.d)); err != nil {
+		if n.syncP, err = syncobj.NewProducer(n.gated(n.ownSync), sopts...); err != nil {
 			return err
 		}
 	}
@@ -219,6 +254,13 @@ func (n *Node) build(id canopen.NodeID) error {
 		}
 	}
 	popts := []pdo.Option{pdo.WithLogger(lg), pdo.WithErrorHandler(n.onPDOError)}
+	if n.cfg.fd {
+		popts = append(popts, pdo.WithFD(n.cfg.brs))
+		uopts := append([]usdo.Option{usdo.WithLogger(lg), usdo.WithBRS(n.cfg.brs)}, n.cfg.usdoOpts...)
+		if n.usdoS, err = usdo.NewServer(n.bus, n.d, uopts...); err != nil {
+			return err
+		}
+	}
 	for i := 1; i <= od.MaxPDOs; i++ {
 		if n.has(pdo.CommIndex(false, i), pdo.MappingIndex(false, i)) {
 			r, err := pdo.NewRPDO(n.bus, n.d, i, popts...)
@@ -280,15 +322,44 @@ func (n *Node) Start() error {
 	return nil
 }
 
+// startServices starts the services, then the NMT slave (boot-up) and
+// the LSS slave. An unconfigured node starts the NMT and LSS slaves only:
+// the reset that gives it a node-ID starts the others.
 func (n *Node) startServices() error {
-	srv, err := n.newServer()
-	if err != nil {
+	if n.slave.NodeID() == lss.Unconfigured {
+		n.mu.Lock()
+		n.deferred = true
+		n.mu.Unlock()
+		n.log.Info("node unconfigured: waiting for a node-ID (LSS)")
+	} else {
+		if !n.cfg.fd {
+			srv, err := n.newServer()
+			if err != nil {
+				return err
+			}
+			n.mu.Lock()
+			n.srv = srv
+			n.mu.Unlock()
+		}
+		if err := n.startProtocol(); err != nil {
+			return err
+		}
+	}
+	if err := n.slave.Start(); err != nil {
 		return err
 	}
-	n.mu.Lock()
-	n.srv = srv
-	n.mu.Unlock()
+	if n.lssS != nil {
+		return n.lssS.Start()
+	}
+	return nil
+}
+
+// startProtocol starts every service but the NMT, LSS and SDO servers.
+func (n *Node) startProtocol() error {
 	var svcs []starter
+	if n.usdoS != nil {
+		svcs = append(svcs, n.usdoS)
+	}
 	svcs = append(svcs, n.emcy)
 	if n.hbCons != nil {
 		svcs = append(svcs, n.hbCons)
@@ -319,6 +390,9 @@ func (n *Node) startServices() error {
 			return err
 		}
 	}
+	if err := n.mp.start(); err != nil {
+		return err
+	}
 	if n.drive != nil && n.cfg.drivePer > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
 		n.mu.Lock()
@@ -330,7 +404,7 @@ func (n *Node) startServices() error {
 			_ = n.drive.Run(ctx, n.cfg.drivePer)
 		}()
 	}
-	return n.slave.Start()
+	return nil
 }
 
 // Close stops the node and its services and waits for them. The node
@@ -348,6 +422,9 @@ func (n *Node) Close() error {
 }
 
 func (n *Node) shutdown() {
+	if n.lssS != nil {
+		_ = n.lssS.Close()
+	}
 	_ = n.slave.Close()
 	n.mu.Lock()
 	stop, srv := n.stop, n.srv
@@ -375,6 +452,13 @@ func (n *Node) removeHooks() {
 // and removes the node's dictionary hooks.
 func (n *Node) closeServices() {
 	n.removeHooks()
+	n.mp.close()
+	if n.lssS != nil {
+		_ = n.lssS.Close()
+	}
+	if n.usdoS != nil {
+		_ = n.usdoS.Close()
+	}
 	for _, t := range n.tpdos {
 		_ = t.Close()
 	}
@@ -422,12 +506,16 @@ func (n *Node) onState(sc nmt.StateChange) {
 	if srv != nil {
 		srv.SetEnabled(sdoOn)
 	}
+	if n.usdoS != nil {
+		n.usdoS.SetEnabled(sdoOn)
+	}
 	for _, r := range n.rpdos {
 		r.SetEnabled(pdoOn)
 	}
 	for _, t := range n.tpdos {
 		t.SetEnabled(pdoOn)
 	}
+	n.mp.setEnabled(pdoOn)
 	if !pdoOn {
 		// Disabled RPDOs forget their errors: clear their emergencies.
 		n.clearPDOErrors()
@@ -461,12 +549,27 @@ func (n *Node) onReset(kind nmt.ResetKind) {
 	if err := n.loadStored(kind); err != nil {
 		n.log.Warn("node reset: stored parameters", "error", err)
 	}
-	if n.hbProd != nil {
-		_ = n.hbProd.SetNodeID(id)
+	configured := id != lss.Unconfigured
+	if configured {
+		if n.hbProd != nil {
+			_ = n.hbProd.SetNodeID(id)
+		}
+		if n.guard != nil {
+			_ = n.guard.SetNodeID(id)
+			n.guard.ResetToggle()
+		}
+		if !n.has(od.IndexCOBIDEmcy) {
+			n.emcy.SetCOBID(canopen.NewCOBID(canopen.FuncEMCY + canbus.ID(id)))
+		} else if x, err := n.d.GetUint(od.IndexCOBIDEmcy, 0); err == nil {
+			// Services started now have not watched the restore.
+			n.emcy.SetCOBID(canopen.COBID(x))
+		}
+		if n.usdoS != nil {
+			_ = n.usdoS.SetNodeID(id)
+		}
 	}
-	if n.guard != nil {
-		_ = n.guard.SetNodeID(id)
-		n.guard.ResetToggle()
+	if n.lssS != nil {
+		_ = n.lssS.SetNodeID(id)
 	}
 	if n.hbCons != nil {
 		// The supervision restarts: each node waits for its first
@@ -496,20 +599,35 @@ func (n *Node) onReset(kind nmt.ResetKind) {
 	if old != nil {
 		_ = old.Close()
 	}
-	srv, err := n.newServer()
-	if err != nil {
-		n.log.Warn("node reset: SDO server", "error", err)
+	if !configured {
 		return
+	}
+	if !n.cfg.fd {
+		srv, err := n.newServer()
+		if err != nil {
+			n.log.Warn("node reset: SDO server", "error", err)
+			return
+		}
+		n.mu.Lock()
+		if n.closed.Load() {
+			// Closed meanwhile: shutdown has already run.
+			n.mu.Unlock()
+			_ = srv.Close()
+			return
+		}
+		n.srv = srv
+		n.mu.Unlock()
 	}
 	n.mu.Lock()
-	if n.closed.Load() {
-		// Closed meanwhile: shutdown has already run.
-		n.mu.Unlock()
-		_ = srv.Close()
-		return
-	}
-	n.srv = srv
+	start := n.deferred && !n.closed.Load()
+	n.deferred = false
 	n.mu.Unlock()
+	if start {
+		n.log.Info("node configured: starting the services", "nodeId", int(id))
+		if err := n.startProtocol(); err != nil {
+			n.log.Warn("node reset: services", "error", err)
+		}
+	}
 }
 
 // onHeartbeat reacts to the heartbeat consumer's events.
@@ -648,7 +766,7 @@ func (n *Node) onSync(ev syncobj.Event) {
 		}
 		cancel()
 	}
-	n.syncPDOs(ev.Counter)
+	n.syncPDOs(ev.Counter, ev.WindowEnd, true)
 }
 
 // ownSync processes a SYNC this node produced.
@@ -657,20 +775,30 @@ func (n *Node) ownSync(f *canbus.Frame) {
 	if f.Len > 0 {
 		counter = f.Data[0]
 	}
-	n.syncPDOs(counter)
+	n.syncPDOs(counter, time.Time{}, false)
 }
 
 // syncPDOs passes a SYNC to the PDOs: RPDOs apply their buffered data
-// first, then the TPDOs sample and send.
-func (n *Node) syncPDOs(counter uint8) {
+// first, then the TPDOs sample and send. A received SYNC carries the end
+// of its synchronous window (0x1007, measured from its reception); the
+// node's own SYNC opens the window now.
+func (n *Node) syncPDOs(counter uint8, windowEnd time.Time, received bool) {
 	if n.slave.State() != canopen.StateOperational {
 		return
 	}
 	for _, r := range n.rpdos {
-		r.OnSync(counter)
+		if received {
+			r.OnSyncWindow(counter, windowEnd)
+		} else {
+			r.OnSync(counter)
+		}
 	}
 	for _, t := range n.tpdos {
-		t.OnSync(counter)
+		if received {
+			t.OnSyncWindow(counter, windowEnd)
+		} else {
+			t.OnSync(counter)
+		}
 	}
 }
 
@@ -723,6 +851,9 @@ func (n *Node) Dictionary() *od.Dictionary { return n.d }
 // EMCY returns the node's emergency producer, for the application to raise
 // and clear its errors.
 func (n *Node) EMCY() *emcy.Producer { return n.emcy }
+
+// USDOServer returns the USDO server of [WithFD], or nil.
+func (n *Node) USDOServer() *usdo.Server { return n.usdoS }
 
 // Drive returns the CiA 402 drive of [WithDrive], or nil.
 func (n *Node) Drive() *cia402.Drive { return n.drive }

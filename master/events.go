@@ -9,6 +9,7 @@ import (
 
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/lss"
 )
 
 // EventKind is the kind of an [Event].
@@ -49,6 +50,10 @@ const (
 	// event of a slave of the network list (Err says how: reset node,
 	// reset all nodes, stop all nodes).
 	EventNodeError
+	// EventLSSAssigned: the LSS step of the CiA 302 network boot-up
+	// ([WithLSSBoot]) gave an unconfigured device the node-ID Node (LSS
+	// holds the device's address and the node-ID).
+	EventLSSAssigned
 )
 
 // String names the event kind.
@@ -78,6 +83,8 @@ func (k EventKind) String() string {
 		return "guarding-resumed"
 	case EventNodeError:
 		return "node-error"
+	case EventLSSAssigned:
+		return "lss-assigned"
 	}
 	return fmt.Sprintf("EventKind(%d)", uint8(k))
 }
@@ -97,7 +104,9 @@ type Event struct {
 	// Status is the result of a CiA 302 boot slave process
 	// (EventBootDone, EventBootFailed, EventNetworkBootFailed).
 	Status BootStatus
-	Time   time.Time
+	// LSS is the assignment of an EventLSSAssigned.
+	LSS  *lss.Assignment
+	Time time.Time
 }
 
 // String formats the event for logs.
@@ -109,6 +118,8 @@ func (e Event) String() string {
 		return fmt.Sprintf("node %d %s: %v", e.Node, e.Kind, e.Err)
 	case EventStateChange:
 		return fmt.Sprintf("node %d %s: %s -> %s", e.Node, e.Kind, e.Previous, e.State)
+	case EventLSSAssigned:
+		return fmt.Sprintf("node %d %s: %s", e.Node, e.Kind, e.LSS.Address)
 	default: // no special case
 	}
 	return fmt.Sprintf("node %d %s", e.Node, e.Kind)

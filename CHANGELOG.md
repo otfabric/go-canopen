@@ -2,6 +2,27 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.3.0 (2026-10-29)
+
+New packages `lss` (CiA 305 LSS master and slave with Fastscan and
+AssignAll), `mpdo` (multiplexed PDOs, DAM and SAM, scanner and dispatcher
+lists), `usdo` (the CANopen FD USDO client and server), `store`
+(parameter persistence behind 0x1010/0x1011), `cdcf` (concise DCF) and
+`program` (CiA 302-3 program download, device side). CANopen FD in `pdo`
+(64-byte PDOs), `sync`, `emcy` (20-byte FD emergency) and `nmt`; the
+synchronous window 0x1007 enforced for synchronous PDOs. `node` integrates
+all of it: `WithLSS` (unconfigured start with node-ID 0xFF, node-ID
+persisted in the store), MPDO producers and consumers for every PDO
+configured as an MPDO, `WithFD` (USDO server in place of the SDO server),
+`WithStore`, `WithProgram`. `master` is a CiA 302 manager with
+`WithDictionary` (network boot-up, boot slave process with error status
+letters, concise DCF, program download, store/restore requests), has an
+LSS master (`LSS`, optional LSS step `WithLSSBoot`), MPDO list helpers,
+and runs every procedure over USDO with `WithFD`. `dissect` decodes USDO
+and FD emergencies. Fixed: a data race between concurrent NMT
+subscriptions (shared filter option). Interop of the new features is
+pending canopen-interop contract 1.1.
+
 ## v0.2.0 (2026-10-29)
 
 Interoperability suite (`interop/`, `make interop`, Interop workflow on

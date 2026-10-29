@@ -21,7 +21,7 @@ jobs:
       codecov-name: go-canopen
       run-codecov: false
       coverpkg: >-
-        github.com/otfabric/go-canopen,github.com/otfabric/go-canopen/cia402,github.com/otfabric/go-canopen/codegen,github.com/otfabric/go-canopen/dissect,github.com/otfabric/go-canopen/eds,github.com/otfabric/go-canopen/emcy,github.com/otfabric/go-canopen/master,github.com/otfabric/go-canopen/nmt,github.com/otfabric/go-canopen/node,github.com/otfabric/go-canopen/od,github.com/otfabric/go-canopen/pdo,github.com/otfabric/go-canopen/sdo,github.com/otfabric/go-canopen/sync,github.com/otfabric/go-canopen/timestamp
+        github.com/otfabric/go-canopen,github.com/otfabric/go-canopen/cdcf,github.com/otfabric/go-canopen/cia402,github.com/otfabric/go-canopen/codegen,github.com/otfabric/go-canopen/dissect,github.com/otfabric/go-canopen/eds,github.com/otfabric/go-canopen/emcy,github.com/otfabric/go-canopen/lss,github.com/otfabric/go-canopen/master,github.com/otfabric/go-canopen/mpdo,github.com/otfabric/go-canopen/nmt,github.com/otfabric/go-canopen/node,github.com/otfabric/go-canopen/od,github.com/otfabric/go-canopen/pdo,github.com/otfabric/go-canopen/program,github.com/otfabric/go-canopen/sdo,github.com/otfabric/go-canopen/store,github.com/otfabric/go-canopen/sync,github.com/otfabric/go-canopen/timestamp,github.com/otfabric/go-canopen/usdo
       go-versions: '["1.23", "1.24", "1.25", "1.26"]'
     secrets: inherit
 

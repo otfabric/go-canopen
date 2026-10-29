@@ -94,13 +94,23 @@ func (m *Master) Scan(ctx context.Context, nodes []canopen.NodeID) ([]NodeInfo, 
 }
 
 func (m *Master) scanNode(ctx context.Context, n canopen.NodeID) (NodeInfo, bool, error) {
-	opts := append([]sdo.ClientOption{sdo.WithLogger(m.log), sdo.WithTimeout(scanTimeout)}, m.cfg.scanOpts...)
-	c, err := sdo.NewClient(m.bus, n, opts...)
-	if err != nil {
-		return NodeInfo{}, false, err
+	var c remote
+	if m.cfg.fd {
+		uc, err := m.USDO()
+		if err != nil {
+			return NodeInfo{}, false, err
+		}
+		c = usdoRemote{c: uc, node: n, timeout: scanTimeout}
+	} else {
+		opts := append([]sdo.ClientOption{sdo.WithLogger(m.log), sdo.WithTimeout(scanTimeout)}, m.cfg.scanOpts...)
+		sc, err := sdo.NewClient(m.bus, n, opts...)
+		if err != nil {
+			return NodeInfo{}, false, err
+		}
+		defer func() { _ = sc.Close() }()
+		c = client{sc}
 	}
-	defer func() { _ = c.Close() }()
-	dt, err := c.ReadUint(ctx, od.IndexDeviceType, 0)
+	dt, err := readUint(ctx, c, od.IndexDeviceType, 0)
 	if err != nil {
 		var ae *canopen.AbortError
 		if errors.As(err, &ae) && ae.Remote {
@@ -119,11 +129,11 @@ func (m *Master) scanNode(ctx context.Context, n canopen.NodeID) (NodeInfo, bool
 }
 
 // readIdentity reads 0x1018 sub 1 (mandatory) and 2..4 (optional).
-func readIdentity(ctx context.Context, c *sdo.Client) (Identity, error) {
+func readIdentity(ctx context.Context, c remote) (Identity, error) {
 	var id Identity
 	dst := []*uint32{&id.VendorID, &id.ProductCode, &id.Revision, &id.SerialNumber}
 	for i, p := range dst {
-		v, err := c.ReadUint(ctx, od.IndexIdentity, uint8(i+1))
+		v, err := readUint(ctx, c, od.IndexIdentity, uint8(i+1))
 		if err != nil {
 			if i > 0 && optionalMissing(err) {
 				continue
@@ -144,7 +154,7 @@ func optionalMissing(err error) bool {
 
 // Identity reads the identity object 0x1018 of a node.
 func (m *Master) Identity(ctx context.Context, node canopen.NodeID) (Identity, error) {
-	c, err := m.SDO(node)
+	c, err := m.remote(node)
 	if err != nil {
 		return Identity{}, err
 	}
