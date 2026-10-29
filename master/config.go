@@ -8,23 +8,16 @@ import (
 	"fmt"
 
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/cdcf"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/pdo"
 	"github.com/otfabric/go-canopen/sdo"
 )
 
 // Entry is one value to write into a node's dictionary: the neutral form
-// of a node configuration (from a DCF, a tool, or code).
-type Entry struct {
-	Index    uint16
-	SubIndex uint8
-	// Data is the value in the encoding of the object's data type
-	// (canopen.Encode).
-	Data []byte
-}
-
-// String formats the entry as "IIII:SS=hex".
-func (e Entry) String() string { return fmt.Sprintf("%04X:%02X=% X", e.Index, e.SubIndex, e.Data) }
+// of a node configuration (from a DCF, a concise DCF, a tool, or code).
+// It is the entry of a concise DCF (package cdcf).
+type Entry = cdcf.Entry
 
 // pdoKey identifies a PDO of a node.
 type pdoKey struct {

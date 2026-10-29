@@ -60,10 +60,20 @@ func (m *Master) SetBoot(node canopen.NodeID, cfg *BootConfig) error {
 }
 
 // bootUp starts the registered boot procedure of a node that booted.
-func (m *Master) bootUp(node canopen.NodeID) {
+func (m *Master) bootUp(node canopen.NodeID, at time.Time) {
+	m.mu.Lock()
+	cfg := m.boots[node]
+	m.mu.Unlock()
+	if g := m.mgr; cfg == nil && g != nil {
+		// The CiA 302 boot slave process of a node of the network list.
+		if g.isMaster() && g.assignment(node).Has(AssignSlave) {
+			g.request(node, at)
+		}
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	cfg := m.boots[node]
+	cfg = m.boots[node]
 	if cfg == nil || m.bootCtx.Err() != nil {
 		return
 	}

@@ -14,6 +14,8 @@ import (
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/emcy"
 	"github.com/otfabric/go-canopen/nmt"
+	"github.com/otfabric/go-canopen/node"
+	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/sdo"
 	syncobj "github.com/otfabric/go-canopen/sync"
 	"github.com/otfabric/go-canopen/timestamp"
@@ -30,6 +32,12 @@ type config struct {
 	parallel int
 	id       canopen.NodeID
 	hbPeriod time.Duration
+	dict     *od.Dictionary
+	nodeOpts []node.Option
+	timing   BootTiming
+	// storeGroup is the 0x1010 sub-index written after a configuration
+	// download (0: none).
+	storeGroup uint8
 }
 
 // WithLogger logs the master's events, and those of its services, to l.
@@ -76,6 +84,40 @@ func WithHeartbeat(id canopen.NodeID, period time.Duration) Option {
 	return func(c *config) { c.id, c.hbPeriod = id, period }
 }
 
+// WithDictionary makes the master a CANopen device of its own, built from
+// d with package node (its node-ID is d's): the master then has an SDO
+// server, a heartbeat producer (0x1017) and the other services of its
+// dictionary, and is a CiA 302 manager driven by the objects of d (see
+// [AddManagerObjects] and the package documentation): with bit 0 of the
+// NMT start-up 0x1F80 set, every boot-up of the master's node (at Start
+// and after its resets) runs the network boot-up of CiA 302-2 over the
+// slaves of 0x1F81, configuring them from their concise DCFs (0x1F22).
+// opts are passed to node.New (e.g. node.WithStore); the master sets the
+// node's state handler (the node's state changes are reported as
+// EventStateChange events of its node-ID) and leaves out its heartbeat
+// consumer (the master supervises the slaves of 0x1016 itself).
+// [WithHeartbeat] cannot be combined with it (0x1017 sets the
+// heartbeat).
+func WithDictionary(d *od.Dictionary, opts ...node.Option) Option {
+	return func(c *config) { c.dict, c.nodeOpts = d, opts }
+}
+
+// WithBootTiming sets the times of the CiA 302 boot-up and of
+// [Master.DownloadProgram]; zero fields keep their defaults.
+func WithBootTiming(t BootTiming) Option {
+	return func(c *config) { c.timing = t }
+}
+
+// WithStoreAfterConfigure makes the CiA 302 boot-up ask a slave to save
+// its parameters (0x1010 sub-index group, see [Master.StoreParameters])
+// after a concise DCF was written to it, so that the configuration
+// survives the slave's restart; with the configuration date and time in
+// the concise DCF (0x1020) and in 0x1F26/0x1F27, the next boot-up then
+// skips the configuration. 0 (the default) asks for nothing.
+func WithStoreAfterConfigure(group uint8) Option {
+	return func(c *config) { c.storeGroup = group }
+}
+
 // Master is a CANopen network manager: NMT commands, heartbeat supervision,
 // emergency reception, SDO clients for every node, scanning, node
 // configuration, the boot procedure, remote PDOs, SYNC and TIME
@@ -92,6 +134,7 @@ type Master struct {
 	timeP  *timestamp.Producer
 	hbProd *nmt.HeartbeatProducer
 	disp   *dispatcher
+	mgr    *manager // CiA 302 manager of WithDictionary, or nil
 
 	lcMu    sync.Mutex
 	started bool
@@ -122,6 +165,10 @@ func New(bus canopen.Bus, opts ...Option) (*Master, error) {
 	if c.parallel < 1 {
 		c.parallel = 1
 	}
+	c.timing = c.timing.withDefaults()
+	if c.dict != nil && c.hbPeriod > 0 {
+		return nil, errors.New("master: WithHeartbeat and WithDictionary exclude each other (set 0x1017)")
+	}
 	m := &Master{
 		bus: bus, cfg: c, log: c.log,
 		clients: map[canopen.NodeID]*sdo.Client{},
@@ -148,6 +195,15 @@ func New(bus canopen.Bus, opts ...Option) (*Master, error) {
 			return nil, err
 		}
 	}
+	if c.dict != nil {
+		if m.mgr, err = newManager(m, c.dict, c.nodeOpts); err != nil {
+			_ = m.hb.Close()
+			_ = m.em.Close()
+			_ = m.syncP.Close()
+			_ = m.timeP.Close()
+			return nil, err
+		}
+	}
 	return m, nil
 }
 
@@ -167,6 +223,10 @@ func (m *Master) Start() error {
 	svcs := []interface{ Start() error }{m.hb, m.em, m.syncP, m.timeP}
 	if m.hbProd != nil {
 		svcs = append(svcs, m.hbProd)
+	}
+	if m.mgr != nil {
+		// Last: the node's boot-up starts the network boot-up.
+		svcs = append(svcs, m.mgr)
 	}
 	for _, s := range svcs {
 		if err := s.Start(); err != nil {
@@ -197,7 +257,12 @@ func (m *Master) Close() error {
 	if m.hbProd != nil {
 		_ = m.hbProd.Close()
 	}
+	if m.mgr != nil {
+		m.mgr.close()
+	}
+	m.mu.Lock()
 	m.stopAll()
+	m.mu.Unlock()
 	m.wg.Wait()
 	_ = m.syncP.Close()
 	_ = m.timeP.Close()
@@ -256,9 +321,28 @@ func (m *Master) onHeartbeat(ev nmt.HeartbeatEvent) {
 		return
 	}
 	m.disp.push(e)
-	if ev.Kind == nmt.EventBootUp {
-		m.bootUp(ev.Node)
+	switch {
+	case ev.Kind == nmt.EventBootUp:
+		m.bootUp(ev.Node, ev.Time)
+	case ev.Kind == nmt.EventTimeout && m.mgr != nil:
+		m.mgr.nodeError(ev.Node)
 	}
+}
+
+// goBoot runs f on a goroutine of the master's (waited for by Close) with
+// the master's background context; it returns false after Close.
+func (m *Master) goBoot(f func(ctx context.Context)) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.bootCtx.Err() != nil {
+		return false
+	}
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		f(m.bootCtx)
+	}()
+	return true
 }
 
 func (m *Master) onEMCY(ev emcy.Event) {

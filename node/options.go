@@ -9,7 +9,9 @@ import (
 
 	"github.com/otfabric/go-canopen/cia402"
 	"github.com/otfabric/go-canopen/nmt"
+	"github.com/otfabric/go-canopen/program"
 	"github.com/otfabric/go-canopen/sdo"
+	"github.com/otfabric/go-canopen/store"
 	"github.com/otfabric/go-canopen/timestamp"
 )
 
@@ -26,6 +28,9 @@ type config struct {
 	drive     *cia402.DriveConfig
 	drivePer  time.Duration
 	autoStart bool
+	store     store.Store
+	program   *program.Config
+	noHBCons  bool
 }
 
 func newConfig(opts []Option) config {
@@ -99,4 +104,34 @@ func WithDrive(cfg cia402.DriveConfig, period time.Duration) Option {
 // every reset.
 func WithAutoStart() Option {
 	return func(c *config) { c.autoStart = true }
+}
+
+// WithStore keeps the node's parameters in s (CiA 301 store and restore,
+// see package store): the saved values are loaded when the node is
+// created (New fails when s cannot be read) and after every NMT reset
+// (those of the areas the reset restores), and when the dictionary has
+// 0x1010 and 0x1011 (store.AddObjects adds them) writes of "save" and
+// "load" to them save the current values of a group of parameters and
+// delete them ([Node.SaveParameters], [Node.RestoreDefaults]). Reads of
+// their sub-indices 1..4 return 1 (on command).
+func WithStore(s store.Store) Option {
+	return func(c *config) { c.store = s }
+}
+
+// WithProgram makes the node a programmable device (CiA 302-3 program
+// download): the program download objects 0x1F50, 0x1F51, 0x1F56 and
+// 0x1F57 are added where missing and served by a [program.Device] whose
+// Handler (cfg.Handler) does the flashing; see package program. The
+// program control 0x1F51 accepts commands in Pre-operational only.
+func WithProgram(cfg program.Config) Option {
+	return func(c *config) { c.program = &cfg }
+}
+
+// WithoutHeartbeatConsumer leaves out the heartbeat consumer even when the
+// dictionary has 0x1016: for a device whose heartbeat consumption is done
+// elsewhere, such as the CANopen manager of package master, which
+// supervises the slaves of 0x1016 itself (and must not raise emergencies
+// or change state when a slave is lost).
+func WithoutHeartbeatConsumer() Option {
+	return func(c *config) { c.noHBCons = true }
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/pdo"
+	"github.com/otfabric/go-canopen/program"
 	"github.com/otfabric/go-canopen/sdo"
 	syncobj "github.com/otfabric/go-canopen/sync"
 	"github.com/otfabric/go-canopen/timestamp"
@@ -67,6 +68,8 @@ type Node struct {
 	tpdos  []*pdo.TPDO
 	rpdos  []*pdo.RPDO
 	drive  *cia402.Drive
+	// program serves the program download objects of WithProgram.
+	program *program.Device
 
 	lcMu    sync.Mutex // serialises Start and Close
 	started bool
@@ -85,6 +88,9 @@ type Node struct {
 
 	resets     atomic.Uint64
 	suppressed atomic.Uint64
+
+	storeMu sync.Mutex // serialises parameter saves and restores
+	unhook  []func()   // removes the dictionary hooks the node registered
 }
 
 // New returns a node for the dictionary d on bus. The node-ID is the
@@ -114,7 +120,15 @@ func New(bus canopen.Bus, d *od.Dictionary, opts ...Option) (*Node, error) {
 		lost: map[canopen.NodeID]bool{}, pdoErr: map[uint16]map[int]bool{},
 	}
 	n.log = n.cfg.log.With("node", int(id))
+	if err := n.loadStored(0); err != nil {
+		return nil, err
+	}
 	if err := n.build(id); err != nil {
+		n.closeServices()
+		return nil, err
+	}
+	n.installStore()
+	if err := n.installProgram(); err != nil {
 		n.closeServices()
 		return nil, err
 	}
@@ -176,7 +190,7 @@ func (n *Node) build(id canopen.NodeID) error {
 			return err
 		}
 	}
-	if n.has(od.IndexConsumerHeartbeat) {
+	if n.has(od.IndexConsumerHeartbeat) && !n.cfg.noHBCons {
 		if n.hbCons, err = nmt.NewHeartbeatConsumer(n.bus, nmt.WithLogger(lg), nmt.WithDictionary(n.d), nmt.WithHeartbeatHandler(n.onHeartbeat)); err != nil {
 			return err
 		}
@@ -349,8 +363,18 @@ func (n *Node) shutdown() {
 	n.closeServices()
 }
 
-// closeServices closes every service but the slave and the SDO server.
+// removeHooks removes the dictionary hooks the node registered.
+func (n *Node) removeHooks() {
+	for _, f := range n.unhook {
+		f()
+	}
+	n.unhook = nil
+}
+
+// closeServices closes every service but the slave and the SDO server,
+// and removes the node's dictionary hooks.
 func (n *Node) closeServices() {
+	n.removeHooks()
 	for _, t := range n.tpdos {
 		_ = t.Close()
 	}
@@ -431,6 +455,12 @@ func (n *Node) onReset(kind nmt.ResetKind) {
 	n.resets.Add(1)
 	id := n.slave.NodeID()
 	n.log.Info("node reset", "kind", kind.String(), "nodeId", int(id))
+	// The dictionary holds the defaults of the reset areas: the saved
+	// parameters of those areas replace them before the services read
+	// their configuration.
+	if err := n.loadStored(kind); err != nil {
+		n.log.Warn("node reset: stored parameters", "error", err)
+	}
 	if n.hbProd != nil {
 		_ = n.hbProd.SetNodeID(id)
 	}
