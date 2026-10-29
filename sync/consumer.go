@@ -19,6 +19,8 @@ type Event struct {
 	// data.
 	Counter uint8
 	// Time is the frame's receive timestamp, or the time it was processed.
+	// It carries a monotonic clock reading (see [Consumer]), so that the
+	// window survives steps of the wall clock.
 	Time time.Time
 	// WindowEnd is the end of the synchronous window (Time + window
 	// length), after which synchronous PDOs must not be sent any more;
@@ -59,7 +61,7 @@ type Consumer struct {
 
 // NewConsumer returns a SYNC consumer. Options: [WithLogger],
 // [WithHandler], [WithDictionary], [WithCOBID], [WithWindow],
-// [WithOverflow].
+// [WithOverflow], [WithFD].
 func NewConsumer(bus canopen.Bus, opts ...Option) (*Consumer, error) {
 	c := &Consumer{bus: bus, cfg: newConfig(opts), wake: make(chan struct{}, 1)}
 	c.cob = c.cfg.cob
@@ -175,13 +177,14 @@ func (c *Consumer) run(ctx context.Context, sub *canbus.Subscription, cob canope
 
 // receive processes one frame; ok is false for a frame that is no SYNC.
 func (c *Consumer) receive(f *canbus.Frame, cob canopen.COBID) (Event, bool) {
-	if !cob.Matches(f) || f.Flags&(canbus.FlagRemote|canbus.FlagFD|canbus.FlagError) != 0 {
+	reject := canbus.FlagRemote | canbus.FlagError
+	if !c.cfg.fd {
+		reject |= canbus.FlagFD
+	}
+	if !cob.Matches(f) || f.Flags&reject != 0 {
 		return Event{}, false
 	}
-	t := f.Timestamp
-	if t.IsZero() {
-		t = time.Now()
-	}
+	t := receiveTime(f.Timestamp, time.Now())
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e := Event{Time: t}
@@ -232,6 +235,16 @@ func (c *Consumer) InWindow(now time.Time) bool {
 	return now.Before(c.last.Time.Add(c.window))
 }
 
+// Window returns the synchronous window length (0x1007, or the
+// [WithWindow] option; 0: no window) that [Event.WindowEnd] and
+// [Consumer.InWindow] use. Synchronous PDOs are bound to it: pass
+// Event.WindowEnd to pdo's OnSyncWindow.
+func (c *Consumer) Window() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.window
+}
+
 // Close stops the consumer and waits for it. It removes the write hooks
 // the consumer installed on the dictionary.
 func (c *Consumer) Close() error {
@@ -245,4 +258,27 @@ func (c *Consumer) Stats() ConsumerStats {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.stats
+}
+
+// maxRxLatency bounds the plausible delay between a frame's kernel
+// timestamp and its processing; a larger difference (either way) means
+// the wall clock was stepped in between.
+const maxRxLatency = time.Second
+
+// receiveTime is the reception time of a frame on the monotonic clock:
+// now, minus the delay since the frame's receive timestamp. Kernel
+// timestamps are wall-clock times; a window measured from them against
+// the wall clock breaks when the clock is stepped between the SYNC and a
+// PDO (NTP, a virtual machine's clock adjustments). The delay, measured
+// at once, is not affected by such a step; a timestamp that is missing,
+// in the future or older than maxRxLatency gives now.
+func receiveTime(ts, now time.Time) time.Time {
+	if ts.IsZero() {
+		return now
+	}
+	lat := now.Round(0).Sub(ts)
+	if lat < 0 || lat > maxRxLatency {
+		return now
+	}
+	return now.Add(-lat)
 }

@@ -14,11 +14,12 @@ import (
 
 // Listen starts a listener for PDOs on a COB-ID with a known mapping,
 // whose objects desc describes (a dictionary of the producing node, for
-// example built from its EDS). The handler runs on the listener's
+// example built from its EDS). With [WithFD] the PDOs are CANopen FD PDOs
+// (up to 64 bytes, pdo.WithFD). The handler runs on the listener's
 // goroutine. The listener is closed with the master, or earlier by the
 // caller.
 func (m *Master) Listen(cob canopen.COBID, mapping pdo.Mapping, desc *od.Dictionary, h func(f *canbus.Frame, values []pdo.Value)) (*pdo.Listener, error) {
-	dec, err := pdo.NewDecoder(mapping, desc)
+	dec, err := pdo.NewDecoder(mapping, desc, m.pdoOpts()...)
 	if err != nil {
 		return nil, err
 	}
@@ -47,9 +48,9 @@ func (m *Master) ListenTPDO(ctx context.Context, node canopen.NodeID, n int, des
 }
 
 // Sender returns a sender of PDOs on a COB-ID with a known mapping, whose
-// objects desc describes.
+// objects desc describes; with [WithFD] it sends CANopen FD PDOs.
 func (m *Master) Sender(cob canopen.COBID, mapping pdo.Mapping, desc *od.Dictionary) (*pdo.Sender, error) {
-	enc, err := pdo.NewEncoder(mapping, desc)
+	enc, err := pdo.NewEncoder(mapping, desc, m.pdoOpts()...)
 	if err != nil {
 		return nil, err
 	}
@@ -68,4 +69,12 @@ func (m *Master) RPDOSender(ctx context.Context, node canopen.NodeID, n int, des
 		return nil, fmt.Errorf("master: node %d RPDO %d: %w", node, n, pdo.ErrInactive)
 	}
 	return m.Sender(cfg.COBID, cfg.Mapping, desc)
+}
+
+// pdoOpts returns the options of the master's PDO encoders and decoders.
+func (m *Master) pdoOpts() []pdo.Option {
+	if m.cfg.fd {
+		return []pdo.Option{pdo.WithFD(m.cfg.brs)}
+	}
+	return nil
 }

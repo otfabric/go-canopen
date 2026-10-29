@@ -5,6 +5,8 @@ package nmt
 import (
 	"context"
 	"errors"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -250,4 +252,42 @@ func (f *failBus) Send(ctx context.Context, fr *canbus.Frame) error {
 		return errors.New("send failed")
 	}
 	return f.Bus.Send(ctx, fr)
+}
+
+// TestSlaveBootUpHandler: the handler runs before every boot-up message,
+// in Initialising, and after the reset handler.
+func TestSlaveBootUpHandler(t *testing.T) {
+	a, b := testbus.Pair(t)
+	var mu sync.Mutex
+	var calls []string
+	var s *Slave
+	var err error
+	s, err = NewSlave(a, 5,
+		WithResetHandler(func(ResetKind) { mu.Lock(); calls = append(calls, "reset"); mu.Unlock() }),
+		WithBootUpHandler(func() {
+			if st := s.State(); st != canopen.StateInitialising {
+				t.Errorf("boot-up handler in %v", st)
+			}
+			mu.Lock()
+			calls = append(calls, "boot-up")
+			mu.Unlock()
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := subscribe(t, b)
+	if err := s.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	recv(t, sub, isBootUp(5))
+	if err := NewMaster(b).Send(context.Background(), 5, canopen.NMTResetNode); err != nil {
+		t.Fatal(err)
+	}
+	recv(t, sub, isBootUp(5))
+	mu.Lock()
+	defer mu.Unlock()
+	if want := []string{"boot-up", "reset", "boot-up"}; !slices.Equal(calls, want) {
+		t.Errorf("calls %v, want %v", calls, want)
+	}
 }

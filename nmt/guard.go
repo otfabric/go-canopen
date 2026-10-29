@@ -152,7 +152,7 @@ func (g *GuardMaster) State(node canopen.NodeID) canopen.NMTState {
 // Start subscribes to the responses and starts guarding.
 func (g *GuardMaster) Start() error {
 	return g.lc.start(func(context.Context) (func(context.Context), error) {
-		sub, err := g.bus.Subscribe(errorControlFilter)
+		sub, err := g.bus.Subscribe(errorControlFilter())
 		if err != nil {
 			return nil, fmt.Errorf("nmt: subscribe: %w", err)
 		}

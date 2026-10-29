@@ -65,6 +65,8 @@ type config struct {
 	threshold int
 	pst       int // -1: derived from the mode
 	retries   int
+	resetNode canopen.NodeID // WithResetFence: 0 none
+	fenced    bool           // WithFenced
 }
 
 func defaultConfig() config {
@@ -116,6 +118,10 @@ type option func(*config)
 func (o option) applyServer(c *config) { o(c) }
 func (o option) applyClient(c *config) { o(c) }
 
+type serverOption func(*config)
+
+func (o serverOption) applyServer(c *config) { o(c) }
+
 type clientOption func(*config)
 
 func (o clientOption) applyClient(c *config) { o(c) }
@@ -136,6 +142,28 @@ func WithTimeout(d time.Duration) Option { return option(func(c *config) { c.tim
 func WithCOBIDs(clientToServer, serverToClient canopen.COBID) Option {
 	return option(func(c *config) { c.cobSet, c.c2s, c.s2c = true, clientToServer, serverToClient })
 }
+
+// WithResetFence makes the server of node node also receive the NMT
+// commands (COB-ID 0) and disable itself at a reset node or reset
+// communication addressed to node or to all nodes. The command and the
+// requests reach the server in the order they arrived, so a request
+// received after the command is never answered by this server: the node
+// is resetting (Initialising) and answers again with the server it
+// starts after the reset (CiA 301). The server stays disabled until it is
+// closed; [Server.SetEnabled] does not enable it again. Package node uses it for its SDO
+// server, which it replaces at every reset, together with
+// [Server.Fence] at the boot-up message.
+func WithResetFence(node canopen.NodeID) ServerOption {
+	return serverOption(func(c *config) { c.resetNode = node })
+}
+
+// WithFenced starts the server fenced: it ignores every request until
+// [Server.Fence], and then the requests received before the Fence. Package
+// node starts its SDO server so at Start and at every reset and fences
+// it just before the boot-up message: the node is Initialising until
+// then, and a request received meanwhile is not answered, however late
+// the server gets to it.
+func WithFenced() ServerOption { return serverOption(func(c *config) { c.fenced = true }) }
 
 // WithBlockSize sets the number of segments per block (1..127, default
 // 127) the side receiving a block transfer asks for: the server for

@@ -3,6 +3,53 @@
 Durable state of the CANopen work (go-canopen, canopen-interop,
 canopenctl). Newest first within each section.
 
+## Status (2026-10-29): go-canopen v0.3.0 prepared (branch `next`)
+
+| Repo | Release | Notes |
+|------|---------|-------|
+| go-canopen | v0.3.0 (section in RELEASE.md) | LSS, MPDO, CANopen FD (USDO), SYNC window, store/restore, CiA 302 boot-up, concise DCF, program download; integrated in `node` and `master`. Interop against canopen-interop v0.2.0 (contract 1.1): 1,620 scenarios, 0 failures (local); LSS, MPDO, CiA 302 boot-up, concise DCF, SYNC window covered; CANopen FD, store/restore and program download have no oracle |
+
+## Interop contract 1.1 (2026-10-29)
+
+`interop/` on canopen-interop v0.2.0 (digests in harness_test.go):
+lss_test.go, mpdo_test.go, boot_test.go, cdcf_test.go,
+syncwindow_test.go (FD recorded as skips). Local run (Lima canvm):
+1,620 scenarios, 0 failures. Fixed from it: `AssignAll` at node-ID 127
+and with Lely slaves (Fastscan answered with a pending node-ID),
+`sdo.WithResetFence` (a node answered SDO requests that followed an NMT
+reset command, Lely's boot master then saw status M), SYNC window on the
+monotonic clock (the VM steps its wall clock). The manager scenarios
+configure 0x1F80 before Start: setting it after Start and calling
+`BootNetwork` races the automatic network boot-up of the master's own
+boot-up (the explicit call can end with "context canceled").
+
+## v0.3.0 integration (2026-10-29)
+
+- `node`: `WithLSS` (unconfigured start with node-ID 0xFF; services
+  built with a placeholder node-ID and started by the reset that applies
+  a real one; LSS settings in the store under pseudo index 0x0000), MPDO
+  services per MPDO-configured PDO (watcher on mapping sub 0), SYNC window
+  from each received SYNC, `WithFD` (USDO server replaces the SDO server,
+  guarding left out, FD EMCY with CiA spec 301 and the system clock).
+- `nmt`: `WithFD`, `Unconfigured` slaves (no boot-up; only reset
+  commands), FD parsers. Fixed a data race: package-level
+  `canbus.WithFilters` options are written by every Subscribe (go-canbus
+  copies the filter slice into the captured FilterSet); they are now
+  built per call. Found when several unconfigured nodes started their
+  services concurrently from LSS resets.
+- `master`: an internal `remote` access (SDO client, or the USDO client
+  with `WithFD`) behind every procedure; USDO aborts wrapped so that
+  `errors.As(*canopen.AbortError)` still holds. `LSS()`, `WithLSSBoot`
+  (Fastscan rounds until one assigns nothing; boot-ups during the LSS
+  step are not booted, the reset after it boots them — without that, a
+  slave booted during the step was reset by the step's broadcast reset
+  communication and failed with status K), MPDO list helpers.
+- e2e scenarios (`e2e/scenarios_test.go`) on the virtual bus and vcan;
+  `TestMonkeyLSSBoot`; examples lss-assign, canopen-fd, network-boot.
+- SocketCAN e2e run in the Lima VM `canvm` (vcan0 MTU 72): cross-compile
+  `GOOS=linux GOARCH=arm64 go test -c -o bin/e2e.test ./e2e`, run from
+  `e2e/` with `CANOPEN_REQUIRE_VCAN=1`.
+
 ## Status (2026-10-29): go-canopen v0.1.0 prepared
 
 | Repo | Release | Notes |
@@ -23,9 +70,10 @@ locally in the Lima VM `canvm`: cross-compile `bin/interop.test`
 
 ## Next
 
-1. Phase 5: CANopen FD / USDO (CiA 1301).
-2. LSS (CiA 305), CiA 302 configuration manager with store/restore,
-   more profiles (CiA 401, 406). See ROADMAP.md.
+1. Interop of store/restore, program download, TIME and node guarding
+   (needs canopen-interop operations); CI results of contract 1.1.
+2. More profiles (CiA 401, 406), SDO server channels; a hardware bench
+   with a CAN FD adapter. See ROADMAP.md.
 
 ## Decisions
 
@@ -53,6 +101,12 @@ locally in the Lima VM `canvm`: cross-compile `bin/interop.test`
   ineffassign, staticcheck, misspell with the CiA 306 spelling
   "Comissioning" allowed, godot, nilerr, exhaustive); errcheck excluded
   for tests and examples.
+- CANopen FD nodes serve the USDO only (no classical SDO server): both
+  answer on 580h + node-ID. The master switches all its procedures to
+  USDO with `WithFD` rather than exposing a second set of APIs.
+- LSS Fastscan in tests runs with known vendor, product and revision
+  (only the serial number is scanned) and windows of 10–20 ms: 5 ms
+  missed late answers under the race detector with coverage.
 - Timing-based tests use margins of many periods (the heartbeat chaos
   test supervises 10 ms heartbeats with 250 ms): an 80 ms margin gave
   false timeouts with the whole module's tests running in parallel.

@@ -75,6 +75,59 @@
 //   - 0x8240 unexpected SYNC length.
 //   - the drive's error codes with [WithDrive].
 //
+// # Store and restore
+//
+// With [WithStore] the node keeps its parameters (the sub-objects with
+// access rw, see store.Parameter) in a store.Store: the saved values are
+// loaded at New and after every NMT reset (after the defaults of the
+// reset areas were restored: so a reset node yields the saved values of
+// every area, a reset communication those of 0x1000..0x1FFF). Writing
+// "save" to 0x1010 sub-index 1..4 saves a group (all, communication,
+// application 0x6000..0x9FFF, manufacturer 0x2000..0x5FFF; [Node.SaveParameters]),
+// writing "load" to 0x1011 deletes it so that the defaults apply from the
+// next reset ([Node.RestoreDefaults]). A wrong signature is refused with
+// the abort "data cannot be transferred or stored" (CiA 301). store.AddObjects
+// adds 0x1010, 0x1011 and the verify configuration 0x1020.
+//
+// # LSS
+//
+// With [WithLSS] the node is an LSS slave (CiA 305) addressed by its
+// identity object 0x1018. A dictionary node-ID of 0xFF (lss.Unconfigured)
+// starts it unconfigured: it stays in NMT Initialising and sends nothing
+// until LSS gives it a node-ID, then boots. Configured node-IDs apply at
+// the next reset communication (an unconfigured node resets on its own
+// when the LSS master switches it back to waiting); with [WithStore] the
+// LSS "store configuration" persists the node-ID, which [New] applies.
+//
+// # MPDO
+//
+// Every PDO whose mapping sub-index 00h is 0xFE (SAM) or 0xFF (DAM) is
+// served by an mpdo.Producer (TPDO) or mpdo.Consumer (RPDO), created at
+// New and whenever a mapping becomes an MPDO later; they run in
+// Operational, report their emergencies (0x8230, 0x8210) like the RPDOs,
+// and the object scanner and dispatcher lists are validated
+// (mpdo.ProtectLists). [Node.MPDOProducer] sends.
+//
+// # SYNC window
+//
+// Synchronous PDOs are bound to the synchronous window 0x1007, measured
+// from the reception of each SYNC: TPDOs not sent within it and RPDOs
+// received after it are discarded (and counted).
+//
+// # CANopen FD
+//
+// With [WithFD] the node is a CANopen FD device (CiA 1301): PDOs of up to
+// 64 bytes, SYNC, EMCY (20 bytes), boot-up and heartbeat in CAN FD
+// frames, and a USDO server (package usdo) in place of the SDO server.
+// Node guarding is left out (CAN FD has no remote frames).
+//
+// # Program download
+//
+// With [WithProgram] the node serves the program download objects of CiA
+// 302-3 (0x1F50 program data, 0x1F51 program control, 0x1F56
+// application software identification, 0x1F57 flash status) and leaves
+// the flashing to a program.Handler; see package program.
+//
 // [Node.Close] closes every service, and the services remove the hooks
 // and watchers they installed on the dictionary: a dictionary may be
 // given to successive nodes (see [od.Dictionary.HookCount]).

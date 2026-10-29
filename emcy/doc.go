@@ -14,6 +14,24 @@
 // A [Consumer] receives the emergency messages of all nodes (or of given
 // COB-IDs) and reports them as [Event] values.
 //
+// # CANopen FD
+//
+// CiA 1301 replaces the 8-byte message by a 20-byte one ([FDMessage]):
+// logical device number, CiA specification number of the error code, the
+// classical code, register and 5 device-specific bytes, a status byte and
+// a TIME_OF_DAY time stamp, on the same COB-ID (default 080h + node-ID).
+// [WithFD] makes a producer send it and a consumer accept it. Sources:
+// CiA's CANopen FD poster (CiA 1301, field list with byte positions, 2026
+// edition), the HMS/Ixxat "Basics of the CANopen and CANopen FD protocol"
+// whitepaper (same fields, and an error status state machine), CiA's
+// "EMCY write protocol" page (field meanings) and its CAN Newsletter
+// article on logical devices in CANopen FD (20 bytes). The poster places
+// the EEC in bytes 4..5 and the register in byte 6; the whitepaper the
+// register in byte 4 and the EEC in 5..6: [FDLayoutCiA] (default) and
+// [FDLayoutRegisterFirst] select between them. The status encoding and
+// the byte order of the CiA specification number are not public (raw
+// byte; little-endian assumed).
+//
 // [CodeText] describes the error codes of CiA 301 table 21, and
 // [ErrorRegister] names the error register bits.
 //

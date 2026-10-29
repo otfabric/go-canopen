@@ -19,6 +19,9 @@ const (
 	// MaxEntries is the largest number of mapping entries (CiA 301
 	// 7.5.2.36: sub-indices 01h..40h).
 	MaxEntries = od.MaxMappedObjects
+	// MaxBitsFD is the largest total length of the mapped objects of a
+	// CANopen FD PDO (CiA 1301): the 64 data bytes of a CAN FD frame.
+	MaxBitsFD = 512
 )
 
 // ErrLength reports PDO data shorter than its mapping.
@@ -84,6 +87,16 @@ func (m Mapping) String() string {
 // owns the PDO: every entry as [ValidateEntry] checks it, at most
 // [MaxEntries] entries and [MaxBits] bits ([canopen.AbortPDOLength]).
 func (m Mapping) Validate(d *od.Dictionary, transmit bool) error {
+	return m.validate(d, transmit, MaxBits)
+}
+
+// ValidateFD checks the mapping of a CANopen FD PDO as [Mapping.Validate]
+// does, with up to [MaxBitsFD] bits.
+func (m Mapping) ValidateFD(d *od.Dictionary, transmit bool) error {
+	return m.validate(d, transmit, MaxBitsFD)
+}
+
+func (m Mapping) validate(d *od.Dictionary, transmit bool, maxBits int) error {
 	if len(m) > MaxEntries {
 		return canopen.AbortPDOLength
 	}
@@ -92,7 +105,7 @@ func (m Mapping) Validate(d *od.Dictionary, transmit bool) error {
 			return err
 		}
 	}
-	if m.Bits() > MaxBits {
+	if m.Bits() > maxBits {
 		return canopen.AbortPDOLength
 	}
 	return nil
@@ -143,28 +156,28 @@ func lengthFits(t canopen.DataType, bits int) bool {
 	return b != 0 && (bits == b || t == canopen.Boolean && bits == 8)
 }
 
-// mask returns a mask of the low n bits (n ≤ 64).
-func mask(n int) uint64 {
-	if n >= 64 {
-		return ^uint64(0)
-	}
-	return 1<<uint(n) - 1
-}
-
 // Pack packs values, one per entry in the encoding of the object's data
 // type (little-endian, as [canopen.Encode] returns it), into PDO data of
 // [Mapping.Len] bytes. Each value contributes its low Bits bits, least
 // significant first, at the bit position following the previous entry's.
-// A nil value (for dummy entries, say) packs as zeros.
-func Pack(m Mapping, values [][]byte) ([]byte, error) {
+// A nil value (for dummy entries, say) packs as zeros. Mappings longer
+// than [MaxBits] are refused with [canopen.AbortPDOLength]; [PackFD]
+// takes CANopen FD mappings.
+func Pack(m Mapping, values [][]byte) ([]byte, error) { return pack(m, values, MaxBits) }
+
+// PackFD packs the values of a CANopen FD PDO as [Pack] does, for
+// mappings of up to [MaxBitsFD] bits.
+func PackFD(m Mapping, values [][]byte) ([]byte, error) { return pack(m, values, MaxBitsFD) }
+
+func pack(m Mapping, values [][]byte, maxBits int) ([]byte, error) {
 	if len(values) != len(m) {
 		return nil, fmt.Errorf("pdo: %d values for %d mapping entries", len(values), len(m))
 	}
 	total := m.Bits()
-	if total > MaxBits {
+	if total > maxBits {
 		return nil, canopen.AbortPDOLength
 	}
-	var acc uint64
+	out := make([]byte, (total+7)/8)
 	pos := 0
 	for i, e := range m {
 		v := values[i]
@@ -172,40 +185,70 @@ func Pack(m Mapping, values [][]byte) ([]byte, error) {
 			if need := (int(e.Bits) + 7) / 8; len(v) < need {
 				return nil, fmt.Errorf("pdo: entry %s: %d bytes, %d needed", e, len(v), need)
 			}
-			acc |= (canopen.DecodeUint(v[:min(len(v), 8)]) & mask(int(e.Bits))) << uint(pos)
+			putBits(out, pos, v, int(e.Bits))
 		}
 		pos += int(e.Bits)
 	}
-	out := make([]byte, (total+7)/8)
-	for i := range out {
-		out[i] = byte(acc >> (8 * uint(i)))
-	}
 	return out, nil
+}
+
+// putBits copies the low n bits of src (least significant bit of src[0]
+// first) into dst from bit position pos; dst is zero there.
+func putBits(dst []byte, pos int, src []byte, n int) {
+	if pos%8 == 0 && n%8 == 0 {
+		copy(dst[pos/8:], src[:n/8])
+		return
+	}
+	for i := 0; i < n; i++ {
+		if src[i/8]>>(uint(i)%8)&1 != 0 {
+			p := pos + i
+			dst[p/8] |= 1 << (uint(p) % 8)
+		}
+	}
+}
+
+// getBits returns n bits of src from bit position pos as (n+7)/8 bytes,
+// least significant first.
+func getBits(src []byte, pos, n int) []byte {
+	out := make([]byte, (n+7)/8)
+	if pos%8 == 0 && n%8 == 0 {
+		copy(out, src[pos/8:pos/8+n/8])
+		return out
+	}
+	for i := 0; i < n; i++ {
+		p := pos + i
+		if src[p/8]>>(uint(p)%8)&1 != 0 {
+			out[i/8] |= 1 << (uint(i) % 8)
+		}
+	}
+	return out
 }
 
 // Unpack splits PDO data into the values of the entries: each value has
 // Bits/8 bytes rounded up, little-endian, which for every mappable length
 // is the encoding of the object's data type (a 1-bit BOOLEAN is one byte,
 // 0 or 1). Data beyond the mapping is ignored; data shorter than the
-// mapping is an error wrapping [ErrLength].
-func Unpack(m Mapping, data []byte) ([][]byte, error) {
+// mapping is an error wrapping [ErrLength]. Mappings longer than
+// [MaxBits] are refused with [canopen.AbortPDOLength]; [UnpackFD] takes
+// CANopen FD mappings.
+func Unpack(m Mapping, data []byte) ([][]byte, error) { return unpack(m, data, MaxBits) }
+
+// UnpackFD splits the data of a CANopen FD PDO as [Unpack] does, for
+// mappings of up to [MaxBitsFD] bits.
+func UnpackFD(m Mapping, data []byte) ([][]byte, error) { return unpack(m, data, MaxBitsFD) }
+
+func unpack(m Mapping, data []byte, maxBits int) ([][]byte, error) {
 	total := m.Bits()
-	if total > MaxBits {
+	if total > maxBits {
 		return nil, canopen.AbortPDOLength
 	}
 	if len(data)*8 < total {
 		return nil, fmt.Errorf("%w: %d bytes for %d bits", ErrLength, len(data), total)
 	}
-	acc := canopen.DecodeUint(data[:min(len(data), 8)])
 	out := make([][]byte, len(m))
 	pos := 0
 	for i, e := range m {
-		x := acc >> uint(pos) & mask(int(e.Bits))
-		b := make([]byte, (int(e.Bits)+7)/8)
-		for j := range b {
-			b[j] = byte(x >> (8 * uint(j)))
-		}
-		out[i] = b
+		out[i] = getBits(data, pos, int(e.Bits))
 		pos += int(e.Bits)
 	}
 	return out, nil

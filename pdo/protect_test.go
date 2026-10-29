@@ -3,11 +3,13 @@
 package pdo
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"testing"
 
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/testbus"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -168,5 +170,79 @@ func TestUnprotect(t *testing.T) {
 	}
 	if err := d.Write(CommIndex(true, 1), 2, []byte{245}); err != nil {
 		t.Fatalf("unprotected write: %v", err)
+	}
+}
+
+func TestMPDOMappingValues(t *testing.T) {
+	for _, transmit := range []bool{true, false} {
+		for _, x := range []uint8{MPDOSourceAddressing, MPDODestinationAddressing} {
+			d := device(t, 5)
+			un, err := Protect(d, transmit, 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mi, ci := MappingIndex(transmit, 1), CommIndex(transmit, 1)
+			if err := d.Write(mi, 0, []byte{x}); err != nil {
+				t.Fatalf("transmit=%v 0x%02X while COB-ID valid but nothing mapped: %v", transmit, x, err)
+			}
+			cfg, err := Load(d, transmit, 1)
+			if err != nil || cfg.MPDO != x || len(cfg.Mapping) != 0 || cfg.Active() {
+				t.Fatalf("Load: %+v %v", cfg, err)
+			}
+			// Now active (valid COB-ID and sub 0 ≠ 0): mapping writes refused.
+			if err := d.Write(mi, 0, []byte{0}); err != canopen.AbortUnsupported {
+				t.Fatalf("write while MPDO valid: %v", err)
+			}
+			cob, _ := d.GetUint(ci, 1)
+			if err := d.Write(ci, 1, le32(uint32(cob)|uint32(canopen.COBInvalid))); err != nil {
+				t.Fatal(err)
+			}
+			if err := d.Write(mi, 0, []byte{0}); err != nil {
+				t.Fatalf("back to 0: %v", err)
+			}
+			if err := d.Write(mi, 0, []byte{0xFD}); err != canopen.AbortPDOLength {
+				t.Fatalf("0xFD: %v", err)
+			}
+			un()
+		}
+	}
+}
+
+func TestMPDOServiceInactive(t *testing.T) {
+	d := device(t, 5)
+	if err := d.Set(MappingIndex(true, 1), 0, []byte{MPDODestinationAddressing}); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set(MappingIndex(false, 1), 0, []byte{MPDOSourceAddressing}); err != nil {
+		t.Fatal(err)
+	}
+	bus := testbus.Ports(t, 1)[0]
+	tp, err := NewTPDO(bus, d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tp.Close()
+	rp, err := NewRPDO(bus, d, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rp.Close()
+	if tp.Config().MPDO != MPDODestinationAddressing || rp.Config().MPDO != MPDOSourceAddressing {
+		t.Fatalf("configs %+v %+v", tp.Config(), rp.Config())
+	}
+	tp.SetEnabled(true)
+	if err := tp.Transmit(ctx(t)); !errors.Is(err, ErrInactive) {
+		t.Fatalf("transmit MPDO: %v", err)
+	}
+}
+
+func TestConfigureMPDO(t *testing.T) {
+	d := device(t, 5)
+	if err := Configure(context.Background(), &fakeSDO{d: d}, true, 2, Config{COBID: 0x285, TransmissionType: 254, MPDO: MPDOSourceAddressing}); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(d, true, 2)
+	if err != nil || cfg.MPDO != MPDOSourceAddressing || !cfg.COBID.Valid() {
+		t.Fatalf("%+v %v", cfg, err)
 	}
 }

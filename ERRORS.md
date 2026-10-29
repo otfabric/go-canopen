@@ -19,7 +19,17 @@ structure with `errors.As`.
 | `ErrLength` | pdo | `Unpack` of data shorter than the mapping |
 | `ErrNotProducer` | timestamp | `Send` while 0x1012 bit 30 is clear |
 | `ErrNoObject` | node | A service the dictionary does not configure (`Node.SendTime` without 0x1012) |
-| `ErrIdentity` | master | Boot procedure: device type or identity differs from the `BootConfig` |
+| `ErrIdentity` | master | Boot procedure: device type or identity differs from the `BootConfig` (or, in the CiA 302 boot-up, from 0x1F84..0x1F88) |
+| `ErrProgram` | master | Program download: wrong application software identification, program not started, missing program data |
+| `ErrNoDictionary` | master | A CiA 302 manager call (`BootNetwork`, `BootSlave`...) without `WithDictionary` |
+| `ErrNoUSDO` | master | `Master.USDO` without `WithFD` or `WithUSDOClient` |
+| `*BootError` | master | A failed CiA 302 boot slave process: node, `BootStatus` (error status letter) and cause |
+| `ErrNoStore` | node | `SaveParameters` / `RestoreDefaults` without `WithStore` |
+| `ErrNumber`, `ErrDisabled`, `ErrInactive`, `ErrMode`, `ErrNotScanned`, `ErrNotStarted`, `ErrLength` | mpdo | No such PDO; MPDO sent while not operational; TPDO not an active MPDO; SAM call on a DAM producer (or the reverse); SAM object not in a scanner list; not started; MPDO shorter than 8 bytes |
+| `ErrNoNodeID`, `ErrConflict`, `ErrFastscan`, `*AssignError`, `*ConfigError` | lss | No free node-ID for `AssignAll`; more than one slave (or the wrong one) selected; Fastscan did not converge; an assignment that failed after the configure request (names the node-ID, which is never offered again); a slave's refusal of a configuration service (error code and implementation-specific code) |
+| `ErrCommand`, `ErrSessions`, `ErrNotStarted`, `*AbortError` | usdo | Unknown command specifier; no free session-ID; client not started; a USDO abort (below) |
+| `ErrFormat` | cdcf | Malformed concise DCF |
+| `ErrPending`, `FlashError` | program | A program handler that finishes programming later; the flash status error codes of 0x1F57 |
 | `ErrFault`, `ErrNotEnabled`, `ErrHoming`, `ErrUnreachable`, `ErrStatusword` | cia402 | Controller failures, carried by `*cia402.Error` (operation, last state and statusword, fault code 0x603F) |
 
 ## SDO aborts
@@ -92,6 +102,75 @@ with `AbortOutOfMemory`.
 `AbortCode.Text()` returns the description; it is empty for codes CiA 301
 does not define (they are still carried and formatted).
 
+## USDO aborts (CANopen FD)
+
+USDO abort codes are one byte (`usdo.AbortCode`, CiA 1301 as CiA's
+CANopen FD poster lists them). A transfer that ends with an abort
+returns `*usdo.AbortError` (code, server node, object, `Remote`), which
+unwraps to its `usdo.AbortCode`, to the closest classical
+`canopen.AbortCode` (`AbortCode.SDO`) and, for a client timeout, to
+`canopen.ErrTimeout`: `errors.Is(err, canopen.AbortNoObject)` holds for
+a USDO "object does not exist". A server maps the dictionary's SDO abort
+codes with `usdo.FromSDO`. The master's procedures (with `WithFD`) report
+USDO aborts as errors that also match `*canopen.AbortError`.
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 0x10 | `AbortUnknown` | Unknown error |
+| 0x11 | `AbortProtocol` | USDO protocol error |
+| 0x12 | `AbortTimeout` | USDO timeout |
+| 0x13 | `AbortCommand` | Unknown command specifier |
+| 0x14 | `AbortCounter` | Invalid counter (segmented transfer) |
+| 0x15 | `AbortSize` | Incorrect data size |
+| 0x16 | `AbortOutOfMemory` | Out of memory |
+| 0x19..0x1D | `AbortRouting`, `AbortDestNetwork`, `AbortDestNode`, `AbortSourceNetwork`, `AbortSourceNode` | Routing errors (remote USDO, not supported) |
+| 0x1E | `AbortDLC` | Unexpected CAN DLC |
+| 0x1F | `AbortMultiplexer` | Unexpected multiplexer |
+| 0x20 | `AbortParallel` | Parallel access to the same sub-index |
+| 0x21 | `AbortSession` | Session-ID wrong or unknown |
+| 0x31..0x38 | `AbortWriteOnly`, `AbortReadOnly`, `AbortNoObject`, `AbortNoSubIndex`, `AbortHardware`, `AbortLength`, `AbortLengthHigh`, `AbortLengthLow` | As the SDO codes of the same name |
+| 0x40..0x45 | `AbortInvalidValue`, `AbortValueHigh`, `AbortValueLow`, `AbortMaxLessMin`, `AbortMinMoreMax`, `AbortCANIDReadOnly` | Value errors |
+| 0x50..0x56 | `AbortNotMappable`, `AbortPDOLength`, `AbortNonMappable`, `AbortRPDOToTPDO`, `AbortTPDOToRPDO`, `AbortPDOValid`, `AbortMappingValid` | PDO mapping errors |
+| 0x60..0x62 | `AbortTransfer`, `AbortLocalControl`, `AbortDeviceState` | Data cannot be transferred or stored |
+
+The full list with the mapping to SDO codes is in the `usdo` package.
+
+## LSS errors
+
+Confirmed LSS services answer an error code (byte 1): `lss.CodeOK` (0),
+`CodeOutOfRange` (1: node-ID out of range, bit timing or store not
+supported), `CodeStoreFailed` (2: storage error) and
+`CodeImplementSpec` (0xFF, with an implementation-specific code). The
+master returns a refusal as `*lss.ConfigError`; an unanswered confirmed
+service as `canopen.ErrTimeout` after `WithRetries`. A node with
+`WithLSS` answers "store configuration" with `CodeOutOfRange` when it has
+no `WithStore`, and with `CodeStoreFailed` when the store fails.
+
+## CiA 302 boot status
+
+A boot slave process ends with a `master.BootStatus`: `BootOK` (0) or an
+error status letter (as Lely lely-core reports them; CiA 302-2 is a
+member document). `EventBootFailed` and `EventNetworkBootFailed` carry it
+in `Status` and in their `*BootError`.
+
+| Letter | Constant | Meaning |
+|--------|----------|---------|
+| A | `BootNotListed` | Not in the network list (0x1F81 bit 0) |
+| B | `BootNoResponse` | No answer to the upload of 0x1000 (retried, a mandatory slave within the boot time 0x1F89) |
+| C | `BootDeviceType` | 0x1000 differs from 0x1F84 |
+| D | `BootVendorID` | 0x1018:1 differs from 0x1F85 |
+| E | `BootHeartbeat` | No heartbeat while checking a keep-alive slave |
+| F | `BootGuarding` | No node guarding response while checking a keep-alive slave |
+| G | `BootProgramObjects` | Program download objects (0x1F55, 0x1F56) missing or unreadable |
+| H | `BootUpdateNotAllowed` | Software update needed but not allowed by 0x1F81 |
+| I | `BootUpdateFailed` | Program download failed |
+| J | `BootConfiguration` | Configuration (restore, concise DCF, store) failed |
+| K | `BootErrorControl` | No heartbeat when starting the error control |
+| L | `BootOperational` | A keep-alive slave was found operational and left running (not a failure) |
+| M | `BootProductCode` | 0x1018:2 differs from 0x1F86 |
+| N | `BootRevision` | 0x1018:3 differs from 0x1F87 |
+| O | `BootSerialNumber` | 0x1018:4 differs from 0x1F88 |
+
 ## Timeouts and protocol errors in the other services
 
 Services that supervise rather than request report through events, not
@@ -102,6 +181,8 @@ errors:
 | Heartbeat loss / resumption | `nmt.HeartbeatEvent` `EventTimeout` / `EventResumed` (once per loss); `master.Event` `EventHeartbeatLost` / `EventHeartbeatResumed`; in a node, EMCY 0x8130 and the 0x1029 error behaviour |
 | Node or life guarding loss | `nmt.GuardEvent` `GuardTimeout`, `GuardResumed`, `GuardToggleError` |
 | RPDO too short, too long, deadline missed | `pdo.ErrorEvent` (`WithErrorHandler`) with EMCY codes 0x8210, 0x8220, 0x8250; in a node, the emergency |
+| Synchronous PDO outside the synchronous window (0x1007) | counted: `RPDOStats.OutsideWindow`, `TPDOStats.WindowMissed`; no emergency |
+| DAM-MPDO for a missing object, MPDO shorter than 8 bytes | `pdo.ErrorEvent` from the `mpdo.Consumer` with EMCY 0x8230 / 0x8210; in a node, the emergency |
 | SYNC of the wrong length, counter gap | `syncobj.Event.LengthError`; `ConsumerStats.LengthErrors`, `CounterErrors`; in a node, EMCY 0x8240 |
 | Malformed EMCY, TIME, NMT, error control frames | counted (`Invalid` in the stats), logged at debug level, otherwise ignored |
 | Boot procedure failure | `master.Event` `EventBootFailed` with `Err` |

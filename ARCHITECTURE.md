@@ -12,17 +12,19 @@ compositions of those services.
  │ code (codegen)                                                            │
  ├─────────────────────────────────────┬─────────────────────────────────────┤
  │ node: a device from a dictionary    │ master: network manager (NMT, boot, │
- │  (services chosen from the objects, │  configuration, scan, remote PDOs,  │
- │  NMT gating, CiA 301 emergencies,   │  SDO clients, one event stream)     │
+ │  (services chosen from the objects, │  CiA 302 manager: network boot-up,  │
+ │  NMT gating, CiA 301 emergencies,   │  configuration, program download,   │
+ │  MPDOs, LSS slave, CANopen FD mode, │  LSS master, scan, remote PDOs,     │
+ │  store/restore, program download,   │  SDO/USDO access, one event stream) │
  │  CiA 402 drive)                     │                                     │
- ├─────────┬─────────┬────────┬────────┴──┬────────┬───────────┬────────────┤
- │ sdo     │ nmt     │ pdo    │ sync      │ emcy   │ timestamp │ cia402     │
- │ client, │ slave,  │ TPDO,  │ (syncobj) │ prod., │ TIME prod.│ drive,     │
- │ server  │ master, │ RPDO,  │ prod.,    │ cons.  │ and cons. │ controller │
- │         │ heart-  │ codec, │ cons.     │        │           │            │
- │         │ beat,   │ rules  │           │        │           │            │
- │         │ guarding│        │           │        │           │            │
- ├─────────┴─────────┴────────┴───────────┴────────┴───────────┴────────────┤
+ ├────────┬────────┬────────┬────────┬─┴──────┬────────┬─────────┬──────────┤
+ │ sdo    │ usdo   │ nmt    │ pdo,   │ sync,  │ lss    │ store,  │ cia402   │
+ │ client,│ client,│ slave, │ mpdo   │ emcy,  │ master,│ cdcf,   │ drive,   │
+ │ server │ server │ master,│ TPDO,  │ time-  │ slave  │ program │ control- │
+ │        │ (FD)   │ heart- │ RPDO,  │ stamp  │        │         │ ler      │
+ │        │        │ beat,  │ MPDO,  │        │        │         │          │
+ │        │        │ guard  │ rules  │        │        │         │          │
+ ├────────┴────────┴────────┴────────┴────────┴────────┴─────────┴──────────┤
  │ od: object dictionary (objects, values, access, limits, defaults,        │
  │     read/write hooks, watchers)            eds: EDS/DCF ⇄ od.Dictionary  │
  ├───────────────────────────────────────────────────────────────────────────┤
@@ -30,9 +32,9 @@ compositions of those services.
  │  codec, AbortCode/AbortError, NMT states and commands, Bus, errors       │
  ├───────────────────────────────────────────────────────────────────────────┤
  │ go-canbus: canbus.Bus (fan-out, subscriptions with filters) on SocketCAN, │
- │  slcan or the virtual bus                                                 │
+ │  slcan or the virtual bus; classical CAN and CAN FD frames                │
  └───────────────────────────────────────────────────────────────────────────┘
-   dissect: frames → CANopen messages (passive; uses only canopen and canbus)
+   dissect: frames → CANopen messages (passive)
 ```
 
 ## The bus
@@ -128,7 +130,43 @@ the services accordingly: NMT slave, SDO server and EMCY producer always;
 heartbeat producer with 0x1017, consumer with 0x1016; guarding responder
 with 0x100C/0x100D; SYNC consumer with 0x1005, producer with 0x1006 and
 0x1019 too; TIME with 0x1012; every RPDO and TPDO whose two parameter
-objects exist; a CiA 402 drive with `WithDrive`.
+objects exist; an MPDO producer or consumer for every PDO whose mapping
+sub-index 00h is 0xFE (SAM) or 0xFF (DAM), at `New` and whenever a
+mapping becomes an MPDO later (a dictionary watcher; the classical PDO
+service of that number is then inactive, `pdo` treats MPDO mappings as
+such); a CiA 402 drive with `WithDrive`; an LSS slave with `WithLSS`;
+the parameter store with `WithStore`; the program download objects with
+`WithProgram`.
+
+### CANopen FD mode
+
+`node.WithFD` passes the FD option to every service (`pdo.WithFD`,
+`syncobj.WithFD`, `emcy.WithFD` with logical device, CiA specification
+and clock, `nmt.WithFD`) and replaces the SDO server by a `usdo.Server`:
+both would answer on 580h + node-ID. The USDO server is long-lived: it is
+enabled and disabled with the NMT state like the SDO server and follows
+the node-ID at resets (`SetNodeID`). The guarding responder is left out
+(CAN FD has no remote frames). `master.WithFD` does the same on the
+manager side and routes every procedure that accesses a node's
+dictionary through an internal access interface backed by the master's
+USDO client (USDO aborts are reported as SDO aborts), so the CiA 302
+boot-up, configuration and program download (bulk transfer) work
+unchanged on a CANopen FD network.
+
+### LSS and unconfigured nodes
+
+With `WithLSS` the node builds an `lss.Slave` from 0x1018 with handlers
+wired to itself: configure node-ID sets the NMT slave's pending node-ID;
+an unconfigured device that leaves the LSS configuration state resets
+communication on its own (CANopenNode's behaviour); after every reset
+the LSS slave learns the applied node-ID; store configuration writes
+the pending settings under the pseudo index 0x0000 of the parameter
+store, which `New` reads back. A dictionary node-ID of 0xFF starts the
+node unconfigured: the NMT slave stays in Initialising without boot-up
+and executes only reset commands, and the node builds its services with
+a placeholder node-ID but starts them only in the reset that applies a
+real node-ID (`deferred`), re-reading what they cached at construction
+(the EMCY COB-ID).
 
 ### NMT gating
 
@@ -148,7 +186,18 @@ producers send through a *gated bus*: a `canopen.Bus` wrapper that drops
 and that hands the node's own SYNC frames to its PDOs. The SDO server is
 created enabled just before each boot-up message, because the boot-up
 announces Pre-operational and a master may send its first SDO request as
-soon as it sees it.
+soon as it sees it. MPDO producers send through the gated bus as well;
+MPDO producers and consumers are enabled in Operational only.
+
+### SYNC and the synchronous window
+
+A SYNC received by the node's SYNC consumer carries the end of its
+synchronous window (0x1007, measured from the frame's reception); the
+node passes it to every RPDO and TPDO (`OnSyncWindow`): a synchronous
+TPDO not sent before the end is discarded (`WindowMissed`), an RPDO
+received after it is discarded until the next SYNC (`OutsideWindow`).
+The node's own SYNC (its SYNC producer) opens the window at the time of
+processing.
 
 ### Resets
 
@@ -158,8 +207,10 @@ with a pending node-ID applied first → reset handler → boot-up message →
 Pre-operational. The node's reset handler gives the heartbeat producer
 and the guarding responder the new node-ID, restarts the heartbeat
 consumer's supervision, clears the error state and renews the SDO server
-(it reads its COB-IDs at start). The other services need nothing: they
-see the restored values through their watchers.
+(it reads its COB-IDs at start; in FD mode the USDO server takes the new
+node-ID instead), loads the stored parameters of the reset areas, and
+tells the LSS slave the applied node-ID. The other services need
+nothing: they see the restored values through their watchers.
 
 ### Emergencies
 
@@ -180,7 +231,24 @@ stalling the network services. Boot procedures (`SetBoot`) run in a
 goroutine per node, started by a boot-up; a new boot-up cancels the
 running one, whose end is then not reported. `Configure` writes entries
 (PDO parameters grouped per PDO and written with `pdo.Configure` in the
-CiA 301 order; EMCY/SYNC/TIME COB-ID changes released first).
+CiA 301 order; EMCY/SYNC/TIME COB-ID changes released first). The
+master also owns an LSS master (`LSS()`), started and closed with it,
+and, with `WithFD` or `WithUSDOClient`, one USDO client (`USDO()`).
+
+### CiA 302 manager
+
+With `WithDictionary` the master builds a `node.Node` on the manager's
+dictionary (its own NMT slave, SDO server, heartbeat producer...) and is
+driven by the manager objects 0x1F80..0x1F89. At every boot-up of that
+node with 0x1F80 bit 0 set, the network boot-up runs: the optional LSS
+step (`WithLSSBoot`: Fastscan, node-ID by expected identity, repeated
+while a round assigns node-IDs; boot-ups during the step are not
+booted), the reset of the slaves, then one boot slave process per slave
+(goroutines of the master, in the order of Lely lely-core's NMT master:
+identity, software check and program download, configuration date check,
+restore, concise DCF, store, error control, NMT start), the wait for the
+mandatory slaves, and Operational. Results are events with the CiA 302
+error status letters.
 
 ## EDS, code generation, dissection
 
@@ -197,7 +265,9 @@ decodes frames without state (`Decode`) or follows SDO transfers
 |--------|-------------------------|------------|
 | `od.Dictionary` | yes (RWMutex; hooks and watchers run unlocked) | none |
 | `sdo.Client` | yes; transfers serialised | none (caller's) |
-| `sdo.Server`, nmt, pdo, sync, emcy, timestamp services | yes | one each after `Start` |
+| `sdo.Server`, nmt, pdo, sync, emcy, timestamp services, `mpdo.Consumer`, `lss.Slave`, `usdo.Server` | yes | one each after `Start` |
+| `mpdo.Producer`, `lss.Master` | yes; requests serialised | none (caller's) |
+| `usdo.Client` | yes; several transfers at once (sessions) | one dispatcher |
 | `node.Node` | yes | its services' plus the drive loop |
 | `master.Master` | yes | its services', the event dispatcher, one per running boot procedure |
 

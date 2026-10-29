@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/od"
 )
@@ -84,8 +85,19 @@ type config struct {
 	guardSet    bool
 	onState     func(StateChange)
 	onReset     func(ResetKind)
+	onBootUp    func()
 	onHeartbeat func(HeartbeatEvent)
 	onGuard     func(GuardEvent)
+	fd, brs     bool
+}
+
+// frame returns f as the service sends it: classical, or with [WithFD] a
+// CAN FD frame.
+func (c *config) frame(f canbus.Frame) canbus.Frame {
+	if c.fd {
+		return ToFD(f, c.brs)
+	}
+	return f
 }
 
 func newConfig(opts []Option) config {
@@ -148,11 +160,28 @@ func WithStateHandler(h func(StateChange)) Option { return func(c *config) { c.o
 // the application. It must not call [Slave.Reset].
 func WithResetHandler(h func(ResetKind)) Option { return func(c *config) { c.onReset = h } }
 
+// WithBootUpHandler calls h just before a [Slave] sends its boot-up
+// message (at Start and after every reset), on the goroutine that sends
+// it: the moment the node stops being Initialising, for services that
+// must not act on frames received earlier. It must not block.
+func WithBootUpHandler(h func()) Option { return func(c *config) { c.onBootUp = h } }
+
 // WithHeartbeatHandler calls h for the events of a [HeartbeatConsumer],
 // on its goroutine; h must not block for long.
 func WithHeartbeatHandler(h func(HeartbeatEvent)) Option {
 	return func(c *config) { c.onHeartbeat = h }
 }
+
+// WithFD selects CANopen FD (CiA 1301), which carries every protocol in
+// CAN FD frames (with bit rate switching when brs is true): a [Master]
+// sends its commands, a [Slave] its boot-up message and a
+// [HeartbeatProducer] its heartbeats in CAN FD frames, and a [Slave] and a
+// [HeartbeatConsumer] accept CAN FD frames as well as classical ones
+// (without the option they ignore CAN FD frames). The NMT protocols
+// themselves are unchanged. Node guarding uses remote frames, which CAN FD
+// does not have: [GuardMaster] and [GuardResponder] ignore the option and
+// a CANopen FD device supervises with heartbeats only.
+func WithFD(brs bool) Option { return func(c *config) { c.fd, c.brs = true, brs } }
 
 // WithGuardHandler calls h for the events of a [GuardMaster] or a
 // [GuardResponder], on its goroutine; h must not block for long.

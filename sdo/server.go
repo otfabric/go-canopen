@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -59,6 +60,8 @@ type Server struct {
 
 	mu       sync.Mutex
 	started  bool
+	since    atomic.Int64 // Fence: requests received earlier (Unix ns) are ignored
+	fenced   atomic.Bool  // WithResetFence: a reset of the node was received
 	closed   bool
 	c2s, s2c canopen.COBID
 	sub      *canbus.Subscription
@@ -68,7 +71,7 @@ type Server struct {
 
 // NewServer returns a server for d on bus. It does not receive until
 // [Server.Start]. Options: [WithLogger], [WithTimeout], [WithCOBIDs],
-// [WithBlockSize], [WithMaxSize], [WithCRC].
+// [WithBlockSize], [WithMaxSize], [WithCRC], [WithResetFence].
 func NewServer(bus canopen.Bus, d *od.Dictionary, opts ...ServerOption) (*Server, error) {
 	if bus == nil || d == nil {
 		return nil, errors.New("sdo: NewServer needs a bus and a dictionary")
@@ -135,13 +138,20 @@ func (s *Server) Start() error {
 	if !c2s.Valid() || !s2c.Valid() {
 		return fmt.Errorf("sdo: SDO server COB-IDs %s / %s are not valid", c2s, s2c)
 	}
-	sub, err := s.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: []canbus.Filter{c2s.Filter()}}))
+	filters := []canbus.Filter{c2s.Filter()}
+	if s.cfg.resetNode != 0 {
+		filters = append(filters, canbus.ExactStandard(canopen.FuncNMT))
+	}
+	sub, err := s.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: filters}))
 	if err != nil {
 		return fmt.Errorf("sdo: subscribe: %w", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s.c2s, s.s2c, s.sub, s.cancel = c2s, s2c, sub, cancel
 	s.done = make(chan struct{})
+	if s.cfg.fenced && s.since.Load() == 0 {
+		s.since.Store(math.MaxInt64) // until Fence
+	}
 	s.started = true
 	go s.run(ctx)
 	s.log.Debug("sdo: server started", "rx", c2s, "tx", s2c)
@@ -167,13 +177,20 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// Fence makes the server ignore the requests the transport received
+// before now (by the frames' receive timestamps; frames without one are
+// handled). Package node fences its SDO server just before the boot-up
+// message: a request that arrived while the node was Initialising is not
+// answered, one sent in reaction to the boot-up message is.
+func (s *Server) Fence() { s.since.Store(time.Now().UnixNano()) }
+
 // SetEnabled enables (the default) or disables the server. A disabled
 // server ignores requests and drops a transfer in progress without an
 // abort, as a node in the NMT state stopped does.
 func (s *Server) SetEnabled(on bool) { s.enabled.Store(on) }
 
 // Enabled reports whether the server answers requests.
-func (s *Server) Enabled() bool { return s.enabled.Load() }
+func (s *Server) Enabled() bool { return s.enabled.Load() && !s.fenced.Load() }
 
 // Stats returns a snapshot of the counters.
 func (s *Server) Stats() ServerStats {
@@ -249,13 +266,28 @@ func (s *Server) run(ctx context.Context) {
 			}
 			continue
 		}
+		if s.cfg.resetNode != 0 && cf.ID == canopen.FuncNMT && cf.Flags&canbus.FlagExtended == 0 {
+			if s.resetCommand(&cf) {
+				// Sticky: SetEnabled does not undo it (a late state change
+				// from before the reset must not reopen the server).
+				s.fenced.Store(true)
+				s.enabled.Store(false)
+				m.reset()
+			}
+			continue
+		}
 		f, ok := payload(&cf)
 		if !ok {
 			continue
 		}
-		if !s.enabled.Load() {
+		if !s.enabled.Load() || s.fenced.Load() {
 			s.st.ignored.Add(1)
 			m.reset()
+			continue
+		}
+		if since := s.since.Load(); since == math.MaxInt64 || since != 0 && !cf.Timestamp.IsZero() && cf.Timestamp.UnixNano() < since {
+			// Received before the fence (Server.Fence).
+			s.st.ignored.Add(1)
 			continue
 		}
 		now := time.Now()
@@ -264,4 +296,14 @@ func (s *Server) run(ctx context.Context) {
 			progress = now
 		}
 	}
+}
+
+// resetCommand reports whether an NMT frame is a reset node or reset
+// communication for the server's node (WithResetFence).
+func (s *Server) resetCommand(f *canbus.Frame) bool {
+	if f.Len < 2 {
+		return false
+	}
+	cmd, node := canopen.NMTCommand(f.Data[0]), canopen.NodeID(f.Data[1])
+	return (cmd == canopen.NMTResetNode || cmd == canopen.NMTResetCommunication) && (node == 0 || node == s.cfg.resetNode)
 }

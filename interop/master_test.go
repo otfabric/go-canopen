@@ -162,6 +162,22 @@ func TestMasterAgainstDevice(t *testing.T) {
 			t.Run("pdo", func(t *testing.T) { masterPDO(t, ifc, a, c, desc, sc) })
 			t.Run("emcy", func(t *testing.T) { masterEMCY(t, ifc, a, c, sc) })
 			t.Run("dcf", func(t *testing.T) { masterDCF(t, ifc, a, c, dcf, sc) })
+			// Contract 1.1.
+			load := func(rel string) func() *eds.File {
+				return func() *eds.File {
+					f, err := eds.ParseFile(fixture(t, a, rel, dir))
+					if err != nil {
+						t.Fatal(err)
+					}
+					return f
+				}
+			}
+			other := load("eds/interop-device-other-product.eds")()
+			t.Run("syncwindow", func(t *testing.T) { masterSyncWindow(t, ifc, a, c, desc, sc) })
+			t.Run("lss", func(t *testing.T) { masterLSS(t, ifc, a, c, sc) })
+			t.Run("boot", func(t *testing.T) { masterBoot(t, ifc, a, c, load("eds/interop-device.eds"), other, sc) })
+			t.Run("mpdo", func(t *testing.T) { masterMPDO(t, ifc, a, c, load(mpdoEDS), sc) })
+			t.Run("fd", func(t *testing.T) { fdSkips(t, a, []string{"fd-usdo-client", "fd-pdo"}, sc) })
 		})
 	}
 }

@@ -4,6 +4,7 @@ package node_test
 
 import (
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/otfabric/go-canopen/internal/nettest"
 	"github.com/otfabric/go-canopen/internal/testbus"
 	"github.com/otfabric/go-canopen/master"
+	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/node"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/sdo"
@@ -110,4 +112,22 @@ func startNode(t *testing.T, bus canopen.Bus, d *od.Dictionary, opts ...node.Opt
 func waitState(t *testing.T, n *node.Node, st canopen.NMTState) {
 	t.Helper()
 	nettest.Eventually(t, 5*time.Second, "node state "+st.String(), func() bool { return n.State() == st })
+}
+
+// enabled reports when a node's services have been enabled or disabled
+// for a state: the node's state handler runs after that, while the state
+// (and so the heartbeat) changes just before.
+type enabled struct{ last atomic.Int32 }
+
+func (e *enabled) option() node.Option {
+	return node.WithStateHandler(func(sc nmt.StateChange) { e.last.Store(int32(sc.To)) })
+}
+
+// wait waits until the services are enabled for Operational.
+func (e *enabled) wait(t *testing.T) { t.Helper(); e.waitFor(t, canopen.StateOperational) }
+
+// waitFor waits until the services follow state st.
+func (e *enabled) waitFor(t *testing.T, st canopen.NMTState) {
+	t.Helper()
+	nettest.Eventually(t, 5*time.Second, "services in "+st.String(), func() bool { return e.last.Load() == int32(st) })
 }

@@ -29,6 +29,15 @@ var knownDifferences = []knownDifference{
 		"CANopenNode keeps a VISIBLE_STRING in a fixed buffer of the EDS default's length: a shorter string written by SDO is NUL-terminated and the canopennode adapter's --dump prints the whole buffer (the SDO upload returns the string without the padding)"},
 	{dirClient, "canopennode", "configure-from-dcf", "nul-terminated",
 		"CANopenNode keeps a VISIBLE_STRING in a fixed buffer of the EDS default's length: a shorter string written by SDO is NUL-terminated and the canopennode adapter's --dump prints the whole buffer (the SDO upload returns the string without the padding)"},
+	// Contract 1.1: LSS.
+	{dirClient, "canopennode", "lss-identify-non-configured", "",
+		"CANopenNode v4.1's LSS slave does not implement \"identify non-configured remote slave\" (0x4C): no answer on the bus (candump), while it answers Fastscan; CiA 305 makes the service optional for slaves"},
+	{dirClient, "canopennode", "lss-identify-remote", "",
+		"CANopenNode v4.1's LSS slave does not implement \"identify remote slave\" (0x46..0x4B): no answer on the bus (candump), while it answers Fastscan; CiA 305 makes the service optional for slaves"},
+	{dirClient, "lely", "lss-activate-on-waiting", "",
+		"Lely's LSS slave (co_lss.c) applies a configured node-ID only at the next NMT reset communication (co_nmt_set_id stores it as pending); CANopenNode's slave and go-canopen's apply it when the master switches an unconfigured slave back to waiting. The node-ID became active after NMT reset communication (lss-configure-node-id passes); canopen-interop known difference"},
+	{dirClient, "lely", "lss-fastscan-configured", "",
+		"Lely's LSS slave answers LSS Fastscan whatever its node-ID (co_lss_fastscan checks the identity only); CANopenNode's and go-canopen's slaves take part only while their active and pending node-IDs are 255; canopen-interop known difference"},
 
 	// Each stack as master/client, the go-canopen node.
 	{dirDevice, "lely", "block-domain-0", "",

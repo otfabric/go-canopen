@@ -13,6 +13,7 @@ import (
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/od"
+	"github.com/otfabric/go-canopen/timestamp"
 )
 
 // Option configures a [Producer] or a [Consumer]. Each option names the
@@ -30,6 +31,11 @@ type config struct {
 	histSet   bool
 	handler   func(Event)
 	producers map[canopen.COBID]canopen.NodeID
+	fd, brs   bool
+	layout    FDLayout
+	ldev      uint8
+	ciaSpec   uint16
+	clock     func() time.Time
 }
 
 func newConfig(opts []Option) config {
@@ -88,6 +94,30 @@ func WithProducer(node canopen.NodeID, cob canopen.COBID) Option {
 	}
 }
 
+// WithFD selects CANopen FD (CiA 1301). A [Producer] sends 20-byte CAN
+// FD emergency messages ([FDMessage]; bit rate switching when brs is
+// true) built from the classical fields and the [WithFDInfo] and
+// [WithFDClock] values; a [Consumer] also accepts CAN FD frames and
+// reports CANopen FD messages in [Event.FD] (without the option it counts
+// CAN FD frames as invalid).
+func WithFD(brs bool) Option { return func(c *config) { c.fd, c.brs = true, brs } }
+
+// WithFDLayout selects the CANopen FD emergency layout (both services;
+// default [FDLayoutCiA]).
+func WithFDLayout(l FDLayout) Option { return func(c *config) { c.layout = l } }
+
+// WithFDInfo sets the logical device number and the CiA specification
+// number a CANopen FD [Producer] puts into its messages (default 0 and
+// 0).
+func WithFDInfo(logicalDevice uint8, ciaSpec uint16) Option {
+	return func(c *config) { c.ldev, c.ciaSpec = logicalDevice, ciaSpec }
+}
+
+// WithFDClock sets the clock whose time a CANopen FD [Producer] puts into
+// its messages (TIME_OF_DAY; default: none, the field is 0). A time
+// outside the TIME_OF_DAY range is sent as 0.
+func WithFDClock(now func() time.Time) Option { return func(c *config) { c.clock = now } }
+
 // maxQueue bounds the messages waiting for the inhibit time.
 const maxQueue = 256
 
@@ -123,7 +153,7 @@ type Producer struct {
 	cob    canopen.COBID
 	inh    time.Duration
 	last   time.Time
-	queue  []Message
+	queue  []outMsg
 	active map[uint16]ErrorRegister
 	hist   []uint32
 	histN  int
@@ -134,7 +164,7 @@ type Producer struct {
 
 // NewProducer returns the emergency producer of a node. Options:
 // [WithLogger], [WithDictionary], [WithCOBID], [WithInhibit],
-// [WithHistory].
+// [WithHistory], [WithFD], [WithFDLayout], [WithFDInfo], [WithFDClock].
 func NewProducer(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Producer, error) {
 	if err := node.Check(); err != nil {
 		return nil, err
@@ -220,7 +250,7 @@ func (p *Producer) run(ctx context.Context) {
 	for {
 		p.mu.Lock()
 		var (
-			m    Message
+			m    outMsg
 			send bool
 			wait = time.Hour
 		)
@@ -259,15 +289,44 @@ func (p *Producer) run(ctx context.Context) {
 	}
 }
 
+// outMsg is a queued message: classical, or CANopen FD when fd is set.
+type outMsg struct {
+	m  Message
+	fd *FDMessage
+}
+
+func (o outMsg) String() string {
+	if o.fd != nil {
+		return o.fd.String()
+	}
+	return o.m.String()
+}
+
+// frame returns the frame of a message: CANopen FD when the producer is
+// configured so ([WithFD]) or the message is one.
+func (p *Producer) frame(cob canopen.COBID, o outMsg) canbus.Frame {
+	if o.fd == nil && !p.cfg.fd {
+		return o.m.Frame(cob)
+	}
+	fm := o.fd
+	if fm == nil {
+		fm = &FDMessage{LogicalDevice: p.cfg.ldev, CiASpec: p.cfg.ciaSpec, Code: o.m.Code, Register: o.m.Register, Specific: o.m.MSEF}
+		if p.cfg.clock != nil {
+			fm.Time, _ = timestamp.FromTime(p.cfg.clock())
+		}
+	}
+	return fm.Frame(cob, p.cfg.brs, p.cfg.layout)
+}
+
 // transmit sends one message on cob.
-func (p *Producer) transmit(ctx context.Context, cob canopen.COBID, m Message) error {
+func (p *Producer) transmit(ctx context.Context, cob canopen.COBID, m outMsg) error {
 	if !cob.Valid() {
 		p.mu.Lock()
 		p.stats.Suppressed++
 		p.mu.Unlock()
 		return nil
 	}
-	f := m.Frame(cob)
+	f := p.frame(cob, m)
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
 	err := p.bus.Send(sctx, &f)
@@ -290,8 +349,19 @@ func (p *Producer) transmit(ctx context.Context, cob canopen.COBID, m Message) e
 // errors, the register or the history. It is queued when the inhibit time
 // has not passed since the previous message, and sent at once (returning
 // the bus error) otherwise. A COB-ID with the invalid bit set suppresses
-// it.
+// it. A producer made [WithFD] sends it as a CANopen FD message.
 func (p *Producer) Send(ctx context.Context, m Message) error {
+	return p.send(ctx, outMsg{m: m})
+}
+
+// SendFD sends a CANopen FD emergency message as it is (in a CAN FD
+// frame, whether or not the producer was made [WithFD]), as [Producer.Send]
+// does.
+func (p *Producer) SendFD(ctx context.Context, m FDMessage) error {
+	return p.send(ctx, outMsg{m: m.Message(), fd: &m})
+}
+
+func (p *Producer) send(ctx context.Context, m outMsg) error {
 	p.mu.Lock()
 	if !p.cob.Valid() {
 		p.stats.Suppressed++

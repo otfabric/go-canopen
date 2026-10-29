@@ -221,9 +221,8 @@ func TestProducerInhibit(t *testing.T) {
 			t.Errorf("messages %v apart", d)
 		}
 	}
-	if st := p.Stats(); st.Queued != 2 || st.Sent != 3 {
-		t.Errorf("stats %+v", st)
-	}
+	// Sent is counted after the frame is on the bus.
+	eventually(t, time.Second, func() bool { st := p.Stats(); return st.Queued == 2 && st.Sent == 3 })
 	// The queue is bounded.
 	p.SetInhibit(time.Hour)
 	_ = p.Send(ctx, Message{Code: 1})

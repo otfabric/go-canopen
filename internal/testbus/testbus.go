@@ -57,17 +57,19 @@ func open(t testing.TB, vb *virtual.Bus, n int, opts ...virtual.PortOption) []*c
 }
 
 // Chaos returns two buses on separate virtual buses joined by a chaos
-// bridge with cfg in both directions, and the bridge (for its Stats).
-func Chaos(t testing.TB, cfg chaos.Config) (a, b *canbus.Bus, br *chaos.Bridge) {
+// bridge with cfg in both directions, and the bridge (for its Stats). The
+// port options apply to every port, the bridge's included: pass
+// virtual.WithFD() for a bus that carries CAN FD frames.
+func Chaos(t testing.TB, cfg chaos.Config, opts ...virtual.PortOption) (a, b *canbus.Bus, br *chaos.Bridge) {
 	t.Helper()
 	va := virtual.New(virtual.Config{Name: "vcan-a"})
 	vb := virtual.New(virtual.Config{Name: "vcan-b"})
 	t.Cleanup(func() { _ = va.Close(); _ = vb.Close() })
-	ia, err := va.Open()
+	ia, err := va.Open(opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ib, err := vb.Open()
+	ib, err := vb.Open(opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +81,7 @@ func Chaos(t testing.TB, cfg chaos.Config) (a, b *canbus.Bus, br *chaos.Bridge) 
 	done := make(chan struct{})
 	go func() { defer close(done); _ = br.Both(ctx, ia, ib) }()
 	t.Cleanup(func() { cancel(); <-done })
-	a = open(t, va, 1)[0]
-	b = open(t, vb, 1)[0]
+	a = open(t, va, 1, opts...)[0]
+	b = open(t, vb, 1, opts...)[0]
 	return a, b, br
 }

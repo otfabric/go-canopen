@@ -86,33 +86,58 @@ type Slave struct {
 	stats   SlaveStats
 }
 
+// Unconfigured is the node-ID of a device whose node-ID is not configured
+// yet (CiA 305: 0xFF, the value of lss.Unconfigured). A [Slave] with it
+// stays in Initialising: it sends no boot-up message and executes only
+// reset commands sent to all nodes, until a reset applies a configured
+// pending node-ID ([Slave.SetNodeID], usually from LSS).
+const Unconfigured canopen.NodeID = 0xFF
+
+// checkNodeID accepts 1..127 and [Unconfigured].
+func checkNodeID(node canopen.NodeID) error {
+	if node == Unconfigured {
+		return nil
+	}
+	return node.Check()
+}
+
 // NewSlave returns the NMT slave of a node, in state Initialising until
-// Start. Options: [WithLogger], [WithDictionary], [WithStateHandler],
-// [WithResetHandler].
+// Start. node is 1..127, or [Unconfigured] for a device that waits for
+// its node-ID (LSS). Options: [WithLogger], [WithDictionary],
+// [WithStateHandler], [WithResetHandler], [WithFD].
 func NewSlave(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Slave, error) {
-	if err := node.Check(); err != nil {
+	if err := checkNodeID(node); err != nil {
 		return nil, err
 	}
 	return &Slave{bus: bus, cfg: newConfig(opts), node: node, state: canopen.StateInitialising}, nil
 }
 
-var nmtFilter = canbus.WithFilters(canbus.FilterSet{Filters: []canbus.Filter{{
-	ID: canopen.FuncNMT, Mask: canbus.MaxStandardID, Format: canbus.FormatStandard, Remote: canbus.RemoteDataOnly,
-}}})
+// nmtFilter returns a new option each time: canbus.WithFilters's option
+// writes to its captured FilterSet, so a shared one races between
+// concurrent subscriptions.
+func nmtFilter() canbus.SubscribeOption {
+	return canbus.WithFilters(canbus.FilterSet{Filters: []canbus.Filter{{
+		ID: canopen.FuncNMT, Mask: canbus.MaxStandardID, Format: canbus.FormatStandard, Remote: canbus.RemoteDataOnly,
+	}}})
+}
 
 // Start subscribes to NMT commands, sends the boot-up message and enters
 // Pre-operational, then executes received commands until Close. When the
 // boot-up message cannot be sent, Start fails and the slave stays in
-// Initialising.
+// Initialising. A slave whose node-ID is [Unconfigured] sends no boot-up
+// message and stays in Initialising; the reset that applies its node-ID
+// boots it.
 func (s *Slave) Start() error {
 	return s.lc.start(func(ctx context.Context) (func(context.Context), error) {
-		sub, err := s.bus.Subscribe(nmtFilter)
+		sub, err := s.bus.Subscribe(nmtFilter())
 		if err != nil {
 			return nil, fmt.Errorf("nmt: subscribe: %w", err)
 		}
-		if err := s.bootUp(ctx); err != nil {
-			_ = sub.Close()
-			return nil, err
+		if s.NodeID() != Unconfigured {
+			if err := s.bootUp(ctx); err != nil {
+				_ = sub.Close()
+				return nil, err
+			}
 		}
 		return func(ctx context.Context) {
 			defer func() { _ = sub.Close() }()
@@ -136,9 +161,12 @@ func (s *Slave) Close() error {
 // bootUp sends the boot-up message and enters Pre-operational.
 func (s *Slave) bootUp(ctx context.Context) error {
 	node := s.NodeID()
-	f := ErrorControlFrame(node, canopen.StateInitialising, false)
+	f := s.cfg.frame(ErrorControlFrame(node, canopen.StateInitialising, false))
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
+	if h := s.cfg.onBootUp; h != nil {
+		h()
+	}
 	if err := s.bus.Send(sctx, &f); err != nil {
 		return fmt.Errorf("nmt: node %d boot-up: %w", node, err)
 	}
@@ -151,12 +179,15 @@ func (s *Slave) bootUp(ctx context.Context) error {
 }
 
 func (s *Slave) handle(ctx context.Context, f *canbus.Frame) {
-	cmd, node, err := ParseCommand(f)
+	cmd, node, err := parseCommand(f, s.cfg.fd)
 	s.mu.Lock()
 	switch {
 	case err != nil:
 		s.stats.Invalid++
-	case node != canopen.BroadcastNodeID && node != s.node:
+	case node != canopen.BroadcastNodeID && node != s.node,
+		// Unconfigured: only resets (to all nodes) may apply a pending
+		// node-ID; the state stays Initialising otherwise.
+		s.node == Unconfigured && cmd != canopen.NMTResetNode && cmd != canopen.NMTResetCommunication:
 		s.stats.Ignored++
 		err = errIgnore
 	default:
@@ -225,6 +256,10 @@ func (s *Slave) reset(ctx context.Context, kind ResetKind, cmd canopen.NMTComman
 	if h := s.cfg.onReset; h != nil {
 		h(kind)
 	}
+	if node == Unconfigured {
+		s.cfg.log.Info("nmt reset: node-ID unconfigured, no boot-up")
+		return nil
+	}
 	err := s.bootUp(ctx)
 	if err != nil {
 		s.cfg.log.Warn("nmt reset", "node", int(node), "error", err)
@@ -236,7 +271,8 @@ func (s *Slave) reset(ctx context.Context, kind ResetKind, cmd canopen.NMTComman
 // state Initialising, dictionary restore, reset handler, boot-up message,
 // Pre-operational. It returns the error of sending the boot-up message
 // (the slave then stays in Initialising) and [canopen.ErrClosed] after
-// Close.
+// Close. A reset that leaves the node-ID [Unconfigured] ends in
+// Initialising without boot-up message.
 func (s *Slave) Reset(ctx context.Context, kind ResetKind) error {
 	if kind != ResetApplication && kind != ResetCommunication {
 		return fmt.Errorf("nmt: invalid reset kind %d", kind)
@@ -277,8 +313,10 @@ func (s *Slave) NodeID() canopen.NodeID {
 // SetNodeID sets a pending node-ID (as LSS configures one): it becomes
 // active at the next reset communication or reset node, before the
 // dictionary is restored, so that node-ID-relative defaults follow it.
+// [Unconfigured] makes the node unconfigured at that reset (it then stays
+// in Initialising).
 func (s *Slave) SetNodeID(node canopen.NodeID) error {
-	if err := node.Check(); err != nil {
+	if err := checkNodeID(node); err != nil {
 		return err
 	}
 	s.mu.Lock()

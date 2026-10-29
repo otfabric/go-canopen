@@ -41,11 +41,12 @@ type codec struct {
 	m    Mapping
 	vars []*od.Variable // nil for dummy entries
 	n    int            // non-dummy entries
+	opt  options
 }
 
-func newCodec(m Mapping, d *od.Dictionary) (codec, error) {
-	c := codec{m: append(Mapping(nil), m...), vars: make([]*od.Variable, len(m))}
-	if m.Bits() > MaxBits {
+func newCodec(m Mapping, d *od.Dictionary, opts []Option) (codec, error) {
+	c := codec{m: append(Mapping(nil), m...), vars: make([]*od.Variable, len(m)), opt: buildOptions(opts)}
+	if m.Bits() > c.opt.maxBits() {
 		return c, fmt.Errorf("pdo: mapping %s: %w", m, canopen.AbortPDOLength)
 	}
 	for i, e := range m {
@@ -76,8 +77,10 @@ type Decoder struct{ c codec }
 // by d, a dictionary of the node that maps them (for example built from
 // its EDS). Each entry must exist in d with a length that fits its data
 // type ([ValidateEntry] rules; mappability and access are not checked).
-func NewDecoder(m Mapping, d *od.Dictionary) (*Decoder, error) {
-	c, err := newCodec(m, d)
+// Of the options only [WithFD] applies: a CANopen FD mapping of up to
+// [MaxBitsFD] bits.
+func NewDecoder(m Mapping, d *od.Dictionary, opts ...Option) (*Decoder, error) {
+	c, err := newCodec(m, d, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +94,7 @@ func (dec *Decoder) Mapping() Mapping { return append(Mapping(nil), dec.c.m...) 
 // order. Data shorter than the mapping is an error wrapping [ErrLength];
 // extra bytes are ignored.
 func (dec *Decoder) Decode(data []byte) ([]Value, error) {
-	raw, err := Unpack(dec.c.m, data)
+	raw, err := unpack(dec.c.m, data, dec.c.opt.maxBits())
 	if err != nil {
 		return nil, err
 	}
@@ -118,9 +121,10 @@ func (dec *Decoder) Decode(data []byte) ([]Value, error) {
 type Encoder struct{ c codec }
 
 // NewEncoder returns an encoder for a mapping whose objects are described
-// by d, as for [NewDecoder].
-func NewEncoder(m Mapping, d *od.Dictionary) (*Encoder, error) {
-	c, err := newCodec(m, d)
+// by d, as for [NewDecoder]. With [WithFD] the mapping may have up to
+// [MaxBitsFD] bits and a [Sender] using the encoder sends CAN FD frames.
+func NewEncoder(m Mapping, d *od.Dictionary, opts ...Option) (*Encoder, error) {
+	c, err := newCodec(m, d, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +154,7 @@ func (enc *Encoder) Encode(values ...any) ([]byte, error) {
 		raw[i] = b
 		j++
 	}
-	return Pack(enc.c.m, raw)
+	return pack(enc.c.m, raw, enc.c.opt.maxBits())
 }
 
 // Sender produces a PDO on the bus: a master's RPDO for a node.
@@ -160,7 +164,8 @@ type Sender struct {
 	enc *Encoder
 }
 
-// NewSender returns a sender of PDOs on a COB-ID with an encoder.
+// NewSender returns a sender of PDOs on a COB-ID with an encoder. The
+// frames are CAN FD frames when the encoder was made [WithFD].
 func NewSender(bus canopen.Bus, cob canopen.COBID, enc *Encoder) *Sender {
 	return &Sender{bus: bus, cob: cob, enc: enc}
 }
@@ -171,7 +176,7 @@ func (s *Sender) Send(ctx context.Context, values ...any) error {
 	if err != nil {
 		return err
 	}
-	f, err := newFrame(s.cob, data)
+	f, err := s.enc.c.opt.frame(s.cob, data)
 	if err != nil {
 		return err
 	}
@@ -254,8 +259,12 @@ func (l *Listener) run(s *canbus.Subscription) {
 	}
 }
 
-// Request sends a remote transmission request for the PDO.
+// Request sends a remote transmission request for the PDO. It fails with
+// [ErrNoRTR] for a CANopen FD PDO (a decoder made [WithFD]).
 func (l *Listener) Request(ctx context.Context) error {
+	if l.dec.c.opt.fd {
+		return ErrNoRTR
+	}
 	f, err := canbus.NewRemote(l.cob.ID(), l.cob.Extended(), uint8(l.dec.c.m.Len()))
 	if err != nil {
 		return err

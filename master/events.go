@@ -9,6 +9,7 @@ import (
 
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/lss"
 )
 
 // EventKind is the kind of an [Event].
@@ -29,8 +30,30 @@ const (
 	EventEMCY
 	// EventBootDone: the boot procedure of a node succeeded.
 	EventBootDone
-	// EventBootFailed: the boot procedure of a node failed (Err says why).
+	// EventBootFailed: the boot procedure of a node failed (Err says why;
+	// for the CiA 302 boot slave process Status is the error status and
+	// Err a *BootError).
 	EventBootFailed
+	// EventNetworkBootDone: the CiA 302 network boot-up ended, every
+	// mandatory slave booted (Node is the master's node-ID).
+	EventNetworkBootDone
+	// EventNetworkBootFailed: the CiA 302 network boot-up halted because
+	// the boot slave process of a mandatory slave (Node) failed; Err is
+	// its *BootError.
+	EventNetworkBootFailed
+	// EventGuardingLost: a node guarded by the CiA 302 manager did not
+	// answer (node guarding event).
+	EventGuardingLost
+	// EventGuardingResumed: a lost guarded node answers again.
+	EventGuardingResumed
+	// EventNodeError: the CiA 302 manager reacted to the error control
+	// event of a slave of the network list (Err says how: reset node,
+	// reset all nodes, stop all nodes).
+	EventNodeError
+	// EventLSSAssigned: the LSS step of the CiA 302 network boot-up
+	// ([WithLSSBoot]) gave an unconfigured device the node-ID Node (LSS
+	// holds the device's address and the node-ID).
+	EventLSSAssigned
 )
 
 // String names the event kind.
@@ -50,6 +73,18 @@ func (k EventKind) String() string {
 		return "boot-done"
 	case EventBootFailed:
 		return "boot-failed"
+	case EventNetworkBootDone:
+		return "network-boot-done"
+	case EventNetworkBootFailed:
+		return "network-boot-failed"
+	case EventGuardingLost:
+		return "guarding-lost"
+	case EventGuardingResumed:
+		return "guarding-resumed"
+	case EventNodeError:
+		return "node-error"
+	case EventLSSAssigned:
+		return "lss-assigned"
 	}
 	return fmt.Sprintf("EventKind(%d)", uint8(k))
 }
@@ -63,8 +98,14 @@ type Event struct {
 	State, Previous canopen.NMTState
 	// EMCY is the emergency message of an EventEMCY.
 	EMCY *emcy.Event
-	// Err is the failure of an EventBootFailed.
-	Err  error
+	// Err is the failure of an EventBootFailed or EventNetworkBootFailed
+	// and the reaction of an EventNodeError.
+	Err error
+	// Status is the result of a CiA 302 boot slave process
+	// (EventBootDone, EventBootFailed, EventNetworkBootFailed).
+	Status BootStatus
+	// LSS is the assignment of an EventLSSAssigned.
+	LSS  *lss.Assignment
 	Time time.Time
 }
 
@@ -73,10 +114,12 @@ func (e Event) String() string {
 	switch e.Kind {
 	case EventEMCY:
 		return fmt.Sprintf("node %d %s: %s", e.Node, e.Kind, e.EMCY.Message)
-	case EventBootFailed:
+	case EventBootFailed, EventNetworkBootFailed, EventNodeError:
 		return fmt.Sprintf("node %d %s: %v", e.Node, e.Kind, e.Err)
 	case EventStateChange:
 		return fmt.Sprintf("node %d %s: %s -> %s", e.Node, e.Kind, e.Previous, e.State)
+	case EventLSSAssigned:
+		return fmt.Sprintf("node %d %s: %s", e.Node, e.Kind, e.LSS.Address)
 	default: // no special case
 	}
 	return fmt.Sprintf("node %d %s", e.Node, e.Kind)

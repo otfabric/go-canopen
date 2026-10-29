@@ -192,3 +192,104 @@ func TestServerBusClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestServerResetFence: with WithResetFence the server disables itself at
+// an NMT reset command for its node or for all nodes, in the order the
+// frames arrive; other NMT commands and other nodes' resets change
+// nothing.
+func TestServerResetFence(t *testing.T) {
+	a, b := testbus.Pair(t)
+	s := startServer(t, b, testDict(t), WithResetFence(testNode))
+	p := newPeer(t, a, canopen.NewCOBID(0x585), canopen.NewCOBID(0x605))
+	nmtFrame := func(data ...byte) {
+		t.Helper()
+		f, err := canbus.NewStandard(canopen.FuncNMT, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Send(ctxT(t), &f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	upload := func() bool {
+		t.Helper()
+		p.send(muxFrame(0x40, 0x1000, 0, 0))
+		_, ok := p.tryRecv(100 * time.Millisecond)
+		return ok
+	}
+	nmtFrame(byte(canopen.NMTStart), 0)                             // not a reset
+	nmtFrame(byte(canopen.NMTResetCommunication), byte(testNode+1)) // another node
+	nmtFrame(byte(canopen.NMTResetNode))                            // too short
+	if !upload() || !s.Enabled() {
+		t.Fatal("disabled by a command that is not a reset of its node")
+	}
+	// The command and a request right after it: the request is not
+	// answered.
+	nmtFrame(byte(canopen.NMTResetCommunication), byte(testNode))
+	if upload() || s.Enabled() {
+		t.Fatal("answered after a reset communication of its node")
+	}
+	// Sticky: a late SetEnabled (a state change from before the reset)
+	// does not reopen it.
+	s.SetEnabled(true)
+	if upload() || s.Enabled() {
+		t.Fatal("enabled again after a reset of its node")
+	}
+	// Reset node of all nodes also fences.
+	s3 := startServer(t, b, testDict(t), WithResetFence(testNode))
+	_ = s.Close()
+	nmtFrame(byte(canopen.NMTResetNode), 0)
+	if upload() || s3.Enabled() {
+		t.Fatal("answered after a reset node of all nodes")
+	}
+	// Without the option NMT commands do not reach the server.
+	c, d := testbus.Pair(t)
+	s2 := startServer(t, d, testDict(t))
+	f, _ := canbus.NewStandard(canopen.FuncNMT, []byte{byte(canopen.NMTResetNode), 0})
+	if err := c.Send(ctxT(t), &f); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(20 * time.Millisecond)
+	if !s2.Enabled() {
+		t.Fatal("disabled without WithResetFence")
+	}
+}
+
+// TestServerFence: requests received before Fence are ignored, later ones
+// are answered.
+func TestServerFence(t *testing.T) {
+	a, b := testbus.Pair(t)
+	s := startServer(t, b, testDict(t))
+	p := newPeer(t, a, canopen.NewCOBID(0x585), canopen.NewCOBID(0x605))
+	// A fence in the future stands for frames received before the fence.
+	s.since.Store(time.Now().Add(time.Hour).UnixNano())
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if f, ok := p.tryRecv(100 * time.Millisecond); ok {
+		t.Fatalf("answered a request received before the fence: %v", f)
+	}
+	if st := s.Stats(); st.Ignored != 1 {
+		t.Errorf("stats %+v", st)
+	}
+	s.Fence()
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if _, ok := p.tryRecv(time.Second); !ok {
+		t.Fatal("no answer after the fence")
+	}
+}
+
+// TestServerWithFenced: a server started fenced answers nothing until
+// Fence.
+func TestServerWithFenced(t *testing.T) {
+	a, b := testbus.Pair(t)
+	s := startServer(t, b, testDict(t), WithFenced())
+	p := newPeer(t, a, canopen.NewCOBID(0x585), canopen.NewCOBID(0x605))
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if f, ok := p.tryRecv(100 * time.Millisecond); ok {
+		t.Fatalf("answered before Fence: %v", f)
+	}
+	s.Fence()
+	p.send(muxFrame(0x40, 0x1000, 0, 0))
+	if _, ok := p.tryRecv(time.Second); !ok {
+		t.Fatal("no answer after Fence")
+	}
+}

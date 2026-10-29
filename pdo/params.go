@@ -94,6 +94,27 @@ type Config struct {
 	SyncStart uint8
 	// Mapping lists the mapped objects (sub-index 00h is their number).
 	Mapping Mapping
+	// MPDO is the value of mapping sub-index 00h when it marks the PDO as
+	// a multiplexed PDO (CiA 301: [MPDOSourceAddressing] FEh,
+	// [MPDODestinationAddressing] FFh), and 0 otherwise. An MPDO has no
+	// mapping entries and is inactive for the classical TPDO and RPDO
+	// services (the mpdo package serves it).
+	MPDO uint8
+}
+
+// Values of mapping sub-index 00h that mark a multiplexed PDO (CiA 301).
+const (
+	// MPDOSourceAddressing (FEh): a TPDO is an MPDO SAM producer; an RPDO
+	// receives MPDOs.
+	MPDOSourceAddressing uint8 = 0xFE
+	// MPDODestinationAddressing (FFh): a TPDO is an MPDO DAM producer; an
+	// RPDO receives MPDOs.
+	MPDODestinationAddressing uint8 = 0xFF
+)
+
+// isMPDO reports whether a mapping sub-index 00h value marks an MPDO.
+func isMPDO(x uint64) bool {
+	return x == uint64(MPDOSourceAddressing) || x == uint64(MPDODestinationAddressing)
 }
 
 // Active reports whether a PDO with this configuration exists on the bus:
@@ -215,6 +236,10 @@ func readConfig(read func(index uint16, sub uint8) ([]byte, error), transmit boo
 	}
 	if x, err = get(mi, 0, false); err != nil {
 		return c, err
+	}
+	if isMPDO(x) {
+		c.MPDO = uint8(x)
+		return c, nil
 	}
 	if x > MaxEntries {
 		return c, fmt.Errorf("pdo: %s: %d mapping entries: %w", kind(transmit, n), x, canopen.AbortPDOLength)

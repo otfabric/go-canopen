@@ -58,13 +58,13 @@ type base struct {
 }
 
 func (b *base) init(bus canopen.Bus, d *od.Dictionary, transmit bool, n int, opts []Option) error {
-	unprotect, err := Protect(d, transmit, n)
+	b.opt = buildOptions(opts)
+	unprotect, err := protect(d, transmit, n, b.opt.maxBits())
 	if err != nil {
 		return err
 	}
 	b.unprotect = unprotect
 	b.bus, b.d, b.n, b.transmit = bus, d, n, transmit
-	b.opt = buildOptions(opts)
 	b.log = b.opt.log.With("pdo", kind(transmit, n))
 	b.wake = make(chan struct{}, 1)
 	b.ctx, b.cancel = context.WithCancel(context.Background())
@@ -75,7 +75,7 @@ func (b *base) init(bus canopen.Bus, d *od.Dictionary, transmit bool, n int, opt
 func (b *base) reloadLocked() {
 	cfg, err := Load(b.d, b.transmit, b.n)
 	if err == nil && cfg.Active() {
-		err = cfg.Mapping.Validate(b.d, b.transmit)
+		err = cfg.Mapping.validate(b.d, b.transmit, b.opt.maxBits())
 	}
 	if err == nil && cfg.COBID.Valid() {
 		err = checkCOBID(cfg.COBID)
@@ -263,7 +263,7 @@ func (b *base) wait(t *time.Timer, at time.Time) (f canbus.Frame, got, stop bool
 
 // send transmits a data frame on the COB-ID.
 func (b *base) send(ctx context.Context, c canopen.COBID, data []byte) error {
-	f, err := newFrame(c, data)
+	f, err := b.opt.frame(c, data)
 	if err != nil {
 		return err
 	}

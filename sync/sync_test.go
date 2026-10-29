@@ -273,3 +273,37 @@ func TestProducerSendError(t *testing.T) {
 		t.Error("Start on a closed bus")
 	}
 }
+
+// TestReceiveTime: the reception time of a SYNC is on the monotonic
+// clock, derived from the delay since the kernel timestamp. Regression:
+// the window was the kernel's wall-clock timestamp plus 0x1007, compared
+// with the wall clock when a PDO arrived, so a step of the wall clock
+// between the SYNC and the PDO (a virtual machine's clock adjustment in
+// the interop suite) opened or closed the window wrongly.
+func TestReceiveTime(t *testing.T) {
+	now := time.Now()
+	wall := now.Round(0)
+	monotonic := func(x time.Time) bool { return x != x.Round(0) }
+	if r := receiveTime(wall.Add(-5*time.Millisecond), now); !monotonic(r) || now.Sub(r) != 5*time.Millisecond {
+		t.Fatal(r)
+	}
+	for _, ts := range []time.Time{{}, wall.Add(time.Hour), wall.Add(-time.Hour)} {
+		if r := receiveTime(ts, now); r != now {
+			t.Fatal(ts, r)
+		}
+	}
+	// A frame stamped by a wall clock that was stepped back by an hour
+	// (after the stamp: it seems to come from the future) still opens a
+	// window from now.
+	b := testbus.Ports(t, 1)[0]
+	c, err := NewConsumer(b, WithWindow(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, _ := canbus.NewStandard(0x80, nil)
+	f.Timestamp = wall.Add(-time.Hour)
+	e, ok := c.receive(&f, canopen.NewCOBID(0x80))
+	if !ok || !monotonic(e.WindowEnd) || time.Until(e.WindowEnd) < 59*time.Second {
+		t.Fatalf("%+v", e)
+	}
+}
