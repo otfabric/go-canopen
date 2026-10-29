@@ -1,0 +1,165 @@
+; A DCF full of CiA 306 violations, one per object, for the Validate tests.
+; It parses (every line is well-formed) but must not validate.
+[FileInfo]
+FileName=broken.dcf
+FileVersion=abc
+EDSVersion=4.0
+
+[DeviceInfo]
+VendorName=Nobody
+Granularity=65
+NrOfRXPDO=1
+NrOfTXPDO=0
+BaudRate_250=1
+
+[DeviceComissioning]
+NodeID=200
+Baudrate=300
+
+[MandatoryObjects]
+SupportedObjects=3
+1=0x1000
+2=0x1001
+
+[1000]
+ParameterName=Device type
+ObjectType=0x7
+DataType=0x0007
+AccessType=xx
+DefaultValue=0
+
+[1018]
+ParameterName=Identity object
+ObjectType=0x9
+SubNumber=4
+
+[1018sub0]
+ParameterName=Highest sub-index supported
+DataType=0x0006
+AccessType=const
+DefaultValue=1
+
+[1018sub1]
+ParameterName=Vendor-ID
+DataType=0x0007
+AccessType=ro
+DefaultValue=1
+
+[ManufacturerObjects]
+SupportedObjects=14
+1=0x1005
+2=0x2000
+3=0x2001
+4=0x2002
+5=0x2003
+6=0x2004
+7=0x2005
+8=0x2006
+9=0x2007
+10=0x2009
+11=0x2010
+12=0x2011
+13=0x2012
+14=0x2014
+
+[2000]
+ParameterName=Unknown type
+DataType=0x0099
+AccessType=rw
+
+[2001]
+ParameterName=Default too big
+DataType=0x0005
+AccessType=rw
+DefaultValue=300
+
+[2002]
+ParameterName=Limits reversed
+DataType=0x0003
+AccessType=rw
+LowLimit=10
+HighLimit=-10
+
+[2003]
+ParameterName=Mapped string
+DataType=0x0009
+AccessType=ro
+PDOMapping=1
+
+[2004]
+ParameterName=Bad object code
+ObjectType=0x3
+DataType=0x0005
+AccessType=rw
+
+[2005]
+ParameterName=Compact with subs
+ObjectType=0x8
+DataType=0x0005
+AccessType=rw
+CompactSubObj=2
+
+[2005Name]
+NrOfEntries=1
+5=Out of range
+
+[2005sub1]
+ParameterName=Not allowed
+DataType=0x0005
+AccessType=rw
+
+[2006]
+ParameterName=Compact record
+ObjectType=0x9
+DataType=0x0005
+AccessType=rw
+CompactSubObj=2
+
+[2007]
+ParameterName=VAR with SubNumber
+DataType=0x0005
+AccessType=rw
+SubNumber=2
+
+[2008sub1]
+ParameterName=Orphan
+DataType=0x0005
+AccessType=rw
+
+[2009]
+ParameterName=Float relative to node-ID
+DataType=0x0008
+AccessType=rw
+DefaultValue=$NODEID+1
+
+[2010]
+ParameterName=Duplicate
+DataType=0x0005
+AccessType=rw
+DefaultValue=1
+DefaultValue=2
+
+[2010]
+ParameterName=Duplicate section
+
+[2011]
+ParameterName=No access type
+DataType=0x0005
+
+[2012]
+ParameterName=Default above limit
+DataType=0x0005
+AccessType=rw
+DefaultValue=50
+HighLimit=10
+
+[2013]
+ParameterName=Unlisted
+DataType=0x0005
+AccessType=rw
+
+[2014]
+ParameterName=Bad parameter value
+DataType=0x0005
+AccessType=rw
+ParameterValue=0x1FF

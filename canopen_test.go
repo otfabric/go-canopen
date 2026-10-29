@@ -337,6 +337,7 @@ func TestParseValue(t *testing.T) {
 	}{
 		{Unsigned8, "256"}, {Unsigned8, "x"}, {Integer8, "300"}, {Real32, "abc"}, {OctetString, "zz"},
 		{TimeOfDay, "12"}, {PDOMapping, "1"}, {Unsigned8, "$NODEID+0xFF"},
+		{Unsigned32, "0x180$NODEID"}, {Unsigned32, "$NODEID+"}, {Boolean, "$NODEID"}, {Unsigned32, "\xff\xfe$nodeid+1"}, {Unsigned32, "$NODEID+1+2"},
 	} {
 		if _, err := ParseValue(tc.dt, tc.s, 5); !errors.Is(err, ErrDataType) {
 			t.Errorf("ParseValue(%v, %q) = %v", tc.dt, tc.s, err)

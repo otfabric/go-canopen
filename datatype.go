@@ -434,18 +434,12 @@ func ParseValue(t DataType, s string, node NodeID) ([]byte, error) {
 	if !t.IsInteger() && t != Boolean {
 		return nil, fmt.Errorf("%w: cannot parse a %s literal", ErrDataType, t)
 	}
-	expr, plus := strings.TrimSpace(s), uint64(0)
-	if strings.Contains(strings.ToUpper(expr), "$NODEID") {
-		up := strings.ToUpper(expr)
-		i := strings.Index(up, "$NODEID")
-		rest := strings.TrimSpace(expr[:i] + expr[i+len("$NODEID"):])
-		rest = strings.TrimSpace(strings.Trim(rest, "+"))
-		rest = strings.TrimSpace(rest)
-		plus = uint64(node)
-		expr = rest
-		if expr == "" {
-			expr = "0"
-		}
+	expr, plus, err := splitNodeID(s, node)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s literal %q: %v", ErrDataType, t, s, err)
+	}
+	if t == Boolean && strings.Contains(strings.ToUpper(s), "$NODEID") {
+		return nil, fmt.Errorf("%w: $NODEID in a BOOLEAN literal %q", ErrDataType, s)
 	}
 	if expr == "" {
 		expr = "0"
@@ -463,6 +457,38 @@ func ParseValue(t DataType, s string, node NodeID) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %s literal %q: %v", ErrDataType, t, s, err)
 	}
 	return EncodeInt(t, 0, v+plus, false)
+}
+
+// splitNodeID separates "$NODEID" from an integer literal: "$NODEID",
+// "$NODEID+n" and "n+$NODEID" (case-insensitive, spaces allowed). It
+// returns the number part ("" when absent) and the node-ID to add.
+func splitNodeID(s string, node NodeID) (expr string, plus uint64, err error) {
+	s = strings.TrimSpace(s)
+	const tok = "$NODEID"
+	i := -1
+	for j := 0; j+len(tok) <= len(s); j++ {
+		if strings.EqualFold(s[j:j+len(tok)], tok) {
+			i = j
+			break
+		}
+	}
+	if i < 0 {
+		return s, 0, nil
+	}
+	before, after := strings.TrimSpace(s[:i]), strings.TrimSpace(s[i+len(tok):])
+	switch {
+	case before == "" && after == "":
+	case before == "" && strings.HasPrefix(after, "+"):
+		expr = strings.TrimSpace(after[1:])
+	case after == "" && strings.HasSuffix(before, "+"):
+		expr = strings.TrimSpace(before[:len(before)-1])
+	default:
+		return "", 0, fmt.Errorf("malformed $NODEID expression")
+	}
+	if expr == "" && (before != "" || after != "") {
+		return "", 0, fmt.Errorf("malformed $NODEID expression")
+	}
+	return expr, uint64(node), nil
 }
 
 // FormatValue formats an encoded value of type t for display: decimal for
