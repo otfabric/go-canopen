@@ -34,9 +34,13 @@ type slaveState struct {
 	// (the network boot-up waits for it, so that it reports done after
 	// the events of its mandatory slaves).
 	reported bool
-	status   BootStatus
-	err      error
-	state    canopen.NMTState
+	// cancel and done: the running boot slave process (booting), which a
+	// network boot-up cancels before its reset.
+	cancel context.CancelFunc
+	done   chan struct{}
+	status BootStatus
+	err    error
+	state  canopen.NMTState
 }
 
 // manager is the CiA 302 manager of a master built on a dictionary: the
@@ -268,6 +272,26 @@ func (g *manager) bootNetwork(ctx context.Context) error {
 		}
 		g.mu.Unlock()
 	}
+	// A boot slave process started before this network boot-up (at a
+	// boot-up message that arrived just before it) would configure the
+	// slave before the reset below, which undoes the configuration: it is
+	// cancelled, and the slave boots again after the reset.
+	var running []chan struct{}
+	g.mu.Lock()
+	for _, e := range list {
+		if s := g.slave(e.id); s.booting && s.cancel != nil {
+			s.cancel()
+			running = append(running, s.done)
+		}
+	}
+	g.mu.Unlock()
+	for _, done := range running {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	g.mu.Lock()
 	for _, e := range list {
 		if s := g.slave(e.id); !s.booting {
@@ -406,12 +430,23 @@ func (g *manager) request(id canopen.NodeID, at time.Time) {
 		g.mu.Unlock()
 		return
 	}
-	s.booting = true
+	pctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	s.booting, s.cancel, s.done = true, cancel, done
 	g.mu.Unlock()
-	if !g.m.goBoot(func(ctx context.Context) { g.bootProcess(ctx, id) }) {
+	ok := g.m.goBoot(func(ctx context.Context) {
+		stop := context.AfterFunc(ctx, cancel)
+		defer stop()
+		defer close(done)
+		defer cancel()
+		g.bootProcess(pctx, id)
+	})
+	if !ok {
 		g.mu.Lock()
 		s.booting = false
 		g.mu.Unlock()
+		cancel()
+		close(done)
 	}
 }
 

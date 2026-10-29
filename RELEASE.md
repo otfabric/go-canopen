@@ -5,6 +5,33 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.3.1
+
+**Date:** 2026-10-30
+**Previous release:** v0.3.0
+
+Fix of the CiA 302 network boot-up in `master`.
+
+- A boot slave process that was running when a network boot-up started
+  (it began at a slave's boot-up message that arrived just before) went
+  on through the network boot-up's reset communication. The reset undid
+  the configuration it had written (for example the heartbeat producer
+  time from a concise DCF), and the process then failed with status K
+  ("no heartbeat received when starting the error control"), which
+  halted the network boot-up for a mandatory slave. The network boot-up
+  now cancels such processes and waits for them before its reset; the
+  slave boots again at its boot-up message after the reset. Found by CI
+  (Windows) after v0.3.0; regression test
+  `TestBootNetworkCancelsRunningBoot`.
+- Test: `TestManagerKeepAlive` lets the nodes' start-up boot-up messages
+  pass before the manager starts, so that its first boot events are the
+  network boot-up's.
+
+Verification: `go test -race ./...`; `go test -race -count=5 -cpu 1,2,4
+./master ./e2e`; coverage 96.9 % total (gate 90 %); golangci-lint clean.
+
+---
+
 ## v0.3.0
 
 **Date:** 2026-10-29

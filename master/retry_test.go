@@ -4,6 +4,7 @@ package master_test
 
 import (
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -126,5 +127,56 @@ func TestBootNetworkSuperseded(t *testing.T) {
 		if err := <-errs; !errors.As(err, &be) || be.Status != master.BootVendorID {
 			t.Fatalf("call %d: %v", i, err)
 		}
+	}
+}
+
+// TestBootNetworkCancelsRunningBoot is the regression test of a boot slave
+// process that runs when a network boot-up starts (it began at a boot-up
+// message that arrived just before): the network boot-up's reset undid
+// the configuration it wrote, and its error control check then failed
+// with status K (heartbeat producer back at 0). The network boot-up now
+// cancels it before the reset, and the slave boots again after it.
+func TestBootNetworkCancelsRunningBoot(t *testing.T) {
+	nettest.CheckLeaks(t)
+	buses := testbus.Ports(t, 2)
+	d7 := nettest.Dict(t, 7, nil)
+	configuring := make(chan struct{})
+	var once sync.Once
+	remove := d7.OnWrite(nettest.IdxParam, 0, func(*od.Variable, []byte) error {
+		once.Do(func() {
+			close(configuring)
+			time.Sleep(100 * time.Millisecond) // the network boot-up starts meanwhile
+		})
+		return nil
+	})
+	defer remove()
+	startNode(t, buses[1], d7)
+	d := mgrDict(t)
+	assign(t, d, 7, master.NewAssignment(master.AssignSlave|master.AssignBoot|master.AssignMandatory, 0, 0))
+	consume(t, d, 1, 7, 500*time.Millisecond)
+	concise(t, d, 7,
+		cdcf.Entry{Index: od.IndexProducerHeartbeat, Data: u16(30)},
+		cdcf.Entry{Index: nettest.IdxParam, Data: u32(0xBEEF)})
+	r := startManager(t, buses, d) // 0x1F80 bit 0 clear: no automatic boot-up
+	set32(t, d, master.IndexNMTStartup, 0, master.StartupMaster)
+	ctx := nettest.Ctx(t)
+	// A boot slave process at the slave's boot-up message.
+	if err := r.m.ResetCommunication(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-configuring:
+	case <-ctx.Done():
+		t.Fatal("no boot slave process configured node 7")
+	}
+	if err := r.m.BootNetwork(ctx); err != nil {
+		t.Fatalf("network boot-up: %v; events %v", err, r.rec.all())
+	}
+	ev := r.rec.wait(t, "boot done", bootOK(7))
+	if ev.Status != master.BootOK {
+		t.Fatalf("status %s", ev.Status)
+	}
+	if v, _ := d7.GetUint(od.IndexProducerHeartbeat, 0); v != 30 {
+		t.Errorf("0x1017 = %d after the network boot-up", v)
 	}
 }
