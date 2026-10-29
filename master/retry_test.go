@@ -3,7 +3,10 @@
 package master_test
 
 import (
+	"bytes"
 	"errors"
+	"hash/crc32"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,6 +17,7 @@ import (
 	"github.com/otfabric/go-canopen/master"
 	"github.com/otfabric/go-canopen/node"
 	"github.com/otfabric/go-canopen/od"
+	"github.com/otfabric/go-canopen/program"
 	"github.com/otfabric/go-canopen/store"
 )
 
@@ -126,5 +130,99 @@ func TestBootNetworkSuperseded(t *testing.T) {
 		if err := <-errs; !errors.As(err, &be) || be.Status != master.BootVendorID {
 			t.Fatalf("call %d: %v", i, err)
 		}
+	}
+}
+
+// TestBootNetworkCancelsRunningBoot is the regression test of a boot slave
+// process that runs when a network boot-up starts (it began at a boot-up
+// message that arrived just before): the network boot-up's reset undid
+// the configuration it wrote, and its error control check then failed
+// with status K (heartbeat producer back at 0). The network boot-up now
+// cancels it before the reset, and the slave boots again after it.
+func TestBootNetworkCancelsRunningBoot(t *testing.T) {
+	nettest.CheckLeaks(t)
+	buses := testbus.Ports(t, 2)
+	d7 := nettest.Dict(t, 7, nil)
+	configuring := make(chan struct{})
+	var once sync.Once
+	remove := d7.OnWrite(nettest.IdxParam, 0, func(*od.Variable, []byte) error {
+		once.Do(func() {
+			close(configuring)
+			time.Sleep(100 * time.Millisecond) // the network boot-up starts meanwhile
+		})
+		return nil
+	})
+	defer remove()
+	startNode(t, buses[1], d7)
+	d := mgrDict(t)
+	assign(t, d, 7, master.NewAssignment(master.AssignSlave|master.AssignBoot|master.AssignMandatory, 0, 0))
+	consume(t, d, 1, 7, 500*time.Millisecond)
+	concise(t, d, 7,
+		cdcf.Entry{Index: od.IndexProducerHeartbeat, Data: u16(30)},
+		cdcf.Entry{Index: nettest.IdxParam, Data: u32(0xBEEF)})
+	r := startManager(t, buses, d) // 0x1F80 bit 0 clear: no automatic boot-up
+	set32(t, d, master.IndexNMTStartup, 0, master.StartupMaster)
+	ctx := nettest.Ctx(t)
+	// A boot slave process at the slave's boot-up message.
+	if err := r.m.ResetCommunication(ctx, 7); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-configuring:
+	case <-ctx.Done():
+		t.Fatal("no boot slave process configured node 7")
+	}
+	if err := r.m.BootNetwork(ctx); err != nil {
+		t.Fatalf("network boot-up: %v; events %v", err, r.rec.all())
+	}
+	ev := r.rec.wait(t, "boot done", bootOK(7))
+	if ev.Status != master.BootOK {
+		t.Fatalf("status %s", ev.Status)
+	}
+	if v, _ := d7.GetUint(od.IndexProducerHeartbeat, 0); v != 30 {
+		t.Errorf("0x1017 = %d after the network boot-up", v)
+	}
+}
+
+// TestBootNetworkCompletesSoftwareUpdate: a network boot-up that cancels
+// a boot slave process in the middle of its software update lets the
+// update finish (stop, clear, download, start); cancelled after the
+// download, the slave kept the new program stopped.
+func TestBootNetworkCompletesSoftwareUpdate(t *testing.T) {
+	nettest.CheckLeaks(t)
+	buses := testbus.Ports(t, 2)
+	downloading := make(chan struct{})
+	var once sync.Once
+	f := &flasher{image: []byte("v1"), onDownload: func() {
+		once.Do(func() {
+			close(downloading)
+			time.Sleep(100 * time.Millisecond) // the network boot-up starts meanwhile
+		})
+	}}
+	startNode(t, buses[1], nettest.Dict(t, 5, func(c *od.Config) { c.HeartbeatMs = 20 }), node.WithProgram(program.Config{Handler: f}))
+	img := bytes.Repeat([]byte("application v2 "), 100)
+	d := mgrDict(t)
+	assign(t, d, 5, master.NewAssignment(master.AssignSlave|master.AssignBoot|master.AssignMandatory|master.AssignVersionCheck|master.AssignSoftwareUpdate, 0, 0))
+	consume(t, d, 1, 5, 300*time.Millisecond)
+	set32(t, d, program.IndexExpectedIdentification, 5, crc32.ChecksumIEEE(img))
+	if err := d.Set(program.IndexManagerData, 5, img); err != nil {
+		t.Fatal(err)
+	}
+	r := startManager(t, buses, d) // 0x1F80 bit 0 clear: no automatic boot-up
+	set32(t, d, master.IndexNMTStartup, 0, master.StartupMaster)
+	ctx := nettest.Ctx(t)
+	if err := r.m.ResetCommunication(ctx, 5); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-downloading:
+	case <-ctx.Done():
+		t.Fatal("no software update started")
+	}
+	if err := r.m.BootNetwork(ctx); err != nil {
+		t.Fatalf("network boot-up: %v; events %v", err, r.rec.all())
+	}
+	if got := f.seq(); got != "stop,clear,download,start" {
+		t.Fatalf("sequence %q", got)
 	}
 }

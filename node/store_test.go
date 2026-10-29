@@ -7,13 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/cdcf"
 	"github.com/otfabric/go-canopen/internal/nettest"
+	"github.com/otfabric/go-canopen/master"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/node"
 	"github.com/otfabric/go-canopen/od"
+	"github.com/otfabric/go-canopen/sdo"
 	"github.com/otfabric/go-canopen/store"
 )
 
@@ -38,7 +41,9 @@ func TestStoreAcrossRestart(t *testing.T) {
 			if kind == "file" {
 				s = store.NewFile(filepath.Join(t.TempDir(), "params.cdcf"))
 			}
-			r := newRig(t, 2)
+			// Store and restore fsync a file: a loaded CI runner can take
+			// longer than the rig's 150 ms SDO timeout for that.
+			r := newRig(t, 2, master.WithSDOOptions(sdo.WithTimeout(2*time.Second)))
 			ctx := nettest.Ctx(t)
 			d := storeDict(t, 5)
 			n, err := node.New(r.buses[1], d, node.WithStore(s))

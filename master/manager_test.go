@@ -92,6 +92,35 @@ func startManager(t testing.TB, buses []*canbus.Bus, d *od.Dictionary, opts ...m
 	return &mgrRig{rig: newRigOn(t, buses, opts...), d: d}
 }
 
+// bootUps subscribes to bus and returns a function that waits for the
+// boot-up messages of the nodes, so that they have passed bus before a
+// later subscriber (the manager) starts.
+func bootUps(t testing.TB, bus *canbus.Bus, ids ...canopen.NodeID) func() {
+	t.Helper()
+	sub, err := bus.Subscribe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		t.Helper()
+		defer sub.Close()
+		left := map[canbus.ID]bool{}
+		for _, id := range ids {
+			left[canopen.FuncHeartbeat+canbus.ID(id)] = true
+		}
+		ctx := nettest.Ctx(t)
+		for len(left) > 0 {
+			f, err := sub.Receive(ctx)
+			if err != nil {
+				t.Fatalf("boot-up messages %v: %v", left, err)
+			}
+			if f.Len == 1 && f.Data[0] == 0 {
+				delete(left, f.ID)
+			}
+		}
+	}
+}
+
 func bootOK(n canopen.NodeID) func(master.Event) bool {
 	return func(e master.Event) bool { return e.Kind == master.EventBootDone && e.Node == n }
 }
@@ -427,6 +456,10 @@ func TestManagerRestoreAndConfigFailure(t *testing.T) {
 func TestManagerKeepAlive(t *testing.T) {
 	nettest.CheckLeaks(t)
 	buses := testbus.Ports(t, 4)
+	// The start's boot-up messages pass before the manager starts: one
+	// reaching it would boot node 5 before the network boot-up, and the
+	// first boot event would not be the network boot-up's.
+	ups := bootUps(t, buses[0], 5, 6, 7)
 	hb := func(c *od.Config) { c.HeartbeatMs = 20 }
 	n5 := startNode(t, buses[1], nettest.Dict(t, 5, hb))
 	_ = n5.SetState(canopen.StateOperational)
@@ -440,6 +473,7 @@ func TestManagerKeepAlive(t *testing.T) {
 	assign(t, d, 7, master.NewAssignment(keep, 0, 0)) // no heartbeat: node guarding check
 	consume(t, d, 1, 5, 300*time.Millisecond)
 	consume(t, d, 2, 6, 300*time.Millisecond)
+	ups()
 	r := startManager(t, buses, d)
 	r.rec.wait(t, "network boot", kind(master.EventNetworkBootDone, masterID))
 	if ev := r.rec.wait(t, "boot 5", bootOK(5)); ev.Status != master.BootOperational {
@@ -667,9 +701,10 @@ func TestManagerSoftwareUpdate(t *testing.T) {
 // flasher is a program handler keeping the image in memory; the
 // identification is the CRC-32 of the image.
 type flasher struct {
-	mu    sync.Mutex
-	calls []string
-	image []byte
+	mu         sync.Mutex
+	calls      []string
+	image      []byte
+	onDownload func() // optional, called (outside mu) before storing
 }
 
 func (f *flasher) Control(_ uint8, cmd program.Command) error {
@@ -680,6 +715,9 @@ func (f *flasher) Control(_ uint8, cmd program.Command) error {
 }
 
 func (f *flasher) Download(_ uint8, data []byte) error {
+	if f.onDownload != nil {
+		f.onDownload()
+	}
 	f.mu.Lock()
 	f.calls = append(f.calls, "download")
 	f.image = bytes.Clone(data)

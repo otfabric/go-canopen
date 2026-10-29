@@ -2,6 +2,13 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.3.1 (2026-10-30)
+
+`master`: a network boot-up cancels the boot slave processes that run
+when it starts, before its reset communication (the reset undid their
+configuration and they failed with status K); a software update in
+progress is completed rather than left with the program stopped.
+
 ## v0.3.0 (2026-10-29)
 
 New packages `lss` (CiA 305 LSS master and slave with Fastscan and
