@@ -37,16 +37,15 @@ Effort: **S** about a day, **M** a few days, **L** a week or more.
 
 | # | Gap | Why it matters | Follow-up |
 |---|-----|----------------|-----------|
-| V1 | No interop suite yet against CANopenNode, Lely CANopen, python canopen (canopen-interop images exist) | Compatibility is designed in, not demonstrated | Write `interop/` against canopen-interop v0.1.0 (pinned by digest), CI workflow on amd64 and arm64, fill the matrix in INTEROPERABILITY.md |
-| V2 | python canopen EDS cross-check skipped in CI | Runs only where a developer installed python canopen | Install python canopen in a CI job and set a require flag, or move the check into the interop suite |
+| V1 | The interop suite (v0.2.0) covers what canopen-interop's contract 1.0 exposes: no LSS, TIME, node guarding, SRDO, MPDO; RPDOs only towards the stacks' devices; CiA 402 only with python canopen's client | Those services are checked against go-canopen itself and Wireshark only | Extend canopen-interop's contract (TIME, guarding, RPDO sender, LSS when implemented) and add the scenarios |
+| V2 | The python canopen dictionary cross-check (`eds/crosscheck_test.go`) is skipped in CI | Names and evaluated defaults at another node-ID are compared only locally; the interop suite's EDS scenarios compare the rest in CI | Install python canopen in a CI job and set a require flag |
 | V3 | Nothing on real hardware | vcan has no arbitration, timing, error frames or load; SYNC jitter, heartbeat margins and inhibit times under load are unmeasured | A bench: two USB adapters on SocketCAN, a commercial CANopen I/O module and a drive, a self-hosted runner |
 | V4 | No CiA conformance test | Conformance is not claimed | Only with CiA membership and its test tool |
 | V5 | Timing is exercised, not measured (SYNC period, inhibit, event timer) | A timing regression could pass | Measure frame timestamps on a vcan monitor socket in the e2e suite |
 
 ## Suggested order
 
-1. **Interop suite** (V1, V2): it turns the existing behaviour into
-   demonstrated compatibility and protects everything after it.
+1. **Interop suite**: done in v0.2.0 (V1 lists what it does not cover).
 2. **CANopen FD / USDO** (gap 1, the next phase): go-canbus already
    carries CAN FD; it is the largest functional gap.
 3. **LSS** (gap 2): needed by most real commissioning flows.

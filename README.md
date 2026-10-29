@@ -129,7 +129,11 @@ in Automation, available to its members. This library is implemented
 from public material (public descriptions of the protocol, the behaviour
 of open-source stacks such as CANopenNode, Lely CANopen and python
 canopen, and Wireshark's CANopen dissector) and is tested against
-independent implementations where they are available. It makes **no
+independent implementations: Wireshark's dissector, and CANopenNode, Lely
+CANopen and python canopen through the
+[canopen-interop](https://github.com/otfabric/canopen-interop) containers
+in both directions ([INTEROPERABILITY.md](INTEROPERABILITY.md) has the
+matrix and the known differences). It makes **no
 claim of CiA conformance** and has not been certified.
 
 ## License

@@ -11,9 +11,12 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
   implemented from public material and the behaviour of open-source
   stacks; there is **no CiA conformance claim**, no conformance test run
   and no certification.
-- The interoperability suite against CANopenNode, Lely CANopen and
-  python canopen is planned, not written: no result against them exists
-  ([INTEROPERABILITY.md](INTEROPERABILITY.md)).
+- Interoperability is tested against CANopenNode, Lely CANopen and
+  python canopen on Linux vcan through the canopen-interop images
+  ([INTEROPERABILITY.md](INTEROPERABILITY.md), with the known differences);
+  only what their contract exposes is covered: no LSS, TIME, node
+  guarding, SRDO or MPDO against them, CiA 402 only against python
+  canopen's BaseNode402.
 - **Nothing has been tested on real CAN hardware.** Every test runs on
   go-canbus's virtual bus or Linux vcan: no arbitration, bit timing, error
   frames, bus load or controller differences.

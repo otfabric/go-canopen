@@ -21,8 +21,9 @@ TEST_PKGS := $(shell go list ./... | grep -v '/examples')
 # Packages whose coverage counts. Excluded, by policy (TESTING.md): the
 # examples, the generator of the golden files (internal/cmd), the
 # generated golden code (internal/golden, verified by the differential
-# test), the test helpers (internal/testbus) and the end-to-end suite.
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/internal/' | grep -v '/e2e' | paste -sd, -)
+# test), the test helpers (internal/testbus), the end-to-end suite and the
+# interop suite (build tag interop).
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/internal/' | grep -v '/e2e' | grep -v '/interop' | paste -sd, -)
 COVER_MIN := 90
 
 # vcan interface the SocketCAN tests use (Linux).
@@ -137,7 +138,7 @@ interop-images: ## Build the canopen-interop images from source as :dev (needs D
 interop: ## Run the interop suite against the canopen-interop images (Linux, Docker, vcan0; writes bin/interop-report.json)
 	@mkdir -p $(BIN_DIR)
 	@CANOPEN_REQUIRE_VCAN=1 CANOPEN_REQUIRE_INTEROP=1 CANOPEN_INTEROP_REPORT=$(CURDIR)/$(BIN_DIR)/interop-report.json \
-		go test -tags=interop -count=1 -timeout=60m ./interop/...
+		go test -tags=interop -count=1 -timeout=60m -v ./interop/...
 
 check: generate-check fmt-check lint lint-ci vet vuln test coverage examples cross ## Everything CI checks except the vcan and interop jobs
 
