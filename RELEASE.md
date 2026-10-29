@@ -44,7 +44,8 @@ SDO block transfers of empty data, fixed in this release. No API change.
   the reason) or a documented known difference (with the reason); a skip
   or a known difference never counts as a pass. `make interop` writes
   `bin/interop-report.json`; the Interop workflow uploads it.
-- Local result (Lima VM, arm64, Linux 7.0): 0 failures; per adapter
+- Result, identical locally (Lima VM, arm64, Linux 7.0) and in CI (amd64
+  and arm64 runners): 0 failures; per adapter
   (pass / known / skip): CANopenNode 435 / 21 / 34, Lely 455 / 22 / 13,
   python canopen 303 / 10 / 177. The differences (empty DOMAIN and unused
   error history entries in the stacks' SDO servers, python canopen's

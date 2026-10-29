@@ -120,20 +120,22 @@ sub-object).
 
 ## Interop matrix
 
-Results of canopen-interop v0.1.0 against this branch, per adapter and
-direction: pass / known difference / skip / fail.
+Results of canopen-interop v0.1.0 against go-canopen v0.2.0, per adapter
+and direction: pass / known difference / skip / fail. CI is the Interop
+workflow of pull request #2 (GitHub-hosted ubuntu-24.04 and
+ubuntu-24.04-arm runners); its report is the workflow's artifact.
 
 | Adapter | Direction | Local (Lima VM, arm64, Linux 7.0) | CI amd64 | CI arm64 |
 |---------|-----------|------------------|----------|----------|
-| canopennode | go-canopen-master | 340 / 21 / 2 / 0 | CI_CNM_A | CI_CNM_B |
-| canopennode | go-canopen-device | 95 / 0 / 8 / 0 | CI_CND_A | CI_CND_B |
-| canopennode | eds | 0 / 0 / 24 / 0 | CI_CNE_A | CI_CNE_B |
-| lely | go-canopen-master | 347 / 16 / 0 / 0 | CI_LM_A | CI_LM_B |
-| lely | go-canopen-device | 97 / 1 / 5 / 0 | CI_LD_A | CI_LD_B |
-| lely | eds | 11 / 5 / 8 / 0 | CI_LE_A | CI_LE_B |
-| pythoncanopen | go-canopen-master | 189 / 3 / 171 / 0 | CI_PM_A | CI_PM_B |
-| pythoncanopen | go-canopen-device | 103 / 0 / 0 / 0 | CI_PD_A | CI_PD_B |
-| pythoncanopen | eds | 11 / 7 / 6 / 0 | CI_PE_A | CI_PE_B |
+| canopennode | go-canopen-master | 340 / 21 / 2 / 0 | 340 / 21 / 2 / 0 | 340 / 21 / 2 / 0 |
+| canopennode | go-canopen-device | 95 / 0 / 8 / 0 | 95 / 0 / 8 / 0 | 95 / 0 / 8 / 0 |
+| canopennode | eds | 0 / 0 / 24 / 0 | 0 / 0 / 24 / 0 | 0 / 0 / 24 / 0 |
+| lely | go-canopen-master | 347 / 16 / 0 / 0 | 347 / 16 / 0 / 0 | 347 / 16 / 0 / 0 |
+| lely | go-canopen-device | 97 / 1 / 5 / 0 | 97 / 1 / 5 / 0 | 97 / 1 / 5 / 0 |
+| lely | eds | 11 / 5 / 8 / 0 | 11 / 5 / 8 / 0 | 11 / 5 / 8 / 0 |
+| pythoncanopen | go-canopen-master | 189 / 3 / 171 / 0 | 189 / 3 / 171 / 0 | 189 / 3 / 171 / 0 |
+| pythoncanopen | go-canopen-device | 103 / 0 / 0 / 0 | 103 / 0 / 0 / 0 | 103 / 0 / 0 / 0 |
+| pythoncanopen | eds | 11 / 7 / 6 / 0 | 11 / 7 / 6 / 0 | 11 / 7 / 6 / 0 |
 
 By area:
 
