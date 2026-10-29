@@ -16,7 +16,7 @@
 | Examples | any OS | `make examples` (each self-contained example must exit successfully) |
 | Cross builds | any OS | `make cross` (linux amd64/arm64/arm, darwin amd64/arm64, windows amd64/arm64) |
 | Lint | any OS | `make lint` (staticcheck, also as GOOS=linux), `make lint-ci` (golangci-lint with `.golangci.yml`), `make vet` |
-| Interoperability with independent stacks | Linux, Docker, vcan0 | `make interop` — **planned**, see [INTEROPERABILITY.md](INTEROPERABILITY.md) |
+| Interoperability with independent stacks (CANopenNode, Lely CANopen, python canopen; canopen-interop images pinned by digest) | Linux, Docker, vcan0 | `make interop` (writes `bin/interop-report.json`; `CANOPEN_REQUIRE_INTEROP=1`: a missing Docker, image or interface fails); the Interop workflow on amd64 and arm64. See [INTEROPERABILITY.md](INTEROPERABILITY.md) |
 | MicroVM kernel matrix | — | Not applicable: go-canopen uses no kernel CAN feature beyond go-canbus's raw sockets, which go-canbus tests on kernels 6.1–7.0 |
 | Everything above except vcan and interop | any OS | `make check` |
 
@@ -27,8 +27,10 @@ and Windows, and on Linux amd64 and arm64 with vcan.
 
 ## Test inventory
 
-234 `Test` functions, 13 fuzz targets, 7 `Example` functions and 4
-benchmarks (SDO), in every library package and `e2e`.
+235 `Test` functions, 13 fuzz targets, 7 `Example` functions and 4
+benchmarks (SDO), in every library package and `e2e`; and the interop
+suite (`interop/`, build tag `interop`): 3 `Test` functions with about
+1,470 scenarios against three stacks ([INTEROPERABILITY.md](INTEROPERABILITY.md)).
 
 ### Fuzz targets
 

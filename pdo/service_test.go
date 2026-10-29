@@ -595,9 +595,12 @@ func TestReconfigureWhileRunning(t *testing.T) {
 	if rp.Config().COBID != 0x206 {
 		t.Error("not reloaded")
 	}
+	// The loop above may have sent a frame more than once per COB-ID:
+	// count from here.
+	before := rp.Stats().Received
 	f, _ := canbus.NewStandard(0x206, []byte{1})
 	_ = a.Send(ctx(t), &f)
-	never(t, "inconsistent RPDO received", 30*time.Millisecond, func() bool { return rp.Stats().Received > 3 })
+	never(t, "inconsistent RPDO received", 30*time.Millisecond, func() bool { return rp.Stats().Received > before })
 }
 
 // TestChaos runs an event-driven TPDO with an event timer over a lossy,

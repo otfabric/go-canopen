@@ -372,6 +372,47 @@ func TestClientBlockUploadSilent(t *testing.T) {
 	}
 }
 
+// TestClientBlockUploadEmpty: Lely CANopen's server ends the block upload
+// of an empty object without a segment; CANopenNode sends one empty one.
+func TestClientBlockUploadEmpty(t *testing.T) {
+	cases := []struct {
+		name  string
+		init  byte    // initiate response: 0xC6 sized, 0xC4 unsized (CRC)
+		start []frame // the server's answer to the start
+		err   canopen.AbortCode
+		size  uint32
+	}{
+		{"sized, no segment", 0xC6, []frame{seg(0xC1 | 7<<2)}, 0, 0},
+		{"unsized, no segment", 0xC4, []frame{seg(0xC1 | 7<<2)}, 0, 0},
+		{"sized, empty segment", 0xC6, []frame{seg(0x81)}, 0, 0},
+		{"size 3, no segment", 0xC6, []frame{seg(0xC1 | 7<<2)}, canopen.AbortLengthLow, 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			respond := func(r frame) []frame {
+				switch r[0] {
+				case 0xA4:
+					return []frame{muxFrame(tc.init, idxDomain, 0, tc.size)}
+				case 0xA3:
+					return tc.start
+				case 0xA2: // acknowledgement of the empty segment
+					return []frame{seg(0xC1 | 7<<2)}
+				}
+				return nil
+			}
+			c, _ := scriptedClient(t, respond, WithBlockMode(BlockAlways))
+			got, err := c.Upload(ctxT(t), idxDomain, 0)
+			if tc.err != 0 {
+				wantAbort(t, err, tc.err, false)
+				return
+			}
+			if err != nil || len(got) != 0 {
+				t.Fatalf("upload = % X, %v", got, err)
+			}
+		})
+	}
+}
+
 func TestClientBlockUploadAbort(t *testing.T) {
 	for _, phase := range []string{"segments", "end"} {
 		t.Run(phase, func(t *testing.T) {

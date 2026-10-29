@@ -683,6 +683,12 @@ func (x *xfer) blockUpload(pst uint8) ([]byte, error) {
 		if f.isAbort() {
 			return nil, x.remoteAbort(f)
 		}
+		if len(buf) == 0 && r.seq == 0 && f[0]&blkMask == scsBlockUpload<<5|blkEnd {
+			// An empty object: the server ends the transfer without a
+			// segment (Lely CANopen does). No segment can look like
+			// this: the first one has sequence number 1.
+			return x.blockUploadEnd(f, buf, sized, size, useCRC)
+		}
 		s, last := f[0]&0x7F, f[0]&0x80 != 0
 		if s != r.seq+1 {
 			x.c.st.ignored.Add(1)
@@ -717,23 +723,31 @@ func (x *xfer) blockUpload(pst uint8) ([]byte, error) {
 			return nil, x.remoteAbort(f)
 		}
 		if f[0]&blkMask == scsBlockUpload<<5|blkEnd {
-			n := int(f[0] >> 2 & 7)
-			data := buf[:len(buf)-n]
-			switch {
-			case sized && int64(len(data)) > size:
-				return nil, protoErr(canopen.AbortLengthHigh)
-			case sized && int64(len(data)) < size:
-				return nil, protoErr(canopen.AbortLengthLow)
-			case useCRC && CRC16(data) != binary.LittleEndian.Uint16(f[1:3]):
-				return nil, protoErr(canopen.AbortCRC)
-			}
-			if err := x.send(frame{ccsBlockUpload<<5 | blkEnd}); err != nil {
-				return nil, err
-			}
-			return data, nil
+			return x.blockUploadEnd(f, buf, sized, size, useCRC)
 		}
 		x.c.st.ignored.Add(1)
 	}
+}
+
+// blockUploadEnd checks the end message of a block upload against the
+// data received and confirms it.
+func (x *xfer) blockUploadEnd(f frame, buf []byte, sized bool, size int64, useCRC bool) ([]byte, error) {
+	// n bytes of the last segment were padding; without any segment
+	// (an empty object) there is nothing to drop.
+	n := min(int(f[0]>>2&7), len(buf))
+	data := buf[:len(buf)-n]
+	switch {
+	case sized && int64(len(data)) > size:
+		return nil, protoErr(canopen.AbortLengthHigh)
+	case sized && int64(len(data)) < size:
+		return nil, protoErr(canopen.AbortLengthLow)
+	case useCRC && CRC16(data) != binary.LittleEndian.Uint16(f[1:3]):
+		return nil, protoErr(canopen.AbortCRC)
+	}
+	if err := x.send(frame{ccsBlockUpload<<5 | blkEnd}); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 // receiver paces the client's side of a block upload: it waits for

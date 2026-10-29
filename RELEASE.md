@@ -5,6 +5,74 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.2.0
+
+**Date:** 2026-10-29
+**Previous release:** v0.1.0
+
+## Summary
+
+go-canopen is now tested against three independent CANopen stacks,
+CANopenNode v4, Lely CANopen 2.3.5 and python canopen 2.4.1, through the
+containers of canopen-interop v0.1.0 (pinned by digest) on Linux vcan, in
+both directions, on amd64 and arm64 in CI. The suite found one bug, in
+SDO block transfers of empty data, fixed in this release. No API change.
+
+## Interoperability suite
+
+- **go-canopen as master and client** of each stack's device (the shared
+  `interop-device.eds`, read with `eds.ParseFile`): SDO upload and download,
+  normal and block with CRC, of every object of the EDS, the DOMAIN with
+  0 to 4096 bytes, aborts (missing object and sub-index, access, length,
+  limits), scan and identity, NMT commands with boot-ups and heartbeat
+  states seen by the master, heartbeat loss, TPDOs decoded with
+  `pdo.Listener` after `pdo.ReadConfig`, a TPDO remapped with
+  `pdo.Configure`, a synchronous TPDO driven by the master's SYNC, an RPDO
+  to the device, EMCY decoded by `emcy.Consumer`, `ConfigureFromDCF`; the
+  values written are checked with the device's own dump.
+- **Each stack as master and client** of a go-canopen `node` in the test
+  process: SDO upload and download (normal and block) checked byte for
+  byte in the node's dictionary, aborts, NMT commands and both resets,
+  `listen` (boot-up, heartbeat, EMCY), `pdo-receive`, `pdo-configure`,
+  python canopen's SYNC producer driving a synchronous TPDO, and python
+  canopen's `BaseNode402` enabling, disabling and fault-resetting a
+  go-canopen `cia402.Drive`.
+- **EDS**: Lely's dcf-tools and python canopen's importer against
+  `eds.Validate` and the dictionary on 12 EDS/DCF files: the verdict and
+  the normalized object list.
+- Every scenario is pass, fail, skip (a capability the image lacks, with
+  the reason) or a documented known difference (with the reason); a skip
+  or a known difference never counts as a pass. `make interop` writes
+  `bin/interop-report.json`; the Interop workflow uploads it.
+- Result, identical locally (Lima VM, arm64, Linux 7.0) and in CI (amd64
+  and arm64 runners): 0 failures; per adapter
+  (pass / known / skip): CANopenNode 435 / 21 / 34, Lely 455 / 22 / 13,
+  python canopen 303 / 10 / 177. The differences (empty DOMAIN and unused
+  error history entries in the stacks' SDO servers, python canopen's
+  LocalNode ignoring the sub-index of a VAR, CANopenNode's string buffers,
+  Lely's client skipping a 0-byte block download, EDS files the Python
+  checkers reject or accept unvalidated) are listed with their reasons in
+  INTEROPERABILITY.md.
+
+## Fixes
+
+- **sdo**: an SDO block transfer of empty data may end without a segment:
+  Lely CANopen's server sends the end message right after the start of a
+  block upload of an empty object, and python canopen's client does the
+  same in a block download of 0 bytes. go-canopen's client and server took
+  that message for an out-of-sequence segment and waited for the timeout
+  (the client then repeated its start, which Lely aborted with 0x05040001).
+  Both now accept the end of a transfer before any segment (a message no
+  segment can look like: the first one has sequence number 1); a transfer
+  ending this way with a size indicated other than 0 is aborted with
+  0x06070013.
+
+## Compatibility
+
+No API change. Go 1.23 or later; go-canbus v0.7.0.
+
+---
+
 ## v0.1.0
 
 **Date:** 2026-10-29

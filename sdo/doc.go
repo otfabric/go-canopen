@@ -52,6 +52,10 @@
 //   - Only byte 0 = 0x80 is an abort while block segments may arrive (a
 //     last segment reads 0x81..0xFF). Elsewhere every message with
 //     specifier 4 is one.
+//   - A block transfer of empty data may end without a segment (the end
+//     message right after the start, as Lely CANopen's server and python
+//     canopen's client do) or with one empty segment (as this package and
+//     CANopenNode send): both are accepted.
 //   - Expedited downloads without the size indicated carry the object's
 //     size when it is 1..4 bytes, else 4 bytes.
 //   - A size indicated at the initiate that the data does not match is

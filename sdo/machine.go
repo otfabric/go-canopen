@@ -430,6 +430,12 @@ func (m *machine) blockSegment(f frame) bool {
 		m.reset()
 		return false
 	}
+	if len(m.buf) == 0 && m.seq == 0 && f[0]&blkMask == ccsBlockDownload<<5|blkEnd {
+		// Empty data: the client ends the transfer without a segment
+		// (python canopen does). No segment can look like this: the
+		// first one has sequence number 1.
+		return m.blockDownloadEnd(f)
+	}
 	seq, last := f[0]&0x7F, f[0]&0x80 != 0
 	if seq != m.seq+1 {
 		m.st.ignored.Add(1)
@@ -469,8 +475,10 @@ func (m *machine) blockDownloadEnd(f frame) bool {
 		m.st.ignored.Add(1)
 		return false
 	}
-	n := int(f[0] >> 2 & 7)
-	data := m.buf[:len(m.buf)-n] // buf holds at least one 7-byte segment
+	// n bytes of the last segment were padding; without any segment
+	// (empty data) there is nothing to drop.
+	n := min(int(f[0]>>2&7), len(m.buf))
+	data := m.buf[:len(m.buf)-n]
 	if !m.checkSize(len(data)) {
 		return false
 	}

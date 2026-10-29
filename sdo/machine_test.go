@@ -49,6 +49,22 @@ func TestMachine(t *testing.T) {
 		{name: "segment while idle", in: []frame{{0x00}}, want: abortOf(0, canopen.AbortCommand)},
 		{name: "block ack while idle", in: []frame{{0xA2, 1, 1}}, want: abortOf(0, canopen.AbortCommand)},
 		{name: "abort while idle", in: []frame{abortOf(idxDomain, canopen.AbortGeneral)}},
+		// Empty data in a block download: python canopen ends the transfer
+		// without a segment, go-canopen and CANopenNode send one empty one.
+		{name: "block download empty without segment", in: []frame{blkInitDL(idxDomain, 0, true), seg(0xC1 | 7<<2)},
+			want: seg(0xA1), check: func(t *testing.T, m *machine) {
+				if b, err := m.d.Get(idxDomain, 0); err != nil || len(b) != 0 || m.st.downloads.Load() != 1 {
+					t.Errorf("domain = % X, %v, downloads %d", b, err, m.st.downloads.Load())
+				}
+			}},
+		{name: "block download empty with a segment", in: []frame{blkInitDL(idxDomain, 0, true), seg(0x81), seg(0xC1 | 7<<2)},
+			want: seg(0xA1), check: func(t *testing.T, m *machine) {
+				if b, err := m.d.Get(idxDomain, 0); err != nil || len(b) != 0 || m.st.downloads.Load() != 1 {
+					t.Errorf("domain = % X, %v, downloads %d", b, err, m.st.downloads.Load())
+				}
+			}},
+		{name: "block download end without segment, size indicated", in: []frame{blkInitDL(idxDomain, 3, true), seg(0xC1 | 7<<2)},
+			want: abortOf(idxDomain, canopen.AbortLengthLow)},
 		{name: "expedited unsized u8", in: []frame{muxFrame(0x22, idxU8, 0, 0x99)},
 			want: muxFrame(0x60, idxU8, 0, 0), check: func(t *testing.T, m *machine) {
 				if v, _ := m.d.GetUint(idxU8, 0); v != 0x99 {

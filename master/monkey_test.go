@@ -123,12 +123,16 @@ func monkeyRun(t *testing.T, cfg chaos.Config) {
 		case !cleanErr(err):
 			t.Fatalf("write: unclean error %v", err)
 		}
+		// A failed write may still land: a delayed or duplicated request
+		// can reach the node during the read. The read must return the
+		// node's value from before or after it.
 		want, _ := d.GetUint(nettest.IdxParam, 0)
 		got, err := c.ReadUint(ctx, nettest.IdxParam, 0)
+		after, _ := d.GetUint(nettest.IdxParam, 0)
 		switch {
 		case err == nil:
-			if got != want {
-				t.Fatalf("read %x, node has %x", got, want)
+			if got != want && got != after {
+				t.Fatalf("read %x, node has %x (before the read) and %x (after)", got, want, after)
 			}
 		case !cleanErr(err):
 			t.Fatalf("read: unclean error %v", err)

@@ -11,13 +11,20 @@ canopenctl). Newest first within each section.
 | canopen-interop | v0.1.0 | CANopenNode v4.1, Lely 2.3.5, python canopen 2.4.1 behind one contract; self-test of the references against each other |
 | canopenctl | in progress | CLI on go-canopen |
 
+## Interop suite (2026-10-29, v0.2.0 section in RELEASE.md)
+
+`interop/` against canopen-interop v0.1.0 (pinned by digest), Interop
+workflow on amd64/arm64; matrix and known differences in
+INTEROPERABILITY.md. Found and fixed: SDO block transfers of empty data
+ending without a segment (Lely server, python canopen client). Run
+locally in the Lima VM `canvm`: cross-compile `bin/interop.test`
+(GOOS=linux GOARCH=arm64, -tags interop) and run it from `interop/` with
+`sg docker`.
+
 ## Next
 
-1. Interop suite `interop/` against canopen-interop v0.1.0 (pinned by
-   digest), Interop workflow on amd64/arm64, fill the matrix in
-   INTEROPERABILITY.md.
-2. Phase 5: CANopen FD / USDO (CiA 1301).
-3. LSS (CiA 305), CiA 302 configuration manager with store/restore,
+1. Phase 5: CANopen FD / USDO (CiA 1301).
+2. LSS (CiA 305), CiA 302 configuration manager with store/restore,
    more profiles (CiA 401, 406). See ROADMAP.md.
 
 ## Decisions
