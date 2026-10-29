@@ -42,6 +42,12 @@ func (r *recorder) find(f func(master.Event) bool) (master.Event, bool) {
 	return master.Event{}, false
 }
 
+func (r *recorder) all() []master.Event {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]master.Event(nil), r.evs...)
+}
+
 func (r *recorder) count(f func(master.Event) bool) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()

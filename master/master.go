@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-canopen"
@@ -197,7 +198,7 @@ type Master struct {
 
 	lcMu    sync.Mutex
 	started bool
-	closed  bool
+	closed  atomic.Bool // written under lcMu; read without it (isClosed)
 
 	mu      sync.Mutex
 	clients map[canopen.NodeID]*sdo.Client
@@ -344,7 +345,7 @@ func (m *Master) Start() error {
 	m.lcMu.Lock()
 	defer m.lcMu.Unlock()
 	switch {
-	case m.closed:
+	case m.closed.Load():
 		return canopen.ErrClosed
 	case m.started:
 		return fmt.Errorf("master: %w: already started", canopen.ErrBusy)
@@ -375,11 +376,11 @@ func (m *Master) Start() error {
 // delivered before it returns.
 func (m *Master) Close() error {
 	m.lcMu.Lock()
-	if m.closed {
+	if m.closed.Load() {
 		m.lcMu.Unlock()
 		return nil
 	}
-	m.closed = true
+	m.closed.Store(true)
 	started := m.started
 	m.lcMu.Unlock()
 	// The heartbeat consumer starts boot procedures: close it first.
@@ -419,11 +420,10 @@ func (m *Master) Close() error {
 	return nil
 }
 
-func (m *Master) isClosed() bool {
-	m.lcMu.Lock()
-	defer m.lcMu.Unlock()
-	return m.closed
-}
+// isClosed takes no lock: it is called with mu held, while Start holds
+// lcMu and can wait for mu (the local node's boot-up starts boot procedures
+// through goBoot).
+func (m *Master) isClosed() bool { return m.closed.Load() }
 
 // track registers a service to close with the master; it closes it at
 // once when the master is closed.

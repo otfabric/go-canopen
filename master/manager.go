@@ -406,20 +406,17 @@ func (g *manager) bootProcess(ctx context.Context, id canopen.NodeID) {
 	}
 }
 
-// bootDone ends a boot slave process: it records the result, starts the
-// error control (heartbeat consumption from 0x1016, else node guarding
-// from the assignment), starts the node when allowed, and reports it.
+// bootDone ends a boot slave process: it starts the error control
+// (heartbeat consumption from 0x1016, else node guarding from the
+// assignment), starts the node when allowed, reports it, and only then
+// records the result, so that a network boot-up never reports done before
+// the boot events of its slaves.
 func (g *manager) bootDone(id canopen.NodeID, st canopen.NMTState, status BootStatus, err error) {
 	a := g.assignment(id)
 	startup := g.startup()
 	if st == canopen.StateUnknown && status.OK() {
 		st = canopen.StatePreOperational
 	}
-	g.mu.Lock()
-	s := g.slave(id)
-	s.booting, s.booted, s.status, s.err, s.state, s.ended = false, true, status, err, st, time.Now()
-	g.broadcastLocked()
-	g.mu.Unlock()
 	if status.OK() {
 		if ms := g.consumerTime(id); ms > 0 {
 			_ = g.m.Monitor(id, ms)
@@ -432,20 +429,22 @@ func (g *manager) bootDone(id canopen.NodeID, st canopen.NMTState, status BootSt
 		ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
 		if g.m.StartNode(ctx, id) == nil {
 			st = canopen.StateOperational
-			g.mu.Lock()
-			s.state = st
-			g.mu.Unlock()
 		}
 		cancel()
 	}
 	if status.OK() {
 		g.m.log.Info("master: slave booted", "node", int(id), "status", status.String())
 		g.m.disp.push(Event{Kind: EventBootDone, Node: id, State: st, Status: status})
-		return
+	} else {
+		be := &BootError{Node: id, Status: status, Err: err}
+		g.m.log.Warn("master: boot slave failed", "error", be)
+		g.m.disp.push(Event{Kind: EventBootFailed, Node: id, State: st, Status: status, Err: be})
 	}
-	be := &BootError{Node: id, Status: status, Err: err}
-	g.m.log.Warn("master: boot slave failed", "error", be)
-	g.m.disp.push(Event{Kind: EventBootFailed, Node: id, State: st, Status: status, Err: be})
+	g.mu.Lock()
+	s := g.slave(id)
+	s.booting, s.booted, s.status, s.err, s.state, s.ended = false, true, status, err, st, time.Now()
+	g.broadcastLocked()
+	g.mu.Unlock()
 }
 
 // bootSlave runs the boot slave process once (CiA 302-2, in the order of

@@ -803,8 +803,8 @@ func TestManagerLateMandatory(t *testing.T) {
 	n5 := startNode(t, buses[1], nettest.Dict(t, 5, nil))
 	r.rec.wait(t, "network boot", kind(master.EventNetworkBootDone, masterID))
 	waitState(t, n5, canopen.StateOperational)
-	if r.rec.count(bootOK(5)) != 1 {
-		t.Fatal("boot events")
+	if n := r.rec.count(bootOK(5)); n != 1 {
+		t.Fatalf("boot events: %d; all: %v", n, r.rec.all())
 	}
 }
 
