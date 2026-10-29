@@ -180,8 +180,8 @@ type Dictionary struct {
 	objects  map[uint16]*Object
 	values   map[*Variable][]byte
 	nodeID   canopen.NodeID
-	reads    map[hookKey][]ReadHook
-	writes   map[hookKey][]WriteHook
+	reads    map[hookKey][]hook[ReadHook]
+	writes   map[hookKey][]hook[WriteHook]
 	watchers map[int]Watcher
 	nextW    int
 }
@@ -193,8 +193,8 @@ func New(node canopen.NodeID) *Dictionary {
 		objects:  map[uint16]*Object{},
 		values:   map[*Variable][]byte{},
 		nodeID:   node,
-		reads:    map[hookKey][]ReadHook{},
-		writes:   map[hookKey][]WriteHook{},
+		reads:    map[hookKey][]hook[ReadHook]{},
+		writes:   map[hookKey][]hook[WriteHook]{},
 		watchers: map[int]Watcher{},
 	}
 }
@@ -575,27 +575,56 @@ func (d *Dictionary) Reset(from, to uint16) {
 
 // OnRead registers a read hook for a sub-object, or for every sub-object
 // of the index when sub is -1. Hooks run in registration order; the more
-// specific (sub ≥ 0) hooks run first.
-func (d *Dictionary) OnRead(index uint16, sub int, h ReadHook) {
+// specific (sub ≥ 0) hooks run first. The returned function removes the
+// hook.
+func (d *Dictionary) OnRead(index uint16, sub int, h ReadHook) (remove func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	k := hookKey{index, sub}
-	d.reads[k] = append(d.reads[k], h)
+	id := d.nextW
+	d.nextW++
+	d.reads[k] = append(d.reads[k], hook[ReadHook]{id, h})
+	return func() { d.mu.Lock(); d.reads[k] = without(d.reads[k], id); d.mu.Unlock() }
 }
 
 // OnWrite registers a write hook for a sub-object, or for every
-// sub-object of the index when sub is -1.
-func (d *Dictionary) OnWrite(index uint16, sub int, h WriteHook) {
+// sub-object of the index when sub is -1. The returned function removes
+// the hook.
+func (d *Dictionary) OnWrite(index uint16, sub int, h WriteHook) (remove func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	k := hookKey{index, sub}
-	d.writes[k] = append(d.writes[k], h)
+	id := d.nextW
+	d.nextW++
+	d.writes[k] = append(d.writes[k], hook[WriteHook]{id, h})
+	return func() { d.mu.Lock(); d.writes[k] = without(d.writes[k], id); d.mu.Unlock() }
+}
+
+type hook[H any] struct {
+	id int
+	h  H
+}
+
+func without[H any](hs []hook[H], id int) []hook[H] {
+	out := hs[:0:0]
+	for _, x := range hs {
+		if x.id != id {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 // hooksFor returns the hooks of a sub-object, the specific ones first.
-func hooksFor[H any](m map[hookKey][]H, index uint16, sub uint8) []H {
-	out := append([]H(nil), m[hookKey{index, int(sub)}]...)
-	return append(out, m[hookKey{index, -1}]...)
+func hooksFor[H any](m map[hookKey][]hook[H], index uint16, sub uint8) []H {
+	var out []H
+	for _, x := range m[hookKey{index, int(sub)}] {
+		out = append(out, x.h)
+	}
+	for _, x := range m[hookKey{index, -1}] {
+		out = append(out, x.h)
+	}
+	return out
 }
 
 // Watch registers a watcher for every value change; the returned function
