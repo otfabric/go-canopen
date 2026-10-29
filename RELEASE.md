@@ -92,7 +92,9 @@ unchanged.
   `WithUSDOClient`, `USDO()`, `ErrNoUSDO`; `Stats` gains `lss` and `usdo`.
 - **`sdo`**: `WithResetFence` (server): the server also receives the NMT
   commands and stops answering at a reset of its node, in the order the
-  frames arrived; `node` uses it.
+  frames arrived, and ignores requests received before it started (a
+  server started at a reset does not answer a request that arrived
+  during the reset); `node` uses it.
 - **`dissect`**: USDO requests and responses and 20-byte FD emergencies in
   CAN FD frames; LSS command names from `lss.Command.String` (cosmetic:
   "product code" instead of "product-code").

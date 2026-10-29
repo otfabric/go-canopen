@@ -59,6 +59,7 @@ type Server struct {
 
 	mu       sync.Mutex
 	started  bool
+	since    time.Time // WithResetFence: requests received earlier are ignored
 	closed   bool
 	c2s, s2c canopen.COBID
 	sub      *canbus.Subscription
@@ -139,6 +140,7 @@ func (s *Server) Start() error {
 	if s.cfg.resetNode != 0 {
 		filters = append(filters, canbus.ExactStandard(canopen.FuncNMT))
 	}
+	s.since = time.Now()
 	sub, err := s.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: filters}))
 	if err != nil {
 		return fmt.Errorf("sdo: subscribe: %w", err)
@@ -267,6 +269,12 @@ func (s *Server) run(ctx context.Context) {
 		if !s.enabled.Load() {
 			s.st.ignored.Add(1)
 			m.reset()
+			continue
+		}
+		if s.cfg.resetNode != 0 && !cf.Timestamp.IsZero() && cf.Timestamp.Before(s.since) {
+			// Received before this server started: during the reset that
+			// replaced the previous one (WithResetFence).
+			s.st.ignored.Add(1)
 			continue
 		}
 		now := time.Now()
