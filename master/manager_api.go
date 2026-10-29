@@ -25,13 +25,19 @@ func (m *Master) Node() *node.Node {
 
 // BootNetwork runs the CiA 302-2 network boot-up now (it runs on its own
 // at every boot-up of the master's node when 0x1F80 bit 0 is set),
-// cancelling one in progress: the slaves of the network list (0x1F81) are
+// replacing one in progress: the slaves of the network list (0x1F81) are
 // reset (communication), the mandatory and keep-alive ones booted at once
 // and the others when their boot-up message arrives; it returns when every
 // mandatory slave booted (nil, after which the master enters Operational
 // unless 0x1F80 bit 2 is set, and starts the slaves as 0x1F80 says) or one
 // failed (its *BootError: the boot-up halts, the master stays
 // pre-operational). Without bit 0 of 0x1F80 it does nothing.
+//
+// One network boot-up runs at a time: a newer one (another BootNetwork
+// call, or the automatic one at a boot-up of the master's node) cancels
+// the one in progress, and a call whose boot-up was replaced waits for the
+// newer one and returns its result; it returns ctx's error only when ctx
+// ends, and the cancellation when the master is closed.
 func (m *Master) BootNetwork(ctx context.Context) error {
 	if m.mgr == nil {
 		return ErrNoDictionary

@@ -20,9 +20,11 @@ download) and CANopen FD (CiA 1301: the USDO, 64-byte PDOs and 20-byte
 emergencies). The device (`node`) and the manager (`master`) integrate
 every one of them. The new features are implemented from public sources
 and tested against go-canopen itself (unit, fuzz, chaos, end-to-end on
-the virtual bus and Linux vcan); their interoperability with other
-stacks is pending canopen-interop contract 1.1, and CANopen FD has no
-independent oracle yet. The public API of v0.2.0 is unchanged.
+the virtual bus and Linux vcan) and, through canopen-interop v0.2.0
+(contract 1.1), against CANopenNode, Lely CANopen and python canopen:
+LSS, MPDOs, the CiA 302 boot-up with concise DCFs and the SYNC window.
+CANopen FD has no independent oracle yet. The public API of v0.2.0 is
+unchanged.
 
 ## New packages
 
@@ -88,13 +90,16 @@ independent oracle yet. The public API of v0.2.0 is unchanged.
   over the master's USDO client, USDO aborts reported as SDO aborts, FD
   heartbeat and EMCY consumers, FD PDO listeners and senders),
   `WithUSDOClient`, `USDO()`, `ErrNoUSDO`; `Stats` gains `lss` and `usdo`.
+- **`sdo`**: `WithResetFence` (server): the server also receives the NMT
+  commands and stops answering at a reset of its node, in the order the
+  frames arrived; `node` uses it.
 - **`dissect`**: USDO requests and responses and 20-byte FD emergencies in
   CAN FD frames; LSS command names from `lss.Command.String` (cosmetic:
   "product code" instead of "product-code").
 
 ## Verification
 
-- 392 tests, 25 fuzz targets (12 new: CANopen FD emergency and SYNC,
+- 402 tests, 25 fuzz targets (12 new: CANopen FD emergency and SYNC,
   MPDO messages, entries and consumer, LSS slave and responses, USDO
   messages, server and client, concise DCF, dissector in CAN FD),
   13 examples (3 new: lss-assign, canopen-fd, network-boot), race
@@ -109,17 +114,65 @@ independent oracle yet. The public API of v0.2.0 is unchanged.
 - Chaos: USDO through a CAN FD chaos bridge; LSS Fastscan and AssignAll;
   `TestMonkeyLSSBoot` (the network boot-up of unconfigured devices with
   the LSS step through random frame loss, duplication and delay).
-- Coverage 97.0 % total (11,183 statements, macOS), gate 90 %; every
-  package at least 90 % (lowest: `node` 92.6 %, `master` 94.6 %).
-- Interoperability: unchanged from v0.2.0 for the CiA 301 services; the
-  new features have no interop results yet (pending canopen-interop
-  contract 1.1; no reference stack implements CANopen FD).
+- Coverage 96.9 % total (11,283 statements, macOS), gate 90 %; every
+  package at least 90 % (lowest: `node` 92.6 %, `master` 94.4 %).
+- Interoperability: the suite runs canopen-interop v0.2.0 (contract 1.1,
+  images pinned by digest): 1,620 scenarios, 0 failures locally (Lima
+  VM, arm64, Linux 7.0). New: LSS (go-canopen's master against
+  CANopenNode's and Lely's slaves: identification, selection, inquiries,
+  bit timing, node-ID, store, Fastscan, `AssignAll`; the three stacks'
+  masters against go-canopen LSS nodes, CANopenNode's `assign-all`
+  included), MPDO DAM and SAM with Lely in both directions
+  (`ConfigureMPDO`, scanner and dispatcher lists), the CiA 302 boot-up
+  (the manager boots each stack's device from a concise DCF, reports
+  error status M for a wrong product code and assigns node-IDs with the
+  LSS step; Lely's boot master boots a go-canopen node), concise DCFs
+  byte-exact against Lely's dcfgen and `co_dev_write_dcf`, and the SYNC
+  window (python canopen's `rpdo-send` against a node: late RPDOs
+  discarded; go-canopen's master against Lely's and CANopenNode's
+  devices). New known differences: CANopenNode's LSS slave lacks the
+  identify services; Lely's applies a node-ID only at reset
+  communication and answers Fastscan when configured. CANopen FD is a
+  recorded skip: no reference stack implements it.
+- Fixed, found by the interop suite (each with a regression test):
+  `lss.Master.AssignAll` failed with `ErrNoNodeID` when the last device
+  took node-ID 127, and gave every node-ID to the first of several Lely
+  devices (they answer Fastscan with a pending node-ID; the remaining
+  devices are now listed and selected one by one); a node answered an
+  SDO request that arrived right after an NMT reset command from its
+  state before the reset and lost the next request (Lely's boot master
+  then reported error status M); the SYNC window ran on the wall clock
+  and broke when the clock was stepped (it now uses the monotonic
+  clock).
+- Fixed, found by stress runs (race detector, `-cpu 1,2,4`, chaos), each
+  with a regression test: `lss.Master.Configure` (and so
+  `ConfigureNodeID` and the LSS step of the boot-up) could configure a
+  second slave left in the configuration state by a lost "switch state
+  global", giving it the node-ID of another device; it now checks with
+  "inquire node-ID" that no slave stayed selected and, after the
+  selection, that the selected slave answers the identity inquiries
+  alone (`ErrConflict` otherwise). The heartbeat consumer timed events by
+  when it processed a frame, not when the frame arrived, so a late
+  boot-up started a second boot slave process; events now carry the
+  receive timestamp. The boot slave process failed with a wrong status
+  (D, M, N, O, J) when one SDO request of the identity check, the
+  configuration date check, the restore, a concise DCF entry or the store
+  timed out once; these requests are now repeated on timeout like the
+  read of 0x1000. A `BootNetwork` call superseded by another network
+  boot-up (a second call, or the automatic one at the master's boot-up,
+  for example when 0x1F80 is set after Start) returned "context
+  canceled"; it now returns the result of the boot-up that replaced it.
 
 ## Compatibility
 
 No API removed or changed; additions only. Behaviour changes: a node
 enforces the synchronous window when 0x1007 is set (it was only
-reported); `nmt.NewSlave` and `Slave.SetNodeID` accept `Unconfigured`;
+reported); a node's SDO server answers no request received after an NMT
+reset command addressed to it (until the server of the reset answers);
+`syncobj.Event.Time` carries a monotonic clock reading;
+`nmt.HeartbeatEvent.Time` is the frame's receive timestamp;
+`lss.Master.Configure` checks the selection (a few Fastscan windows
+longer); `nmt.NewSlave` and `Slave.SetNodeID` accept `Unconfigured`;
 `dissect` LSS names use spaces. Go 1.23 or later; go-canbus v0.7.0.
 
 ## Known limitations

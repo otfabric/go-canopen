@@ -55,7 +55,11 @@ type HeartbeatEvent struct {
 	Node     canopen.NodeID
 	State    canopen.NMTState // state after the event (Unknown after a timeout)
 	Previous canopen.NMTState // state before the event
-	Time     time.Time
+	// Time is the receive timestamp of the frame (when the bus gives one,
+	// else the time it was processed); for a timeout, the time it was
+	// detected. A consumer that processes frames late (a loaded system)
+	// still reports when they arrived.
+	Time time.Time
 }
 
 // NodeStatus is what a [HeartbeatConsumer] knows of a node.
@@ -334,9 +338,18 @@ func (c *HeartbeatConsumer) run(ctx context.Context, sub *canbus.Subscription) {
 		case <-sub.Done():
 			return
 		case f := <-sub.Frames():
-			c.emit(c.receive(&f, time.Now()))
+			c.emit(c.receive(&f, received(&f, time.Now())))
 		}
 	}
+}
+
+// received returns the receive time of f: its timestamp when the bus set
+// one that is not in the future, else now.
+func received(f *canbus.Frame, now time.Time) time.Time {
+	if ts := f.Timestamp; !ts.IsZero() && !ts.After(now) {
+		return ts
+	}
+	return now
 }
 
 // armTimer sets the timer to the earliest supervision deadline.

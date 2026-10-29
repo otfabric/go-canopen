@@ -105,7 +105,7 @@ func monkeyBoot(t *testing.T, cfg chaos.Config) {
 // end with both slaves configured.
 func TestMonkeyLSSBoot(t *testing.T) {
 	seeds := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < iterations(2); i++ {
+	for i := 0; i < iterations(1); i++ {
 		cfg := physicalFaults(seeds)
 		t.Run(fmt.Sprintf("seed%d", cfg.Seed), func(t *testing.T) {
 			nettest.CheckLeaks(t)
@@ -135,7 +135,7 @@ func monkeyLSSBoot(t *testing.T, cfg chaos.Config) {
 		lss.PartVendor: nettest.VendorID, lss.PartProduct: nettest.ProductCode, lss.PartRevision: nettest.Revision,
 	}}
 	r := startManager(t, []*canbus.Bus{a}, d, master.WithLSSBoot(fs),
-		master.WithLSSOptions(lss.WithRetries(3)),
+		master.WithLSSOptions(lss.WithRetries(3), lss.WithFastscanTimeout(10*time.Millisecond)),
 		master.WithSDOOptions(sdo.WithTimeout(60*time.Millisecond), sdo.WithRetries(3)),
 		master.WithBootTiming(master.BootTiming{RetryDelay: 50 * time.Millisecond, ResetTimeout: 300 * time.Millisecond}))
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)

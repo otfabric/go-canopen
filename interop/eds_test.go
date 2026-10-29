@@ -24,6 +24,8 @@ import (
 // /fixtures/eds).
 var interopFixtures = []string{
 	"interop-device.eds", "interop-device-node5.dcf", "compact-subobj.eds", "object-links.eds", "invalid-missing-datatype.eds",
+	// Fixture schema 1.1.
+	"mpdo-device.eds", "interop-device-other-product.eds",
 }
 
 // goFixtures are go-canopen's EDS/DCF test files (mounted on /work).

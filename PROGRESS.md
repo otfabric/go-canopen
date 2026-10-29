@@ -7,7 +7,21 @@ canopenctl). Newest first within each section.
 
 | Repo | Release | Notes |
 |------|---------|-------|
-| go-canopen | v0.3.0 (section in RELEASE.md) | LSS, MPDO, CANopen FD (USDO), SYNC window, store/restore, CiA 302 boot-up, concise DCF, program download; integrated in `node` and `master`. Interop of these pending canopen-interop contract 1.1 |
+| go-canopen | v0.3.0 (section in RELEASE.md) | LSS, MPDO, CANopen FD (USDO), SYNC window, store/restore, CiA 302 boot-up, concise DCF, program download; integrated in `node` and `master`. Interop against canopen-interop v0.2.0 (contract 1.1): 1,620 scenarios, 0 failures (local); LSS, MPDO, CiA 302 boot-up, concise DCF, SYNC window covered; CANopen FD, store/restore and program download have no oracle |
+
+## Interop contract 1.1 (2026-10-29)
+
+`interop/` on canopen-interop v0.2.0 (digests in harness_test.go):
+lss_test.go, mpdo_test.go, boot_test.go, cdcf_test.go,
+syncwindow_test.go (FD recorded as skips). Local run (Lima canvm):
+1,620 scenarios, 0 failures. Fixed from it: `AssignAll` at node-ID 127
+and with Lely slaves (Fastscan answered with a pending node-ID),
+`sdo.WithResetFence` (a node answered SDO requests that followed an NMT
+reset command, Lely's boot master then saw status M), SYNC window on the
+monotonic clock (the VM steps its wall clock). The manager scenarios
+configure 0x1F80 before Start: setting it after Start and calling
+`BootNetwork` races the automatic network boot-up of the master's own
+boot-up (the explicit call can end with "context canceled").
 
 ## v0.3.0 integration (2026-10-29)
 
@@ -56,8 +70,8 @@ locally in the Lima VM `canvm`: cross-compile `bin/interop.test`
 
 ## Next
 
-1. canopen-interop contract 1.1 (LSS, MPDO, store/restore, NMT master
-   boot-up) and the interop scenarios for the v0.3.0 features.
+1. Interop of store/restore, program download, TIME and node guarding
+   (needs canopen-interop operations); CI results of contract 1.1.
 2. More profiles (CiA 401, 406), SDO server channels; a hardware bench
    with a CAN FD adapter. See ROADMAP.md.
 

@@ -51,7 +51,7 @@ Conventions shared by every package:
 | `Client.Upload`, `Client.Download` | Raw transfers; per call `UseBlockMode` |
 | `ReadUint`, `ReadInt`, `ReadString`, `ReadValue`, `WriteUint8/16/32`, `WriteUint`, `WriteValue` | Typed helpers |
 | `NewServer(bus, d, opts...)` | Server for a dictionary (COB-IDs from 0x1200 or defaults); `SetEnabled`, `COBIDs` |
-| Options | `WithTimeout`, `WithLogger`, `WithCOBIDs`, `WithBlockSize`, `WithCRC`, `WithMaxSize` (both); `WithBlockMode` (`BlockNever`, `BlockAlways`, `BlockAuto`), `WithBlockThreshold`, `WithProtocolSwitch`, `WithRetries` (client) |
+| Options | `WithTimeout`, `WithLogger`, `WithCOBIDs`, `WithBlockSize`, `WithCRC`, `WithMaxSize` (both); `WithBlockMode` (`BlockNever`, `BlockAlways`, `BlockAuto`), `WithBlockThreshold`, `WithProtocolSwitch`, `WithRetries` (client); `WithResetFence` (server: no answer after an NMT reset command, used by `node`) |
 | `CRC16` | The block transfer CRC (CRC-16-CCITT) |
 | `ClientStats`, `ServerStats` | Counters |
 

@@ -288,7 +288,9 @@ func (n *Node) build(id canopen.NodeID) error {
 // the server still disabled; the state handler keeps it enabled in
 // Pre-operational.
 func (n *Node) newServer() (*sdo.Server, error) {
-	opts := append([]sdo.ServerOption{sdo.WithLogger(n.log)}, n.cfg.sdoOpts...)
+	// The reset fence: a request that arrives after an NMT reset command
+	// is not answered by this server, which the reset replaces.
+	opts := append([]sdo.ServerOption{sdo.WithLogger(n.log), sdo.WithResetFence(n.slave.NodeID())}, n.cfg.sdoOpts...)
 	srv, err := sdo.NewServer(n.bus, n.d, opts...)
 	if err != nil {
 		return nil, err

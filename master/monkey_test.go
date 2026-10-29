@@ -189,7 +189,7 @@ func monkeyRun(t *testing.T, cfg chaos.Config) {
 		_ = d.SetValue(nettest.IdxIn32, 0, int32(final))
 		time.Sleep(time.Millisecond)
 	}
-	nettest.Eventually(t, 5*time.Second, "last value (event timer)", func() bool {
+	nettest.Eventually(t, waitTimeout, "last value (event timer)", func() bool {
 		pmu.Lock()
 		defer pmu.Unlock()
 		return last == final

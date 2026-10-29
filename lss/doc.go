@@ -58,7 +58,10 @@
 //   - [Master.AssignAll] selects devices one by one with FastscanSelect
 //     and gives each a node-ID. A device that received a node-ID has a
 //     pending node-ID and no longer answers Fastscan, so the next round
-//     finds the next device. Safeguards against duplicate node-IDs: a
+//     finds the next device; a device that does answer again (Lely answers
+//     Fastscan whatever its node-ID) gets no second node-ID: the remaining
+//     devices are then listed with Master.Fastscan and configured by
+//     switch state selective. Safeguards against duplicate node-IDs: a
 //     node-ID once requested is never offered again; before each round all
 //     slaves are switched to waiting and "inquire node-ID" must stay
 //     unanswered twice; after a selection the whole address is inquired
@@ -114,6 +117,16 @@
 //     meaning is not established by the sources.
 //   - Frames shorter than a service needs are ignored; shorter frames are
 //     otherwise accepted (Lely); CANopenNode requires 8 bytes.
+//
+// # Configuring a selected device
+//
+// Switch state global has no answer, so a slave that missed it can stay
+// in the configuration state and take a configuration meant for another
+// device. [Master.Configure] therefore confirms, before it configures,
+// that no slave stays selected (inquire node-ID goes unanswered), checks
+// after the selection that only the target answers the identity
+// inquiries (else [ErrConflict], nothing configured), and leaves the
+// configuration state the same confirmed way.
 //
 // # Concurrency
 //

@@ -9,7 +9,17 @@
 //   - each stack's SDO client, NMT master, consumers, PDO tools, SYNC
 //     producer and CiA 402 client against a go-canopen node (node, with the
 //     dictionary of the same EDS) running in the test process;
-//   - each stack's EDS checker against eds.ParseFile and File.Validate.
+//   - each stack's EDS checker against eds.ParseFile and File.Validate;
+//   - contract 1.1 (canopen-interop v0.2.0): LSS (go-canopen's LSS master
+//     against the stacks' LSS slaves, the stacks' LSS masters against
+//     go-canopen LSS nodes), MPDO (DAM and SAM, both ways, with lely),
+//     the CiA 302 boot-up (go-canopen's manager booting the stacks'
+//     devices, also with its LSS step; lely's boot master booting a
+//     go-canopen node), concise DCFs (lely's dcfgen and dictionary dump
+//     against package cdcf, byte for byte) and the SYNC window (python
+//     canopen's RPDO sender against a go-canopen node, go-canopen's
+//     master against the stacks' devices). CANopen FD is recorded as a
+//     skip: no image implements it.
 //
 // The tests carry the interop build tag and need Docker, Linux and a vcan
 // interface (CANOPEN_TEST_IFACE, default vcan0):

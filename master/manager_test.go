@@ -334,7 +334,11 @@ func TestManagerConfigurationSkip(t *testing.T) {
 		cdcf.Entry{Index: nettest.IdxParam, Data: u32(0x55)},
 		cdcf.Entry{Index: cdcf.IndexVerifyConfiguration, SubIndex: 1, Data: u32(date)},
 		cdcf.Entry{Index: cdcf.IndexVerifyConfiguration, SubIndex: 2, Data: u32(tod)})
-	r := startManager(t, buses, d, master.WithStoreAfterConfigure(store.All))
+	// A verification read that times out (a CPU-starved run) correctly
+	// leads to configuring again, which this test asserts does not
+	// happen: a wide SDO timeout keeps starvation out of it.
+	r := startManager(t, buses, d, master.WithStoreAfterConfigure(store.All),
+		master.WithSDOOptions(sdo.WithTimeout(2*time.Second)))
 	r.rec.wait(t, "network boot", kind(master.EventNetworkBootDone, masterID))
 	if w5.Load() != 1 || s.Saves() != 1 {
 		t.Fatalf("first boot: %d writes, %d saves", w5.Load(), s.Saves())
@@ -344,12 +348,12 @@ func TestManagerConfigurationSkip(t *testing.T) {
 	// The slave restarts (power cycle): a fresh dictionary, the same store.
 	d5b, w5b := slaveDict()
 	n5b := startNode(t, buses[2], d5b, node.WithStore(s))
-	nettest.Eventually(t, 5*time.Second, "second boot", func() bool {
+	nettest.Eventually(t, waitTimeout, "second boot", func() bool {
 		return r.rec.count(bootOK(5)) == 2
 	})
 	waitState(t, n5b, canopen.StateOperational)
 	if w5b.Load() != 0 || s.Saves() != 1 {
-		t.Fatalf("second boot configured again: %d writes, %d saves", w5b.Load(), s.Saves())
+		t.Fatalf("second boot configured again: %d writes, %d saves; events %v", w5b.Load(), s.Saves(), r.rec.all())
 	}
 	if v, _ := d5b.GetUint(nettest.IdxParam, 0); v != 0x55 {
 		t.Fatalf("param %#x after restart", v)
@@ -511,7 +515,7 @@ func TestManagerErrorControl(t *testing.T) {
 				_ = n6.Close()
 				r.rec.wait(t, "node error", kind(master.EventNodeError, 6))
 				n6b := startNode(t, buses[3], nettest.Dict(t, 6, hb))
-				nettest.Eventually(t, 5*time.Second, "reboot", func() bool { return r.rec.count(bootOK(6)) == 2 })
+				nettest.Eventually(t, waitTimeout, "reboot", func() bool { return r.rec.count(bootOK(6)) == 2 })
 				waitState(t, n6b, canopen.StateOperational)
 			case "stop all":
 				_ = n5.Close()
@@ -596,7 +600,7 @@ func TestManagerRequestObjects(t *testing.T) {
 	r.rec.wait(t, "guarding lost", kind(master.EventGuardingLost, 6))
 	r.rec.wait(t, "node error", kind(master.EventNodeError, 6))
 	n6b := startNode(t, buses[2], nettest.Dict(t, 6, nil))
-	nettest.Eventually(t, 5*time.Second, "reboot", func() bool { return r.rec.count(bootOK(6)) == 2 })
+	nettest.Eventually(t, waitTimeout, "reboot", func() bool { return r.rec.count(bootOK(6)) == 2 })
 	waitState(t, n6b, canopen.StateOperational)
 	if err := d.Write(master.IndexRequestGuarding, 6, []byte{0}); err != nil {
 		t.Fatal(err)

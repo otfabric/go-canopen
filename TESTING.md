@@ -20,6 +20,14 @@
 | MicroVM kernel matrix | — | Not applicable: go-canopen uses no kernel CAN feature beyond go-canbus's raw sockets, which go-canbus tests on kernels 6.1–7.0 |
 | Everything above except vcan and interop | any OS | `make check` |
 
+The interop suite runs locally in a Linux VM (the Lima VM `canvm`,
+arm64): cross-compile the test binary into the repository's `bin/`
+(`GOOS=linux GOARCH=arm64 go test -c -tags interop -o bin/interop.test
+./interop`), and run it from `interop/` inside the VM with Docker
+(`sg docker -c`), `CANOPEN_REQUIRE_VCAN=1 CANOPEN_REQUIRE_INTEROP=1` and
+`CANOPEN_INTEROP_REPORT` pointing to a writable path; a full run takes
+about 6.5 minutes.
+
 A plain `go test ./...` passes on macOS and Windows: tests that need vcan
 or tshark skip there. CI runs the module on Go 1.23–1.26 (with and
 without the race detector) through the shared otfabric workflow, on macOS
@@ -27,10 +35,12 @@ and Windows, and on Linux amd64 and arm64 with vcan.
 
 ## Test inventory
 
-392 `Test` functions, 25 fuzz targets, 13 `Example` functions and 4
+402 `Test` functions, 25 fuzz targets, 13 `Example` functions and 4
 benchmarks (SDO), in every library package and `e2e`; and the interop
-suite (`interop/`, build tag `interop`): 3 `Test` functions with about
-1,470 scenarios against three stacks ([INTEROPERABILITY.md](INTEROPERABILITY.md)).
+suite (`interop/`, build tag `interop`): 4 `Test` functions with 1,620
+scenarios against three stacks, canopen-interop v0.2.0 (contract 1.1:
+LSS, MPDO, CiA 302 boot-up, concise DCF and SYNC window included;
+[INTEROPERABILITY.md](INTEROPERABILITY.md)).
 `go test -race -count=10 ./node ./master ./e2e` passes (twice, macOS), and
 the SocketCAN e2e tests pass ten times in a row on vcan0 (MTU 72) in a
 Linux 7.0 arm64 VM.
@@ -146,20 +156,20 @@ Measured 2026-10-29 on macOS (no vcan: the SocketCAN e2e tests skip),
 | `dissect` | 385 | 100.0 % |
 | `eds` | 840 | 97.9 % |
 | `emcy` | 429 | 98.1 % |
-| `lss` | 844 | 97.5 % |
-| `master` | 1341 | 94.6 % |
+| `lss` | 892 | 96.5 % |
+| `master` | 1371 | 94.4 % |
 | `mpdo` | 470 | 98.7 % |
-| `nmt` | 765 | 97.9 % |
+| `nmt` | 768 | 97.9 % |
 | `node` | 745 | 92.6 % |
 | `od` | 365 | 99.5 % |
 | `pdo` | 879 | 97.4 % |
 | `program` | 122 | 99.2 % |
-| `sdo` | 924 | 97.7 % |
+| `sdo` | 939 | 97.6 % |
 | `store` | 96 | 96.9 % |
-| `sync` | 312 | 98.4 % |
+| `sync` | 316 | 98.4 % |
 | `timestamp` | 255 | 98.4 % |
 | `usdo` | 846 | 96.1 % |
-| **total** | 11183 | **97.0 %** |
+| **total** | 11283 | **96.9 %** |
 
 ## Running
 

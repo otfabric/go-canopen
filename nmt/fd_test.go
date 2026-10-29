@@ -151,3 +151,31 @@ func TestSlaveUnconfigured(t *testing.T) {
 		t.Fatal("node-ID 0 accepted")
 	}
 }
+
+// TestReceivedTime checks that heartbeat events carry the frame's receive
+// timestamp, so that a consumer processing frames late (a starved
+// goroutine) reports when they arrived: the CiA 302 manager compares
+// boot-up times with the end of its boot procedures.
+func TestReceivedTime(t *testing.T) {
+	now := time.Now()
+	past := now.Add(-time.Second)
+	if got := received(&canbus.Frame{Timestamp: past}, now); !got.Equal(past) {
+		t.Fatal(got)
+	}
+	if got := received(&canbus.Frame{}, now); !got.Equal(now) {
+		t.Fatal("zero timestamp:", got)
+	}
+	if got := received(&canbus.Frame{Timestamp: now.Add(time.Hour)}, now); !got.Equal(now) {
+		t.Fatal("future timestamp:", got)
+	}
+	c, err := NewHeartbeatConsumer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := ErrorControlFrame(4, canopen.StateInitialising, false)
+	f.Timestamp = past
+	evs := c.receive(&f, received(&f, now))
+	if len(evs) != 1 || evs[0].Kind != EventBootUp || !evs[0].Time.Equal(past) || !c.Status(4).LastBoot.Equal(past) {
+		t.Fatalf("%+v %+v", evs, c.Status(4))
+	}
+}

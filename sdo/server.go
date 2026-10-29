@@ -68,7 +68,7 @@ type Server struct {
 
 // NewServer returns a server for d on bus. It does not receive until
 // [Server.Start]. Options: [WithLogger], [WithTimeout], [WithCOBIDs],
-// [WithBlockSize], [WithMaxSize], [WithCRC].
+// [WithBlockSize], [WithMaxSize], [WithCRC], [WithResetFence].
 func NewServer(bus canopen.Bus, d *od.Dictionary, opts ...ServerOption) (*Server, error) {
 	if bus == nil || d == nil {
 		return nil, errors.New("sdo: NewServer needs a bus and a dictionary")
@@ -135,7 +135,11 @@ func (s *Server) Start() error {
 	if !c2s.Valid() || !s2c.Valid() {
 		return fmt.Errorf("sdo: SDO server COB-IDs %s / %s are not valid", c2s, s2c)
 	}
-	sub, err := s.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: []canbus.Filter{c2s.Filter()}}))
+	filters := []canbus.Filter{c2s.Filter()}
+	if s.cfg.resetNode != 0 {
+		filters = append(filters, canbus.ExactStandard(canopen.FuncNMT))
+	}
+	sub, err := s.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: filters}))
 	if err != nil {
 		return fmt.Errorf("sdo: subscribe: %w", err)
 	}
@@ -249,6 +253,13 @@ func (s *Server) run(ctx context.Context) {
 			}
 			continue
 		}
+		if s.cfg.resetNode != 0 && cf.ID == canopen.FuncNMT && cf.Flags&canbus.FlagExtended == 0 {
+			if s.resetCommand(&cf) {
+				s.enabled.Store(false)
+				m.reset()
+			}
+			continue
+		}
 		f, ok := payload(&cf)
 		if !ok {
 			continue
@@ -264,4 +275,14 @@ func (s *Server) run(ctx context.Context) {
 			progress = now
 		}
 	}
+}
+
+// resetCommand reports whether an NMT frame is a reset node or reset
+// communication for the server's node (WithResetFence).
+func (s *Server) resetCommand(f *canbus.Frame) bool {
+	if f.Len < 2 {
+		return false
+	}
+	cmd, node := canopen.NMTCommand(f.Data[0]), canopen.NodeID(f.Data[1])
+	return (cmd == canopen.NMTResetNode || cmd == canopen.NMTResetCommunication) && (node == 0 || node == s.cfg.resetNode)
 }

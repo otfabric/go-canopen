@@ -268,7 +268,7 @@ func TestBootProcedure(t *testing.T) {
 	}
 	n5 = startNode(t, r.buses[1], d5)
 	r.rec.wait(t, "heartbeat resumed", kind(master.EventHeartbeatResumed, 5))
-	nettest.Eventually(t, 5*time.Second, "second boot", func() bool { return r.rec.count(kind(master.EventBootDone, 5)) == 2 })
+	nettest.Eventually(t, waitTimeout, "second boot", func() bool { return r.rec.count(kind(master.EventBootDone, 5)) == 2 })
 	waitState(t, n5, canopen.StateOperational)
 
 	// Device type mismatch, no start, removal.
@@ -326,7 +326,7 @@ func TestBootRestartedByNewBootUp(t *testing.T) {
 	<-mid
 	reset := make(chan error, 1)
 	go func() { reset <- n.Reset(nettest.Ctx(t), nmt.ResetCommunication) }()
-	nettest.Eventually(t, 5*time.Second, "node initialising", func() bool { return n.State() == canopen.StateInitialising })
+	nettest.Eventually(t, waitTimeout, "node initialising", func() bool { return n.State() == canopen.StateInitialising })
 	close(release)
 	if err := <-reset; err != nil {
 		t.Fatal(err)

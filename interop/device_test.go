@@ -200,6 +200,20 @@ func TestStackAgainstGoNode(t *testing.T) {
 			t.Run("listen", func(t *testing.T) { stackListen(t, ifc, a, c, load(), sc) })
 			t.Run("pdo", func(t *testing.T) { stackPDO(t, ifc, a, c, load(), sc) })
 			t.Run("cia402", func(t *testing.T) { stackCiA402(t, ifc, a, c, load(), sc) })
+			// Contract 1.1.
+			mpdoPath := fixture(t, a, mpdoEDS, dir)
+			loadMPDO := func() *eds.File {
+				f, err := eds.ParseFile(mpdoPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return f
+			}
+			t.Run("syncwindow", func(t *testing.T) { stackSyncWindow(t, ifc, a, c, load(), sc) })
+			t.Run("lss", func(t *testing.T) { stackLSS(t, ifc, a, c, load, sc) })
+			t.Run("boot", func(t *testing.T) { stackBoot(t, ifc, a, c, load, sc) })
+			t.Run("mpdo", func(t *testing.T) { stackMPDO(t, ifc, a, c, loadMPDO, sc) })
+			t.Run("fd", func(t *testing.T) { fdSkips(t, a, []string{"fd-usdo-server", "fd-pdo"}, sc) })
 		})
 	}
 }

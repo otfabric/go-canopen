@@ -14,12 +14,14 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 - Interoperability is tested against CANopenNode, Lely CANopen and
   python canopen on Linux vcan through the canopen-interop images
   ([INTEROPERABILITY.md](INTEROPERABILITY.md), with the known differences);
-  only what their contract (1.0) exposes is covered: no LSS, MPDO,
-  CANopen FD, CiA 302 boot-up, store/restore, program download, TIME,
-  node guarding or SRDO against them, CiA 402 only against python
-  canopen's BaseNode402. The features of v0.3.0 are tested against
-  go-canopen itself only, until canopen-interop's contract 1.1 covers
-  them.
+  only what their contract (1.1) exposes is covered: LSS (CANopenNode
+  and Lely slaves, all three masters), MPDOs (Lely only), the CiA 302
+  boot-up (go-canopen's manager with every stack's device; Lely's boot
+  master), concise DCFs (Lely's generators) and the SYNC window (python
+  canopen's RPDO sender; the RPDOs of CANopenNode's and Lely's devices)
+  are; CANopen FD, store/restore, program download, TIME, node guarding
+  and SRDO are not, and CiA 402 only against python canopen's
+  BaseNode402.
 - **No interoperability oracle for CANopen FD.** The reference stacks of
   canopen-interop (CANopenNode v4, Lely CANopen 2.3.5, python canopen
   2.4.1) do not implement CANopen FD in the versions used, and no
@@ -87,7 +89,15 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
   Lely lely-core's NMT master (CiA 302-2 is a member document). The LSS
   step of the boot-up (`master.WithLSSBoot`) assigns node-IDs by matching
   the expected identity (0x1F85..0x1F88); it does not check that a
-  configured device already uses the node-ID.
+  configured device already uses the node-ID. `lss.Master.Configure`
+  confirms that only the addressed slave is selected before it
+  configures, but a wrong assignment that happened anyway (two devices
+  with one node-ID) is not repaired by a later boot-up: the LSS step only
+  sees unconfigured devices.
+- **Boot slave process retries**: SDO requests that time out are
+  repeated (`BootTiming.SDORetries`), including writes of the concise DCF;
+  an entry whose write is not idempotent (a command object) could be
+  executed twice when only its confirmation was lost.
 
 ## Behaviour to be aware of
 

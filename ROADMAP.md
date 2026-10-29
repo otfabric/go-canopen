@@ -12,13 +12,13 @@ Effort: **S** about a day, **M** a few days, **L** a week or more.
 | Object dictionary, data types | Complete for CiA 301 basic types | Unit and fuzz tests; EDS fixtures of CANopenNode and python canopen; interop EDS scenarios |
 | SDO client and server | Expedited, segmented, block (CRC, protocol switch), retries | Unit, fuzz and chaos tests; Wireshark; CANopenNode, Lely, python canopen (interop) |
 | NMT, heartbeat, node guarding | Complete, master and slave; unconfigured slaves (LSS) | Unit tests, chaos tests, e2e on vcan; interop (NMT, heartbeat) |
-| PDO | All transmission types, RTR, event timer, inhibit, deadline monitoring, reconfiguration rules, remote configuration, SYNC window, CANopen FD lengths | Unit tests; interop (classical PDOs); e2e |
-| MPDO | DAM, SAM, scanner and dispatcher lists, created by `node` | Unit, fuzz and chaos tests, e2e; no interop yet |
+| PDO | All transmission types, RTR, event timer, inhibit, deadline monitoring, reconfiguration rules, remote configuration, SYNC window, CANopen FD lengths | Unit tests; interop (classical PDOs, the SYNC window with python canopen, CANopenNode and Lely); e2e |
+| MPDO | DAM, SAM, scanner and dispatcher lists, created by `node` | Unit, fuzz and chaos tests, e2e; interop with Lely (DAM and SAM, both ways) |
 | SYNC, EMCY, TIME | Producers and consumers, FD variants of SYNC and EMCY | Unit tests, Wireshark (classical), interop (SYNC, EMCY) |
-| LSS | Master (Fastscan, AssignAll) and slave; `node.WithLSS`; LSS step in the CiA 302 boot-up | Unit, fuzz and chaos tests, e2e, chaos monkey; no interop yet |
+| LSS | Master (Fastscan, AssignAll) and slave; `node.WithLSS`; LSS step in the CiA 302 boot-up | Unit, fuzz and chaos tests, e2e, chaos monkey; interop (CANopenNode and Lely slaves, three masters, the LSS step) |
 | CANopen FD | USDO client and server, FD PDOs, FD EMCY, FD NMT/SYNC, `node.WithFD`, `master.WithFD` | Unit, fuzz and chaos tests (CAN FD chaos bridge), e2e on the virtual bus and vcan (MTU 72); no independent oracle exists yet |
-| node, master | Complete device; network manager with boot procedure, DCF configuration, CiA 302 network boot-up, concise DCF, program download, store/restore | e2e (plant, LSS boot-up, MPDO, FD, SYNC window, store/restore, program download) on the virtual bus and vcan; chaos monkeys |
-| EDS/DCF | Parse, validate, write (round trip), dictionaries, concise DCF | python canopen cross-check (local), interop checkers (Lely, python canopen), third-party EDS files |
+| node, master | Complete device; network manager with boot procedure, DCF configuration, CiA 302 network boot-up, concise DCF, program download, store/restore | e2e (plant, LSS boot-up, MPDO, FD, SYNC window, store/restore, program download) on the virtual bus and vcan; chaos monkeys; interop (CiA 302 boot-up of every stack's device, Lely's boot master booting a node) |
+| EDS/DCF | Parse, validate, write (round trip), dictionaries, concise DCF | python canopen cross-check (local), interop checkers (Lely, python canopen), concise DCFs byte-exact against Lely's dcfgen and co_dev_write_dcf, third-party EDS files |
 | CiA 402 | State machine, PP/PV/PT/HM/CSP/CSV/CST, simulated drive, controller | Unit tests, e2e, python canopen's BaseNode402 (interop) |
 
 ## Gaps in function
@@ -38,7 +38,7 @@ Effort: **S** about a day, **M** a few days, **L** a week or more.
 
 | # | Gap | Why it matters | Follow-up |
 |---|-----|----------------|-----------|
-| V1 | The interop suite covers canopen-interop's contract 1.0: no LSS, MPDO, CiA 302 boot-up, store/restore, program download, TIME, node guarding, SRDO; RPDOs only towards the stacks' devices; CiA 402 only with python canopen's client | The v0.3.0 features are checked against go-canopen itself and Wireshark only | canopen-interop contract 1.1 with LSS, MPDO, store/restore and NMT master boot-up operations, then the scenarios |
+| V1 | The interop suite covers canopen-interop's contract 1.1: no store/restore, program download, TIME, node guarding or SRDO; MPDOs, the CiA 302 boot master and the concise DCF generators of Lely only; CiA 402 only with python canopen's client | These features are checked against go-canopen itself and Wireshark only | Operations for store/restore, program download, TIME and node guarding in a later canopen-interop contract, then the scenarios |
 | V2 | No independent CANopen FD implementation to test against | The USDO segmented layouts are inferred and the FD EMCY layout is ambiguous; a mismatch with real devices would go unnoticed | A CANopen FD stack or device when one becomes available (CANopenNode FD, a commercial device, a public trace) |
 | V3 | The python canopen dictionary cross-check (`eds/crosscheck_test.go`) is skipped in CI | Names and evaluated defaults at another node-ID are compared only locally | Install python canopen in a CI job and set a require flag |
 | V4 | Nothing on real hardware | vcan has no arbitration, timing, error frames or load; SYNC jitter (and the SYNC window), heartbeat margins and inhibit times under load are unmeasured; LSS bit timing switching is untested | A bench: two USB adapters on SocketCAN (one CAN FD), a commercial CANopen I/O module and a drive, a self-hosted runner |
@@ -47,8 +47,8 @@ Effort: **S** about a day, **M** a few days, **L** a week or more.
 
 ## Suggested order
 
-1. **Interop for the v0.3.0 features** (V1): canopen-interop contract
-   1.1 and its scenarios.
+1. **Interop for the remaining v0.3.0 features** (V1): store/restore,
+   program download, TIME and node guarding operations in canopen-interop.
 2. **Hardware bench** (V4), including a CAN FD adapter, as soon as
    hardware is available.
 3. **More profiles**: CiA 401, 406, and others on demand (gap 4).

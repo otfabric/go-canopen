@@ -46,6 +46,19 @@ func uploadRetry(ctx context.Context, c remote, retries int, index uint16, sub u
 	return b, err
 }
 
+// readUintRetry reads an unsigned integer with [retry]: a request that
+// times out (a slave still resetting, a lost frame, a loaded system) is
+// repeated instead of failing the check it belongs to.
+func readUintRetry(ctx context.Context, c remote, retries int, index uint16, sub uint8) (uint64, error) {
+	var v uint64
+	err := retry(ctx, retries, func() error {
+		var err error
+		v, err = readUint(ctx, c, index, sub)
+		return err
+	})
+	return v, err
+}
+
 func u32le(x uint32) []byte { return binary.LittleEndian.AppendUint32(nil, x) }
 
 // sleep waits d or until ctx ends.

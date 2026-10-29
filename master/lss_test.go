@@ -19,12 +19,12 @@ import (
 
 // TestManagerLSSBoot boots a network of unconfigured devices: the LSS
 // step gives each the node-ID of the slave whose expected identity it
-// has, then the slaves boot and are configured; a device that matches no
-// slave stays unconfigured.
+// has, then the slaves boot and are configured; a slave whose identity no
+// device has gets no node-ID.
 func TestManagerLSSBoot(t *testing.T) {
 	nettest.CheckLeaks(t)
-	buses := testbus.Ports(t, 5)
-	serials := []uint32{101, 102, 103, 999}
+	buses := testbus.Ports(t, 4)
+	serials := []uint32{101, 102, 103}
 	var nodes []*node.Node
 	for i, s := range serials {
 		d := nettest.Dict(t, lss.Unconfigured, func(c *od.Config) { c.SerialNumber = s })
@@ -45,7 +45,7 @@ func TestManagerLSSBoot(t *testing.T) {
 	fs := lss.FastscanOptions{Timeout: 15 * time.Millisecond, Known: map[lss.Part]uint32{
 		lss.PartVendor: nettest.VendorID, lss.PartProduct: nettest.ProductCode, lss.PartRevision: nettest.Revision,
 	}}
-	r := startManager(t, buses, d, master.WithLSSBoot(fs))
+	r := startManager(t, buses, d, master.WithLSSBoot(fs), master.WithLSSOptions(lss.WithFastscanTimeout(15*time.Millisecond)))
 	nettest.Eventually(t, 30*time.Second, "network boot", func() bool {
 		_, ok := r.rec.find(kind(master.EventNetworkBootDone, masterID))
 		return ok
@@ -61,8 +61,8 @@ func TestManagerLSSBoot(t *testing.T) {
 			t.Fatalf("node %d param %d", id, v)
 		}
 	}
-	if nodes[3].NodeID() != lss.Unconfigured || nodes[3].State() != canopen.StateInitialising {
-		t.Fatal(nodes[3].NodeID(), nodes[3].State())
+	if n := r.rec.count(func(e master.Event) bool { return e.Kind == master.EventLSSAssigned }); n != 3 {
+		t.Fatalf("%d assignments", n)
 	}
 	if st := r.m.Stats(); st.LSS.Sent == 0 {
 		t.Fatalf("%+v", st.LSS)

@@ -62,14 +62,22 @@ func (r *recorder) count(f func(master.Event) bool) int {
 
 func (r *recorder) wait(t testing.TB, what string, f func(master.Event) bool) master.Event {
 	t.Helper()
-	var ev master.Event
-	nettest.Eventually(t, 5*time.Second, what, func() bool {
-		var ok bool
-		ev, ok = r.find(f)
-		return ok
-	})
-	return ev
+	deadline := time.Now().Add(waitTimeout)
+	for {
+		if ev, ok := r.find(f); ok {
+			return ev
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for %s; events: %v", what, r.all())
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
 }
+
+// waitTimeout bounds the waits for events: generous, for CPU-starved runs
+// (race detector, -cpu 1, many packages in parallel); a passing test does
+// not wait it out.
+const waitTimeout = 20 * time.Second
 
 func kind(k master.EventKind, n canopen.NodeID) func(master.Event) bool {
 	return func(e master.Event) bool { return e.Kind == k && e.Node == n }
@@ -119,7 +127,7 @@ func startNode(t testing.TB, bus canopen.Bus, d *od.Dictionary, opts ...node.Opt
 
 func waitState(t testing.TB, n *node.Node, st canopen.NMTState) {
 	t.Helper()
-	nettest.Eventually(t, 5*time.Second, "node state "+st.String(), func() bool { return n.State() == st })
+	nettest.Eventually(t, waitTimeout, "node state "+st.String(), func() bool { return n.State() == st })
 }
 
 func u16(x uint16) []byte { return []byte{byte(x), byte(x >> 8)} }

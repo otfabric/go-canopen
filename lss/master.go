@@ -567,24 +567,45 @@ func (m *Master) identify(ctx context.Context, want Command, req ...canbus.Frame
 	return true, nil
 }
 
-// Configure runs fn with the slave of address a selected: it switches
-// every slave to waiting, selects a with switch state selective, runs fn
-// (which calls SetNodeID, SetBitTiming, Store, ...) and switches every
-// slave back to waiting, also when fn fails.
+// Configure runs fn with the slave of address a selected, and that slave
+// alone: it switches every slave to waiting and checks that none stayed
+// in the configuration state (switch state global is unconfirmed: a lost
+// frame would leave a slave selected, which then took the next
+// configuration too), selects a with switch state selective, checks by
+// inquiring the whole address that a answers alone, runs fn (which calls
+// SetNodeID, SetBitTiming, Store, ...) and switches every slave back to
+// waiting with the same check, also when fn fails. A selection that is
+// not confirmed fails with [ErrConflict] before fn runs; the checks take
+// a few Fastscan listening windows ([WithFastscanTimeout]).
 func (m *Master) Configure(ctx context.Context, a Address, fn func(ctx context.Context) error) error {
-	if err := m.SwitchStateGlobal(ctx, Waiting); err != nil {
+	if err := m.leaveConfiguration(ctx, FastscanOptions{}); err != nil {
 		return err
 	}
 	err := m.SwitchStateSelective(ctx, a)
 	if err == nil {
+		var alone bool
+		if alone, err = m.checkSelected(ctx, FastscanOptions{}, a); err == nil && !alone {
+			m.count(func(st *MasterStats) { st.Conflicts++ })
+			err = fmt.Errorf("%w: selection of %v not confirmed", ErrConflict, a)
+		}
+	}
+	if err == nil {
 		err = fn(ctx)
 	}
-	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.cfg.timeout)
+	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.leaveTimeout())
 	defer cancel()
-	if werr := m.SwitchStateGlobal(wctx, Waiting); err == nil {
+	if werr := m.leaveConfiguration(wctx, FastscanOptions{}); err == nil {
 		err = werr
 	}
 	return err
+}
+
+// leaveTimeout bounds the final leaveConfiguration of Configure, which
+// runs after the caller's context may have ended: every round of it
+// listens one Fastscan window.
+func (m *Master) leaveTimeout() time.Duration {
+	rounds := 2 * (m.cfg.retries + m.cfg.fsAttempts)
+	return m.cfg.timeout + time.Duration(rounds+1)*(m.cfg.fsTimeout+m.cfg.inhibit)
 }
 
 // ConfigureNodeID gives the slave of address a the node-ID node:

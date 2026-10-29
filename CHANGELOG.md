@@ -20,8 +20,28 @@ letters, concise DCF, program download, store/restore requests), has an
 LSS master (`LSS`, optional LSS step `WithLSSBoot`), MPDO list helpers,
 and runs every procedure over USDO with `WithFD`. `dissect` decodes USDO
 and FD emergencies. Fixed: a data race between concurrent NMT
-subscriptions (shared filter option). Interop of the new features is
-pending canopen-interop contract 1.1.
+subscriptions (shared filter option); an LSS configuration that could
+reach a second slave left selected by a lost frame (`Configure` now
+confirms the selection); boot-up events timed by processing instead of
+reception (a late boot-up booted a slave twice); boot slave processes
+failing on a single SDO timeout (the repeatable requests are retried);
+`BootNetwork` returning "context canceled" when superseded by another
+network boot-up (it returns that boot-up's result). Interoperability suite on
+canopen-interop v0.2.0 (contract 1.1): LSS (go-canopen's master against
+CANopenNode's and Lely's slaves, the three stacks' masters against
+go-canopen nodes), MPDO DAM and SAM with Lely both ways, the CiA 302
+boot-up (go-canopen's manager booting each stack's device, also with
+the LSS step; Lely's boot master booting a go-canopen node), concise
+DCFs byte-exact against Lely's dcfgen and dictionary dump, the SYNC
+window (python canopen's RPDO sender; CANopenNode's and Lely's
+devices); 1,620 scenarios, no failure (INTEROPERABILITY.md). Fixed,
+found by it: `lss.Master.AssignAll` failed with `ErrNoNodeID` when the
+last device took node-ID 127, and gave every node-ID to a device that
+keeps answering Fastscan with a pending node-ID (Lely); a node answered
+an SDO request received after an NMT reset command from its state
+before the reset and lost the next one (new `sdo.WithResetFence`, used
+by `node`); the SYNC window was measured on the wall clock (now the
+monotonic clock).
 
 ## v0.2.0 (2026-10-29)
 

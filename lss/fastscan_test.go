@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -350,5 +351,98 @@ func TestAssignAllSetNodeIDFails(t *testing.T) {
 	}
 	if !strings.Contains(ae.Error(), "node-ID 7") {
 		t.Fatal(ae.Error())
+	}
+}
+
+// TestAssignAllLastNodeID: the last device takes the last free node-ID
+// (127) and no device is left: AssignAll succeeds. Regression: it failed
+// with ErrNoNodeID before looking for a further device (found against
+// CANopenNode's LSS slaves in the interop suite).
+func TestAssignAllLastNodeID(t *testing.T) {
+	t.Parallel() // no leak check: goroutine counts are global
+	ctx := ctxT(t)
+	m, ss := network(t, 7, 2)
+	as, err := m.AssignAll(ctx, 126)
+	if err != nil || len(as) != 2 || as[0].NodeID != 126 || as[1].NodeID != 127 {
+		t.Fatalf("%v %v", as, err)
+	}
+	for _, s := range ss {
+		if s.NodeID() == Unconfigured {
+			t.Fatalf("%v not assigned", s.Address())
+		}
+	}
+}
+
+// lelyNetwork is network with slaves that answer Fastscan whatever their
+// node-ID, as Lely lely-core's LSS slave does; the node-IDs each slave
+// was given are counted.
+func lelyNetwork(t *testing.T, seed int64, n int) (*Master, []*Slave, func() [][]canopen.NodeID) {
+	t.Helper()
+	m, ss := network(t, seed, n)
+	var mu sync.Mutex
+	got := make([][]canopen.NodeID, n)
+	for i, s := range ss {
+		s.cfg.fastscanAny = true
+		s.cfg.nodeID = func(id canopen.NodeID) error {
+			mu.Lock()
+			got[i] = append(got[i], id)
+			mu.Unlock()
+			return nil
+		}
+	}
+	return m, ss, func() [][]canopen.NodeID {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(got)
+	}
+}
+
+// TestAssignAllLelySlaves: devices that keep answering Fastscan after they
+// were given a node-ID get one node-ID each, and the devices with higher
+// addresses are still found. Regression: AssignAll identified the device
+// with the lowest address again and again and gave it every node-ID
+// (found against Lely's LSS slaves in the interop suite).
+func TestAssignAllLelySlaves(t *testing.T) {
+	t.Parallel() // no leak check: goroutine counts are global
+	ctx := ctxT(t)
+	m, ss, got := lelyNetwork(t, 9, 3)
+	as, err := m.AssignAll(ctx, 30)
+	if err != nil || len(as) != 3 {
+		t.Fatalf("%v %v", as, err)
+	}
+	ids, addrs := map[canopen.NodeID]bool{}, map[Address]bool{}
+	for _, a := range as {
+		ids[a.NodeID], addrs[a.Address] = true, true
+	}
+	if len(ids) != 3 || len(addrs) != 3 || !ids[30] || !ids[31] || !ids[32] {
+		t.Fatalf("assignments %v", as)
+	}
+	for i, g := range got() {
+		if len(g) != 1 {
+			t.Fatalf("%v was given node-IDs %v", ss[i].Address(), g)
+		}
+	}
+}
+
+// TestAssignAllLelySlavesLimits: the node-ID range, AssignMax and the
+// conflict check hold when the remaining devices are listed.
+func TestAssignAllLelySlavesLimits(t *testing.T) {
+	t.Parallel() // no leak check: goroutine counts are global
+	ctx := ctxT(t)
+	m, _, got := lelyNetwork(t, 10, 3)
+	as, err := m.AssignAll(ctx, 126)
+	if !errors.Is(err, ErrNoNodeID) || len(as) != 2 {
+		t.Fatalf("%v %v", as, err)
+	}
+	n := 0
+	for _, g := range got() {
+		n += len(g)
+	}
+	if n != 2 {
+		t.Fatalf("node-IDs given %v", got())
+	}
+	as, err = m.AssignAll(ctx, 40, AssignMax(2))
+	if err != nil || len(as) != 2 || as[0].NodeID != 40 || as[1].NodeID != 41 {
+		t.Fatalf("%v %v", as, err)
 	}
 }

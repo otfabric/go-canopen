@@ -120,6 +120,20 @@
 // configuration as defaults (e.g. built from the manager's DCF), or keep
 // it with node.WithStore and save it.
 //
+// One network boot-up runs at a time. A newer one replaces the one in
+// progress: [Master.BootNetwork] called while the automatic one runs (for
+// example right after Start, having set 0x1F80 bit 0 then), or the
+// automatic one at a reset of the master's node during a BootNetwork call;
+// the replaced call then returns the result of the newer boot-up instead
+// of a cancellation.
+//
+// The boot slave process repeats an SDO (or USDO) request that times out
+// (BootTiming.SDORetries) in every step whose request can be repeated: the
+// reads of the identity, software identification and configuration date
+// and time, the restore and store requests and every concise DCF entry
+// (writing the same value again), so that a lost frame or a loaded system
+// does not fail the process with a wrong status (D, J...).
+//
 // With [WithLSSBoot] the network boot-up starts with an LSS step: the
 // master lists the unconfigured devices with LSS Fastscan and gives each
 // the node-ID of the slave of 0x1F81 whose expected identity

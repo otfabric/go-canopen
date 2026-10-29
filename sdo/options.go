@@ -65,6 +65,7 @@ type config struct {
 	threshold int
 	pst       int // -1: derived from the mode
 	retries   int
+	resetNode canopen.NodeID // WithResetFence: 0 none
 }
 
 func defaultConfig() config {
@@ -116,6 +117,10 @@ type option func(*config)
 func (o option) applyServer(c *config) { o(c) }
 func (o option) applyClient(c *config) { o(c) }
 
+type serverOption func(*config)
+
+func (o serverOption) applyServer(c *config) { o(c) }
+
 type clientOption func(*config)
 
 func (o clientOption) applyClient(c *config) { o(c) }
@@ -135,6 +140,18 @@ func WithTimeout(d time.Duration) Option { return option(func(c *config) { c.tim
 // 0x580 + node-ID). A server otherwise takes them from object 0x1200.
 func WithCOBIDs(clientToServer, serverToClient canopen.COBID) Option {
 	return option(func(c *config) { c.cobSet, c.c2s, c.s2c = true, clientToServer, serverToClient })
+}
+
+// WithResetFence makes the server of node node also receive the NMT
+// commands (COB-ID 0) and disable itself at a reset node or reset
+// communication addressed to node or to all nodes. The command and the
+// requests reach the server in the order they arrived, so a request
+// received after the command is never answered by this server: the node
+// is resetting (Initialising) and answers again with the server it
+// starts after the reset (CiA 301). Package node uses it for its SDO
+// server, which it replaces at every reset.
+func WithResetFence(node canopen.NodeID) ServerOption {
+	return serverOption(func(c *config) { c.resetNode = node })
 }
 
 // WithBlockSize sets the number of segments per block (1..127, default

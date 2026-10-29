@@ -52,6 +52,9 @@ type slaveConfig struct {
 	bitRate  func(selector uint8, b BitTiming) error
 	activate func(s Settings, delay time.Duration)
 	store    func(s Settings) error
+	// fastscanAny makes the slave answer Fastscan whatever its node-ID,
+	// as Lely's does (tests of the master).
+	fastscanAny bool
 }
 
 // WithSlaveLogger logs slave events to l. The default logs nothing.
@@ -451,7 +454,7 @@ func (s *Slave) fastscan(f *canbus.Frame) (canbus.Frame, bool) {
 	s.mu.Lock()
 	ack, changed := false, false
 	switch {
-	case !s.unconfigured():
+	case !s.unconfigured() && !s.cfg.fastscanAny:
 	case bitCheck == fastscanConfirm:
 		s.fsPos, ack = PartVendor, true
 	case s.fsPos == sub:

@@ -28,10 +28,10 @@ import (
 )
 
 // InteropRelease is the canopen-interop release whose images the suite
-// runs (container contract 1.0). Override the tag with
+// runs (container contract 1.1). Override the tag with
 // CANOPEN_INTEROP_TAG (dev for images built by make interop-images) or one
 // image with CANOPEN_INTEROP_<ADAPTER>_IMAGE (upper case).
-const InteropRelease = "v0.1.0"
+const InteropRelease = "v0.2.0"
 
 // adapters are the canopen-interop images.
 var adapters = []string{"canopennode", "lely", "pythoncanopen"}
@@ -39,9 +39,9 @@ var adapters = []string{"canopennode", "lely", "pythoncanopen"}
 // digests pin the InteropRelease images by multi-arch index digest, so a
 // re-pushed tag cannot change what the suite tests.
 var digests = map[string]string{
-	"canopennode":   "sha256:be2e965a11d9dbca0afd1344b1fec00efef396ac6e3eaf994a4b01555d7d0218",
-	"lely":          "sha256:9788a6c54bed94969371d73233e3b24a826874020a7b2e8698a47f3ad89a9e84",
-	"pythoncanopen": "sha256:9e8309b16334396318dc0789dda2ee068a57e28130e0ba3c220f46cde1f180f4",
+	"canopennode":   "sha256:a6bcc486bf4a752c526cbaae13a9c12709acca73411aeea9c0153862839b5cae",
+	"lely":          "sha256:52455c38167d3e149bd3b3fc96953921a0639652c79f33661b200ca69e698cc9",
+	"pythoncanopen": "sha256:e1243943f62942adae74a939379b185f1bb3f69b208756bbe6d37b0c07062024",
 }
 
 // Directions of the report.
@@ -475,6 +475,40 @@ func (c *container) await(t *testing.T, s string, d time.Duration) {
 		case <-deadline:
 			t.Fatalf("no %q within %v\nstdout: %s\nstderr: %s", s, d, c.stdout(), c.stderr())
 		}
+	}
+}
+
+// waitDoc waits up to d for a JSON document of the output (read so far
+// or later) for which f is true, and returns it; nil when none came.
+func (c *container) waitDoc(d time.Duration, f func(map[string]any) bool) map[string]any {
+	deadline := time.Now().Add(d)
+	for {
+		for _, l := range strings.Split(c.stdout(), "\n") {
+			var m map[string]any
+			if json.Unmarshal([]byte(l), &m) == nil && f(m) {
+				return m
+			}
+		}
+		if time.Now().After(deadline) {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// isDoc matches a document of the type whose fields have the values
+// (numbers as float64, as JSON decodes them).
+func isDoc(typ string, fields map[string]any) func(map[string]any) bool {
+	return func(m map[string]any) bool {
+		if m["type"] != typ {
+			return false
+		}
+		for k, v := range fields {
+			if m[k] != v {
+				return false
+			}
+		}
+		return true
 	}
 }
 

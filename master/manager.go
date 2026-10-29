@@ -30,9 +30,13 @@ type slaveState struct {
 	quiet   time.Time
 	booting bool
 	booted  bool
-	status  BootStatus
-	err     error
-	state   canopen.NMTState
+	// reported: the boot event of the last boot slave process is queued
+	// (the network boot-up waits for it, so that it reports done after
+	// the events of its mandatory slaves).
+	reported bool
+	status   BootStatus
+	err      error
+	state    canopen.NMTState
 }
 
 // manager is the CiA 302 manager of a master built on a dictionary: the
@@ -44,12 +48,12 @@ type manager struct {
 	n     *node.Node
 	guard *nmt.GuardMaster
 
-	mu        sync.Mutex
-	slaves    map[canopen.NodeID]*slaveState
-	changed   chan struct{} // closed and renewed when a boot ends
-	netCancel context.CancelFunc
-	guarded   map[canopen.NodeID]bool
-	unhook    []func()
+	mu      sync.Mutex
+	slaves  map[canopen.NodeID]*slaveState
+	changed chan struct{} // closed and renewed when a boot ends
+	net     *netRun       // the network boot-up in progress, or nil
+	guarded map[canopen.NodeID]bool
+	unhook  []func()
 	// lssBusy is set during the LSS step of the network boot-up: the
 	// boot-ups of the devices it configures are not booted (the reset
 	// that follows the step boots them).
@@ -99,8 +103,9 @@ func (g *manager) close() {
 	_ = g.n.Close()
 	_ = g.guard.Close()
 	g.mu.Lock()
-	if g.netCancel != nil {
-		g.netCancel()
+	if g.net != nil {
+		g.net.closed = true
+		g.net.cancel()
 	}
 	hooks := g.unhook
 	g.unhook = nil
@@ -180,15 +185,47 @@ func (g *manager) startNetwork() {
 
 // runNetwork runs the network boot-up, cancelling one in progress.
 func (g *manager) runNetwork(ctx context.Context) error {
-	ctx, cancel := context.WithCancel(ctx)
+	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	r := &netRun{cancel: cancel, done: make(chan struct{})}
 	g.mu.Lock()
-	if g.netCancel != nil {
-		g.netCancel()
+	if prev := g.net; prev != nil {
+		prev.next = r
+		prev.cancel()
 	}
-	g.netCancel = cancel
+	g.net = r
 	g.mu.Unlock()
-	return g.bootNetwork(ctx)
+	err := g.bootNetwork(rctx)
+	g.mu.Lock()
+	next, closed := r.next, r.closed
+	if g.net == r {
+		g.net = nil
+	}
+	g.mu.Unlock()
+	if next != nil && !closed {
+		// Superseded by a newer network boot-up (the automatic one at the
+		// master's boot-up, or another BootNetwork call): its result is
+		// this call's.
+		select {
+		case <-next.done:
+			err = next.err
+		case <-ctx.Done():
+			err = ctx.Err()
+		}
+	}
+	r.err = err
+	close(r.done)
+	return err
+}
+
+// netRun is one network boot-up. A newer one cancels it and becomes its
+// next: the older one then reports the newer one's result.
+type netRun struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	err    error   // set before done is closed
+	next   *netRun // guarded by manager.mu
+	closed bool    // the manager is closing; guarded by manager.mu
 }
 
 // bootNetwork is the network boot-up of CiA 302-2 (as Lely lely-core's
@@ -234,7 +271,7 @@ func (g *manager) bootNetwork(ctx context.Context) error {
 	g.mu.Lock()
 	for _, e := range list {
 		if s := g.slave(e.id); !s.booting {
-			s.booted = false
+			s.booted, s.reported = false, false
 		}
 	}
 	g.mu.Unlock()
@@ -279,7 +316,7 @@ func (g *manager) bootNetwork(ctx context.Context) error {
 		for _, id := range mandatory {
 			s := g.slave(id)
 			switch {
-			case s.booting || !s.booted:
+			case s.booting || !s.booted || !s.reported:
 				waiting = true
 			case !s.status.OK() && failed == nil:
 				failed = &BootError{Node: id, Status: s.status, Err: s.err}
@@ -406,17 +443,24 @@ func (g *manager) bootProcess(ctx context.Context, id canopen.NodeID) {
 	}
 }
 
-// bootDone ends a boot slave process: it starts the error control
-// (heartbeat consumption from 0x1016, else node guarding from the
-// assignment), starts the node when allowed, reports it, and only then
-// records the result, so that a network boot-up never reports done before
-// the boot events of its slaves.
+// bootDone ends a boot slave process: it records the result, starts the
+// error control (heartbeat consumption from 0x1016, else node guarding
+// from the assignment), starts the node when allowed, and reports it.
+//
+// The result is recorded before the master's state is read: startAll sets
+// the state before it reads the results, so one of the two starts the
+// node. The network boot-up waits for reported, set after the event is
+// queued.
 func (g *manager) bootDone(id canopen.NodeID, st canopen.NMTState, status BootStatus, err error) {
 	a := g.assignment(id)
 	startup := g.startup()
 	if st == canopen.StateUnknown && status.OK() {
 		st = canopen.StatePreOperational
 	}
+	g.mu.Lock()
+	s := g.slave(id)
+	s.booting, s.booted, s.reported, s.status, s.err, s.state, s.ended = false, true, false, status, err, st, time.Now()
+	g.mu.Unlock()
 	if status.OK() {
 		if ms := g.consumerTime(id); ms > 0 {
 			_ = g.m.Monitor(id, ms)
@@ -429,6 +473,9 @@ func (g *manager) bootDone(id canopen.NodeID, st canopen.NMTState, status BootSt
 		ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
 		if g.m.StartNode(ctx, id) == nil {
 			st = canopen.StateOperational
+			g.mu.Lock()
+			s.state = st
+			g.mu.Unlock()
 		}
 		cancel()
 	}
@@ -441,8 +488,7 @@ func (g *manager) bootDone(id canopen.NodeID, st canopen.NMTState, status BootSt
 		g.m.disp.push(Event{Kind: EventBootFailed, Node: id, State: st, Status: status, Err: be})
 	}
 	g.mu.Lock()
-	s := g.slave(id)
-	s.booting, s.booted, s.status, s.err, s.state, s.ended = false, true, status, err, st, time.Now()
+	s.reported = true
 	g.broadcastLocked()
 	g.mu.Unlock()
 }
@@ -496,7 +542,7 @@ identity:
 		if want == 0 {
 			continue
 		}
-		got, err := readUint(ctx, c, od.IndexIdentity, uint8(i+1))
+		got, err := readUintRetry(ctx, c, t.SDORetries, od.IndexIdentity, uint8(i+1))
 		if err != nil {
 			return canopen.StateUnknown, ck.status, err
 		}
@@ -613,7 +659,7 @@ func (g *manager) configure(ctx context.Context, id canopen.NodeID, a Assignment
 	if date != 0 && tod != 0 {
 		d, err := uploadRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 1)
 		if err == nil && uint32(canopen.DecodeUint(d)) == date {
-			if tm, err := readUint(ctx, c, cdcf.IndexVerifyConfiguration, 2); err == nil && uint32(tm) == tod {
+			if tm, err := readUintRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 2); err == nil && uint32(tm) == tod {
 				g.m.log.Debug("master: configuration up to date", "node", int(id))
 				return BootOK, nil
 			}
@@ -633,11 +679,21 @@ func (g *manager) configure(ctx context.Context, id canopen.NodeID, a Assignment
 	if len(entries) == 0 {
 		return BootOK, nil
 	}
-	if err := g.m.ConfigureConcise(ctx, id, entries); err != nil {
+	retries := g.m.cfg.timing.SDORetries
+	r, err := g.m.remote(id)
+	if err != nil {
 		return BootConfiguration, err
 	}
+	for i, e := range entries {
+		// As ConfigureConcise, but a write that timed out is repeated
+		// (it writes the same value again).
+		err := retry(ctx, retries, func() error { return r.Download(ctx, e.Index, e.SubIndex, e.Data) })
+		if err != nil {
+			return BootConfiguration, fmt.Errorf("master: node %d: concise DCF entry %d (%04X:%02X): %w", id, i+1, e.Index, e.SubIndex, err)
+		}
+	}
 	if grp := g.m.cfg.storeGroup; grp != 0 {
-		if err := g.m.StoreParameters(ctx, id, grp); err != nil {
+		if err := retry(ctx, retries, func() error { return g.m.StoreParameters(ctx, id, grp) }); err != nil {
 			return BootConfiguration, err
 		}
 	}
@@ -649,7 +705,8 @@ func (g *manager) configure(ctx context.Context, id canopen.NodeID, a Assignment
 // apply, waiting for its boot-up (Lely lely-core's configuration
 // request).
 func (g *manager) restore(ctx context.Context, id canopen.NodeID, sub uint8) error {
-	if err := g.m.RestoreDefaults(ctx, id, sub); err != nil {
+	// Writing "load" again after a timeout is harmless.
+	if err := retry(ctx, g.m.cfg.timing.SDORetries, func() error { return g.m.RestoreDefaults(ctx, id, sub) }); err != nil {
 		return err
 	}
 	es, err := g.subscribeEC(id)

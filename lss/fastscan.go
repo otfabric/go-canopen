@@ -361,7 +361,17 @@ func AssignHandler(h func(Assignment)) AssignOption { return func(c *assignConfi
 // node-ID (and stores it with [AssignStore]) and switches it back to
 // waiting, upon which the device applies the node-ID (NMT reset
 // communication) and leaves the Fastscan population. It ends when no
-// unconfigured device answers.
+// unconfigured device answers, also when the last device took the last
+// free node-ID; it fails with [ErrNoNodeID] only when a device is left
+// without one.
+//
+// A device that keeps answering Fastscan with a pending node-ID (Lely
+// lely-core's slave does until its next NMT reset communication) would be
+// identified again: a device is given one node-ID per run. When Fastscan
+// identifies a device that was given a node-ID already, AssignAll lists
+// the remaining devices with [Master.Fastscan] instead (which selects
+// none, so such a device cannot hide the others) and configures each by
+// switch state selective.
 //
 // A node-ID is never offered twice: once a configure node-ID request is
 // sent, the node-ID counts as used even when no confirmation arrives (the
@@ -382,14 +392,12 @@ func (m *Master) AssignAll(ctx context.Context, first canopen.NodeID, opts ...As
 	}
 	c.fs.Max = 0
 	var out []Assignment
+	assigned := map[Address]bool{}
 	next := first
 	conflicts := 0
 	for c.max == 0 || len(out) < c.max {
 		for next <= canopen.MaxNodeID && c.avoid[next] {
 			next++
-		}
-		if next > canopen.MaxNodeID {
-			return out, ErrNoNodeID
 		}
 		if err := m.leaveConfiguration(ctx, c.fs); err != nil {
 			return out, err
@@ -400,6 +408,18 @@ func (m *Master) AssignAll(ctx context.Context, first canopen.NodeID, opts ...As
 		}
 		if !ok {
 			break
+		}
+		if assigned[a] {
+			// The device answers Fastscan with its pending node-ID
+			// (Lely): list the others instead of selecting it again.
+			if err := m.SwitchStateGlobal(ctx, Waiting); err != nil {
+				return out, err
+			}
+			return m.assignListed(ctx, &c, out, assigned, next)
+		}
+		if next > canopen.MaxNodeID {
+			_ = m.SwitchStateGlobal(context.WithoutCancel(ctx), Waiting)
+			return out, ErrNoNodeID
 		}
 		alone, err := m.checkSelected(ctx, c.fs, a)
 		if err != nil {
@@ -416,23 +436,85 @@ func (m *Master) AssignAll(ctx context.Context, first canopen.NodeID, opts ...As
 		conflicts = 0
 		id := next
 		next++
-		err = m.SetNodeID(ctx, id)
-		if err == nil && c.store {
-			err = m.Store(ctx)
+		if err := m.assignSelected(ctx, &c, a, id); err != nil {
+			return out, err
 		}
-		if werr := m.SwitchStateGlobal(context.WithoutCancel(ctx), Waiting); err == nil {
-			err = werr
+		out = m.assigned(&c, out, assigned, a, id)
+	}
+	return out, m.leaveConfiguration(ctx, c.fs)
+}
+
+// assignSelected gives the slave in the configuration state (address a)
+// the node-ID id, stores it when asked, and switches every slave back to
+// waiting.
+func (m *Master) assignSelected(ctx context.Context, c *assignConfig, a Address, id canopen.NodeID) error {
+	err := m.SetNodeID(ctx, id)
+	if err == nil && c.store {
+		err = m.Store(ctx)
+	}
+	if werr := m.SwitchStateGlobal(context.WithoutCancel(ctx), Waiting); err == nil {
+		err = werr
+	}
+	if err != nil {
+		return &AssignError{Address: a, NodeID: id, Err: err}
+	}
+	return nil
+}
+
+// assigned records an assignment.
+func (m *Master) assigned(c *assignConfig, out []Assignment, done map[Address]bool, a Address, id canopen.NodeID) []Assignment {
+	as := Assignment{Address: a, NodeID: id}
+	done[a] = true
+	m.count(func(st *MasterStats) { st.Assigned++ })
+	m.cfg.log.Info("lss node-ID assigned", "address", a.String(), "node", id)
+	if c.handler != nil {
+		c.handler(as)
+	}
+	return append(out, as)
+}
+
+// assignListed is the end of [Master.AssignAll] when a device keeps
+// answering Fastscan after it was given a node-ID: the devices that
+// answer are listed with [Master.Fastscan], and each one without a
+// node-ID from this run is selected by switch state selective and given
+// the next node-ID.
+func (m *Master) assignListed(ctx context.Context, c *assignConfig, out []Assignment, done map[Address]bool, next canopen.NodeID) ([]Assignment, error) {
+	m.cfg.log.Info("lss: a device answers Fastscan with a pending node-ID; listing the remaining devices")
+	list, err := m.Fastscan(ctx, c.fs)
+	if err != nil {
+		return out, err
+	}
+	for _, a := range list {
+		if done[a] {
+			continue
 		}
+		if c.max != 0 && len(out) >= c.max {
+			break
+		}
+		for next <= canopen.MaxNodeID && c.avoid[next] {
+			next++
+		}
+		if next > canopen.MaxNodeID {
+			return out, ErrNoNodeID
+		}
+		if err := m.SwitchStateSelective(ctx, a); err != nil {
+			return out, err
+		}
+		alone, err := m.checkSelected(ctx, c.fs, a)
 		if err != nil {
-			return out, &AssignError{Address: a, NodeID: id, Err: err}
+			return out, err
 		}
-		as := Assignment{Address: a, NodeID: id}
-		out = append(out, as)
-		m.count(func(st *MasterStats) { st.Assigned++ })
-		m.cfg.log.Info("lss node-ID assigned", "address", a.String(), "node", id)
-		if c.handler != nil {
-			c.handler(as)
+		if !alone {
+			m.count(func(st *MasterStats) { st.Conflicts++ })
+			_ = m.SwitchStateGlobal(context.WithoutCancel(ctx), Waiting)
+			return out, fmt.Errorf("%w: selection of %v not confirmed", ErrConflict, a)
 		}
+		id := next
+		next++
+		if err := m.assignSelected(ctx, c, a, id); err != nil {
+			return out, err
+		}
+		out = m.assigned(c, out, done, a, id)
 	}
 	return out, m.leaveConfiguration(ctx, c.fs)
 }
