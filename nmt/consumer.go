@@ -108,6 +108,7 @@ type HeartbeatConsumer struct {
 	changed  chan struct{} // closed and replaced on every update
 	done     chan struct{} // closed by Close
 	stats    HeartbeatConsumerStats
+	unhook   func() // removes the 0x1016 write hook
 }
 
 type hbNode struct {
@@ -140,7 +141,7 @@ func NewHeartbeatConsumer(bus canopen.Bus, opts ...Option) (*HeartbeatConsumer, 
 		if d.Object(od.IndexConsumerHeartbeat) == nil {
 			return nil, fmt.Errorf("nmt: consumer heartbeat time 0x1016: %w", canopen.AbortNoObject)
 		}
-		d.OnWrite(od.IndexConsumerHeartbeat, -1, func(v *od.Variable, data []byte) error {
+		c.unhook = d.OnWrite(od.IndexConsumerHeartbeat, -1, func(v *od.Variable, data []byte) error {
 			return checkConsumerEntry(d, v.SubIndex, uint32(canopen.DecodeUint(data)))
 		})
 		c.loadDict()
@@ -273,6 +274,24 @@ func (c *HeartbeatConsumer) Monitor(node canopen.NodeID, timeout time.Duration) 
 	c.mu.Unlock()
 	c.poke()
 	return nil
+}
+
+// Restart restarts the supervision, as a reset communication of the
+// consuming node requires: with a dictionary 0x1016 is read again, and
+// every supervised node waits for its first heartbeat again (no timeout
+// until then; a node that was lost is no longer lost, without an
+// [EventResumed]). The states the nodes reported are kept.
+func (c *HeartbeatConsumer) Restart() {
+	if c.cfg.dict != nil {
+		c.loadDict()
+	}
+	c.mu.Lock()
+	for _, r := range c.nodes {
+		r.active, r.lost = false, false
+	}
+	c.notifyLocked()
+	c.mu.Unlock()
+	c.poke()
 }
 
 // Start subscribes to the error control messages and starts the
@@ -493,7 +512,8 @@ func (c *HeartbeatConsumer) WaitBootUp(ctx context.Context, node canopen.NodeID,
 }
 
 // Close stops the consumer and waits for it. Pending waits return
-// [canopen.ErrClosed].
+// [canopen.ErrClosed]. It removes the 0x1016 write hook the consumer
+// installed on the dictionary.
 func (c *HeartbeatConsumer) Close() error {
 	c.mu.Lock()
 	select {
@@ -501,8 +521,13 @@ func (c *HeartbeatConsumer) Close() error {
 	default:
 		close(c.done)
 	}
+	unhook := c.unhook
+	c.unhook = nil
 	c.mu.Unlock()
 	c.lc.close()
+	if unhook != nil {
+		unhook()
+	}
 	return nil
 }
 

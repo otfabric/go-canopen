@@ -413,6 +413,7 @@ func (c *Controller) goTo(ctx context.Context, name string, target State) error 
 				return err
 			}
 			continue
+		default: // no special case
 		}
 		path := Path(st, target)
 		if len(path) == 0 {
@@ -577,6 +578,7 @@ func (c *Controller) requireEnabled(ctx context.Context, o *op) error {
 		return nil
 	case Fault, FaultReactionActive:
 		return o.fail(ctx, ErrFault)
+	default: // no special case
 	}
 	return o.fail(ctx, ErrNotEnabled)
 }

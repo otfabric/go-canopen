@@ -54,6 +54,7 @@ type Consumer struct {
 	last        Event
 	lastCounter uint8
 	stats       ConsumerStats
+	hooks       unhook
 }
 
 // NewConsumer returns a SYNC consumer. Options: [WithLogger],
@@ -74,7 +75,7 @@ func NewConsumer(bus canopen.Bus, opts ...Option) (*Consumer, error) {
 		if o, err := d.GetUint(od.IndexSyncOverflow, 0); err == nil {
 			c.overflow, c.overflowSet = uint8(o), true
 		}
-		installHooks(d)
+		c.hooks.set(installHooks(d))
 	}
 	if c.cfg.cobSet {
 		c.cob = c.cfg.cob
@@ -231,9 +232,11 @@ func (c *Consumer) InWindow(now time.Time) bool {
 	return now.Before(c.last.Time.Add(c.window))
 }
 
-// Close stops the consumer and waits for it.
+// Close stops the consumer and waits for it. It removes the write hooks
+// the consumer installed on the dictionary.
 func (c *Consumer) Close() error {
 	c.lc.close()
+	c.hooks.remove()
 	return nil
 }
 

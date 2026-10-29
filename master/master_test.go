@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -301,15 +302,33 @@ func TestBootProcedure(t *testing.T) {
 func TestBootRestartedByNewBootUp(t *testing.T) {
 	nettest.CheckLeaks(t)
 	r := newRig(t, 1)
-	// A slow configuration: many writes, interrupted by a second boot-up.
-	entries := make([]master.Entry, 200)
+	entries := make([]master.Entry, 50)
 	for i := range entries {
 		entries[i] = master.Entry{Index: nettest.IdxParam, Data: u32(uint32(i))}
 	}
 	_ = r.m.SetBoot(5, &master.BootConfig{Entries: entries})
-	n := startNode(t, r.buses[1], nettest.Dict(t, 5, nil))
+	d := nettest.Dict(t, 5, nil)
+	// The first procedure is held in its 10th write until the node has
+	// entered Initialising for the reset (its SDO server is then
+	// disabled): the procedure cannot complete before the second boot-up
+	// message, whatever the scheduling.
+	var writes atomic.Int32
+	mid, release := make(chan struct{}), make(chan struct{})
+	d.OnWrite(nettest.IdxParam, 0, func(*od.Variable, []byte) error {
+		if writes.Add(1) == 10 {
+			close(mid)
+			<-release
+		}
+		return nil
+	})
+	n := startNode(t, r.buses[1], d)
 	r.rec.wait(t, "boot-up", kind(master.EventBootUp, 5))
-	if err := n.Reset(nettest.Ctx(t), nmt.ResetCommunication); err != nil {
+	<-mid
+	reset := make(chan error, 1)
+	go func() { reset <- n.Reset(nettest.Ctx(t), nmt.ResetCommunication) }()
+	nettest.Eventually(t, 5*time.Second, "node initialising", func() bool { return n.State() == canopen.StateInitialising })
+	close(release)
+	if err := <-reset; err != nil {
 		t.Fatal(err)
 	}
 	r.rec.wait(t, "boot done", kind(master.EventBootDone, 5))
@@ -317,6 +336,76 @@ func TestBootRestartedByNewBootUp(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if c := r.rec.count(kind(master.EventBootDone, 5)); c != 1 {
 		t.Fatalf("%d boot done events", c)
+	}
+	// The interrupted procedure ends silently.
+	if c := r.rec.count(kind(master.EventBootFailed, 5)); c != 0 {
+		t.Fatalf("%d boot failed events", c)
+	}
+	if c := r.rec.count(kind(master.EventBootUp, 5)); c != 2 {
+		t.Fatalf("%d boot-up events", c)
+	}
+}
+
+// TestConfigureCOBIDChange applies a DCF with an absolute EMCY COB-ID to
+// a node whose EMCY COB-ID is valid with another CAN-ID: the device
+// refuses a direct change (CiA 301), so Configure invalidates the COB-ID
+// first. SYNC and TIME COB-IDs in use are released the same way.
+func TestConfigureCOBIDChange(t *testing.T) {
+	nettest.CheckLeaks(t)
+	r := newRig(t, 2)
+	ctx := nettest.Ctx(t)
+	desc, err := eds.ParseFile("../eds/testdata/io401.eds")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dcf, err := eds.ParseFile("../eds/testdata/node37.dcf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := desc.Dictionary(21)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startNode(t, r.buses[1], d)
+	r.rec.wait(t, "boot-up", kind(master.EventBootUp, 21))
+	if v, _ := d.GetUint(od.IndexCOBIDEmcy, 0); v != 0x80+21 {
+		t.Fatalf("EMCY COB-ID before %x", v)
+	}
+	entries, err := master.DCFEntries(dcf, 21)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.m.Configure(ctx, 21, entries); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := d.GetUint(od.IndexCOBIDEmcy, 0); v != 0xA5 {
+		t.Fatalf("EMCY COB-ID after %x", v)
+	}
+
+	// SYNC (generate) and TIME (consume and produce) in use.
+	d2 := nettest.Dict(t, 22, nil)
+	_ = d2.SetUint(od.IndexCOBIDSync, 0, uint64(canopen.COBGenerate|0x80))
+	_ = d2.SetUint(od.IndexCOBIDTime, 0, uint64(canopen.COBGenerate|canopen.COBConsume|0x100))
+	startNode(t, r.buses[2], d2)
+	r.rec.wait(t, "boot-up", kind(master.EventBootUp, 22))
+	c, _ := r.m.SDO(22)
+	if err := c.WriteUint32(ctx, od.IndexCOBIDSync, 0, uint32(canopen.COBGenerate|0x81)); !errors.Is(err, canopen.AbortDeviceState) {
+		t.Fatalf("direct SYNC COB-ID change: %v", err)
+	}
+	syncCOB := uint32(canopen.COBGenerate | 0x81)
+	tm := uint32(canopen.COBGenerate | canopen.COBConsume | 0x101)
+	same := uint32(0x80 + 22) // EMCY unchanged: no release needed
+	if err := r.m.Configure(ctx, 22, []master.Entry{
+		{Index: od.IndexCOBIDSync, Data: u32(syncCOB)},
+		{Index: od.IndexCOBIDTime, Data: u32(tm)},
+		{Index: od.IndexCOBIDEmcy, Data: u32(same)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for idx, want := range map[uint16]uint32{od.IndexCOBIDSync: syncCOB, od.IndexCOBIDTime: tm, od.IndexCOBIDEmcy: same} {
+		if v, _ := d2.GetUint(idx, 0); uint32(v) != want {
+			t.Fatalf("%04X = %x, want %x", idx, v, want)
+		}
 	}
 }
 

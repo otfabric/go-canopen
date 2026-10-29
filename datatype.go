@@ -201,6 +201,7 @@ func Encode(t DataType, v any) ([]byte, error) {
 		case float64:
 			return binary.LittleEndian.AppendUint64(nil, math.Float64bits(x)), nil
 		}
+	default: // no special case
 	}
 	if t.IsInteger() || t == Boolean {
 		i, u, neg, ok := toInt(v)
@@ -430,6 +431,7 @@ func ParseValue(t DataType, s string, node NodeID) ([]byte, error) {
 			return nil, fmt.Errorf("%w: %s literal %q", ErrDataType, t, s)
 		}
 		return Encode(t, f)
+	default: // no special case
 	}
 	if !t.IsInteger() && t != Boolean {
 		return nil, fmt.Errorf("%w: cannot parse a %s literal", ErrDataType, t)

@@ -77,6 +77,7 @@ func (e Event) String() string {
 		return fmt.Sprintf("node %d %s: %v", e.Node, e.Kind, e.Err)
 	case EventStateChange:
 		return fmt.Sprintf("node %d %s: %s -> %s", e.Node, e.Kind, e.Previous, e.State)
+	default: // no special case
 	}
 	return fmt.Sprintf("node %d %s", e.Node, e.Kind)
 }

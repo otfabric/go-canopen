@@ -132,6 +132,7 @@ func (m *machine) handle(f frame) bool {
 		return m.blockSegment(f)
 	case stBlockDownloadEnd:
 		return m.blockDownloadEnd(f)
+	default: // no special case
 	}
 	if f.cs() == csAbort {
 		if m.active() {
@@ -194,6 +195,7 @@ func (m *machine) handle(f frame) bool {
 			m.st.ignored.Add(1)
 			return false
 		}
+	default: // no special case
 	}
 	if m.active() {
 		m.abortCurrent(canopen.AbortCommand)

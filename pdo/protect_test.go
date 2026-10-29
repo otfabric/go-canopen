@@ -107,7 +107,7 @@ func TestProtect(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			d := device(t, 5)
 			for _, tr := range []bool{true, false} {
-				if err := Protect(d, tr, 1); err != nil {
+				if _, err := Protect(d, tr, 1); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -137,13 +137,36 @@ func TestProtect(t *testing.T) {
 
 func TestProtectErrors(t *testing.T) {
 	d := device(t, 5)
-	if err := Protect(d, true, 0); !errors.Is(err, ErrNumber) {
+	if _, err := Protect(d, true, 0); !errors.Is(err, ErrNumber) {
 		t.Errorf("TPDO 0: %v", err)
 	}
-	if err := Protect(d, true, 5); !errors.Is(err, canopen.AbortNoObject) {
+	if _, err := Protect(d, true, 5); !errors.Is(err, canopen.AbortNoObject) {
 		t.Errorf("TPDO 5: %v", err)
 	}
-	if err := Protect(od.New(1), false, 1); err == nil {
+	if _, err := Protect(od.New(1), false, 1); err == nil {
 		t.Error("empty dictionary protected")
+	}
+}
+
+func TestUnprotect(t *testing.T) {
+	d := device(t, 5)
+	before := d.HookCount()
+	un, err := Protect(d, true, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.HookCount() != before+2 {
+		t.Fatalf("hooks %d, want %d", d.HookCount(), before+2)
+	}
+	if err := d.Write(CommIndex(true, 1), 2, []byte{245}); err != canopen.AbortInvalidValue {
+		t.Fatalf("protected write: %v", err)
+	}
+	un()
+	un()
+	if d.HookCount() != before {
+		t.Fatalf("hooks %d after unprotect, want %d", d.HookCount(), before)
+	}
+	if err := d.Write(CommIndex(true, 1), 2, []byte{245}); err != nil {
+		t.Fatalf("unprotected write: %v", err)
 	}
 }

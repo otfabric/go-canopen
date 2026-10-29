@@ -48,7 +48,9 @@
 // After an NMT reset the services continue with the restored dictionary:
 // they follow the restored values like any other change (PDO COB-IDs,
 // heartbeat period...), the heartbeat producer and the guarding responder
-// take the new node-ID, and the SDO server is renewed on the COB-IDs of
+// take the new node-ID, the heartbeat consumer restarts its supervision
+// (each node supervised by 0x1016 waits for its first heartbeat again),
+// and the SDO server is renewed on the COB-IDs of
 // 0x1200 (its counters restart). The error state restarts as well: the
 // active errors and the history are cleared without an emergency message
 // (the boot-up message tells the network about the reset); errors whose
@@ -72,6 +74,10 @@
 //     Leaving Operational clears them, as the disabled RPDOs forget them.
 //   - 0x8240 unexpected SYNC length.
 //   - the drive's error codes with [WithDrive].
+//
+// [Node.Close] closes every service, and the services remove the hooks
+// and watchers they installed on the dictionary: a dictionary may be
+// given to successive nodes (see [od.Dictionary.HookCount]).
 //
 // Callbacks (the options' handlers) run on the goroutines of the
 // services and must not block for long.

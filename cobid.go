@@ -194,6 +194,7 @@ func Classify(id canbus.ID) (s Service, node NodeID, pdo int) {
 		return ServiceTIME, 0, 0
 	case LSSMasterID, LSSSlaveID:
 		return ServiceLSS, 0, 0
+	default: // no special case
 	}
 	fc, n := id&0x780, NodeID(id&0x7F)
 	if !n.Valid() {
@@ -212,6 +213,7 @@ func Classify(id canbus.ID) (s Service, node NodeID, pdo int) {
 		return ServiceSDORx, n, 0
 	case FuncHeartbeat:
 		return ServiceHeartbeat, n, 0
+	default: // no special case
 	}
 	return ServiceUnknown, 0, 0
 }

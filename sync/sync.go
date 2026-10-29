@@ -92,9 +92,10 @@ func checkOverflow(n uint64) error {
 	return nil
 }
 
-// installHooks registers the CiA 301 write checks of 0x1005 and 0x1019.
-func installHooks(d *od.Dictionary) {
-	d.OnWrite(od.IndexSyncOverflow, 0, func(_ *od.Variable, data []byte) error {
+// installHooks registers the CiA 301 write checks of 0x1005 and 0x1019;
+// the returned function removes them.
+func installHooks(d *od.Dictionary) (remove func()) {
+	rm1 := d.OnWrite(od.IndexSyncOverflow, 0, func(_ *od.Variable, data []byte) error {
 		if p, err := d.GetUint(od.IndexCyclePeriod, 0); err == nil && p != 0 {
 			return canopen.AbortDeviceState
 		}
@@ -103,10 +104,10 @@ func installHooks(d *od.Dictionary) {
 		}
 		return nil
 	})
-	d.OnWrite(od.IndexCOBIDSync, 0, func(_ *od.Variable, data []byte) error {
+	rm2 := d.OnWrite(od.IndexCOBIDSync, 0, func(_ *od.Variable, data []byte) error {
 		x, err := d.GetUint(od.IndexCOBIDSync, 0)
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // no current value: nothing to compare with
 		}
 		cur, nw := canopen.COBID(x), canopen.COBID(canopen.DecodeUint(data))
 		if cur&canopen.COBGenerate != 0 && nw&canopen.COBGenerate != 0 && (cur.ID() != nw.ID() || cur.Extended() != nw.Extended()) {
@@ -114,6 +115,25 @@ func installHooks(d *od.Dictionary) {
 		}
 		return nil
 	})
+	return func() { rm1(); rm2() }
+}
+
+// unhook removes the dictionary hooks of a service once.
+type unhook struct {
+	mu sync.Mutex
+	rm func()
+}
+
+func (u *unhook) set(rm func()) { u.mu.Lock(); u.rm = rm; u.mu.Unlock() }
+
+func (u *unhook) remove() {
+	u.mu.Lock()
+	rm := u.rm
+	u.rm = nil
+	u.mu.Unlock()
+	if rm != nil {
+		rm()
+	}
 }
 
 // frame returns the SYNC frame on cob with the counter (none when 0).
@@ -161,6 +181,7 @@ type Producer struct {
 	overflow uint8
 	counter  uint8
 	stats    ProducerStats
+	hooks    unhook
 }
 
 // NewProducer returns a SYNC producer. Options: [WithLogger],
@@ -183,7 +204,6 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 		}
 		p.cob, p.generate = canopen.COBID(cob), canopen.COBID(cob)&canopen.COBGenerate != 0
 		p.period, p.overflow = time.Duration(period)*time.Microsecond, uint8(ovf)
-		installHooks(d)
 	}
 	if p.cfg.cobSet {
 		p.cob = p.cfg.cob
@@ -201,6 +221,9 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 		return nil, err
 	}
 	p.counter = 1
+	if d := p.cfg.dict; d != nil {
+		p.hooks.set(installHooks(d))
+	}
 	return p, nil
 }
 
@@ -360,9 +383,11 @@ func (p *Producer) Period() time.Duration {
 // is set and (with a dictionary) 0x1005 bit 30 is set.
 func (p *Producer) Producing() bool { return p.effective() > 0 }
 
-// Close stops producing and waits for the goroutine.
+// Close stops producing and waits for the goroutine. It removes the
+// write hooks the producer installed on the dictionary.
 func (p *Producer) Close() error {
 	p.lc.close()
+	p.hooks.remove()
 	return nil
 }
 

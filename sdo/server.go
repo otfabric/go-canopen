@@ -161,7 +161,7 @@ func (s *Server) Close() error {
 	s.mu.Unlock()
 	if started {
 		s.cancel()
-		s.sub.Close()
+		_ = s.sub.Close()
 		<-s.done
 	}
 	return nil

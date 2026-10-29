@@ -166,6 +166,7 @@ func (td *testDrive) reach(s State) {
 	case Fault:
 		td.drive.InjectFault(0x1234)
 		td.drive.Step(time.Millisecond)
+	default: // no special case
 	}
 	if got := td.state(); got != s {
 		td.t.Fatalf("reach %v: in %v", s, got)

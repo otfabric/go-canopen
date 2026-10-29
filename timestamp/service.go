@@ -76,12 +76,13 @@ func WithClock(clock func() time.Time) Option { return func(c *config) { c.clock
 // goroutine; h must not block for long.
 func WithHandler(h func(Event)) Option { return func(c *config) { c.handler = h } }
 
-// installHook refuses CAN-ID changes of 0x1012 while it is in use.
-func installHook(d *od.Dictionary) {
-	d.OnWrite(od.IndexCOBIDTime, 0, func(_ *od.Variable, data []byte) error {
+// installHook refuses CAN-ID changes of 0x1012 while it is in use; the
+// returned function removes the hook.
+func installHook(d *od.Dictionary) (remove func()) {
+	return d.OnWrite(od.IndexCOBIDTime, 0, func(_ *od.Variable, data []byte) error {
 		x, err := d.GetUint(od.IndexCOBIDTime, 0)
 		if err != nil {
-			return nil
+			return nil //nolint:nilerr // no current value: nothing to compare with
 		}
 		const use = canopen.COBGenerate | canopen.COBConsume
 		cur, nw := canopen.COBID(x), canopen.COBID(canopen.DecodeUint(data))
@@ -90,6 +91,24 @@ func installHook(d *od.Dictionary) {
 		}
 		return nil
 	})
+}
+
+// unhook removes the dictionary hook of a service once.
+type unhook struct {
+	mu sync.Mutex
+	rm func()
+}
+
+func (u *unhook) set(rm func()) { u.mu.Lock(); u.rm = rm; u.mu.Unlock() }
+
+func (u *unhook) remove() {
+	u.mu.Lock()
+	rm := u.rm
+	u.rm = nil
+	u.mu.Unlock()
+	if rm != nil {
+		rm()
+	}
 }
 
 // Frame returns the TIME frame of a time on a COB-ID's identifier.
@@ -134,6 +153,7 @@ type Producer struct {
 	mu    sync.Mutex
 	cob   canopen.COBID
 	stats ProducerStats
+	hooks unhook
 }
 
 // NewProducer returns a TIME producer. Options: [WithLogger],
@@ -147,7 +167,6 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 			return nil, fmt.Errorf("timestamp: COB-ID TIME 0x1012: %w", err)
 		}
 		p.cob = canopen.COBID(x)
-		installHook(d)
 		if p.cfg.cobSet {
 			p.cob = p.cfg.cob
 		}
@@ -156,6 +175,9 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 	}
 	if p.cfg.period < 0 {
 		return nil, fmt.Errorf("timestamp: negative period")
+	}
+	if d := p.cfg.dict; d != nil {
+		p.hooks.set(installHook(d))
 	}
 	return p, nil
 }
@@ -229,9 +251,11 @@ func (p *Producer) Start() error {
 	})
 }
 
-// Close stops the periodic messages and waits for the goroutine.
+// Close stops the periodic messages and waits for the goroutine. It
+// removes the write hook the producer installed on the dictionary.
 func (p *Producer) Close() error {
 	p.lc.close()
+	p.hooks.remove()
 	return nil
 }
 
@@ -270,6 +294,7 @@ type Consumer struct {
 	cob   canopen.COBID
 	last  Event
 	stats ConsumerStats
+	hooks unhook
 }
 
 // NewConsumer returns a TIME consumer. Options: [WithLogger],
@@ -283,7 +308,7 @@ func NewConsumer(bus canopen.Bus, opts ...Option) (*Consumer, error) {
 			return nil, fmt.Errorf("timestamp: COB-ID TIME 0x1012: %w", err)
 		}
 		c.cob = canopen.COBID(x)
-		installHook(d)
+		c.hooks.set(installHook(d))
 		if c.cfg.cobSet {
 			c.cob = c.cfg.cob
 		}
@@ -404,9 +429,11 @@ func (c *Consumer) Last() (e Event, ok bool) {
 	return c.last, !c.last.Time.IsZero()
 }
 
-// Close stops the consumer and waits for it.
+// Close stops the consumer and waits for it. It removes the write hook
+// the consumer installed on the dictionary.
 func (c *Consumer) Close() error {
 	c.lc.close()
+	c.hooks.remove()
 	return nil
 }
 

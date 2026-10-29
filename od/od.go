@@ -584,7 +584,7 @@ func (d *Dictionary) OnRead(index uint16, sub int, h ReadHook) (remove func()) {
 	id := d.nextW
 	d.nextW++
 	d.reads[k] = append(d.reads[k], hook[ReadHook]{id, h})
-	return func() { d.mu.Lock(); d.reads[k] = without(d.reads[k], id); d.mu.Unlock() }
+	return func() { d.mu.Lock(); removeHook(d.reads, k, id); d.mu.Unlock() }
 }
 
 // OnWrite registers a write hook for a sub-object, or for every
@@ -597,7 +597,24 @@ func (d *Dictionary) OnWrite(index uint16, sub int, h WriteHook) (remove func())
 	id := d.nextW
 	d.nextW++
 	d.writes[k] = append(d.writes[k], hook[WriteHook]{id, h})
-	return func() { d.mu.Lock(); d.writes[k] = without(d.writes[k], id); d.mu.Unlock() }
+	return func() { d.mu.Lock(); removeHook(d.writes, k, id); d.mu.Unlock() }
+}
+
+// HookCount returns the number of read hooks, write hooks and watchers
+// registered on the dictionary. It is a diagnostic: services remove what
+// they register when they are closed, so the count of a dictionary that
+// nodes are repeatedly created on and closed stays stable.
+func (d *Dictionary) HookCount() int {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	n := len(d.watchers)
+	for _, hs := range d.reads {
+		n += len(hs)
+	}
+	for _, hs := range d.writes {
+		n += len(hs)
+	}
+	return n
 }
 
 type hook[H any] struct {
@@ -605,14 +622,20 @@ type hook[H any] struct {
 	h  H
 }
 
-func without[H any](hs []hook[H], id int) []hook[H] {
-	out := hs[:0:0]
-	for _, x := range hs {
+// removeHook removes the hook with the id under k, deleting k when no
+// hook is left.
+func removeHook[H any](m map[hookKey][]hook[H], k hookKey, id int) {
+	out := m[k][:0:0]
+	for _, x := range m[k] {
 		if x.id != id {
 			out = append(out, x)
 		}
 	}
-	return out
+	if len(out) == 0 {
+		delete(m, k)
+		return
+	}
+	m[k] = out
 }
 
 // hooksFor returns the hooks of a sub-object, the specific ones first.

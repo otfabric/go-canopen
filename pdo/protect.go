@@ -4,6 +4,7 @@ package pdo
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/od"
@@ -36,24 +37,26 @@ import (
 //     longer than [MaxBits] in total: [canopen.AbortPDOLength]; an entry
 //     1..n that is invalid: its [ValidateEntry] code.
 //
-// Local writes ([od.Dictionary.Set]) are not checked. The hooks cannot be
-// removed; installing them twice is harmless. [NewTPDO] and [NewRPDO]
-// call Protect.
-func Protect(d *od.Dictionary, transmit bool, n int) error {
+// Local writes ([od.Dictionary.Set]) are not checked. The returned
+// unprotect function removes the hooks (later calls do nothing);
+// installing them twice is harmless. [NewTPDO] and [NewRPDO] call
+// Protect, and their Close calls unprotect.
+func Protect(d *od.Dictionary, transmit bool, n int) (unprotect func(), err error) {
 	if err := checkNumber(n); err != nil {
-		return err
+		return nil, err
 	}
 	ci, mi := CommIndex(transmit, n), MappingIndex(transmit, n)
 	if d.Object(ci) == nil || d.Object(mi) == nil {
-		return fmt.Errorf("pdo: %s: dictionary lacks 0x%04X or 0x%04X: %w", kind(transmit, n), ci, mi, canopen.AbortNoObject)
+		return nil, fmt.Errorf("pdo: %s: dictionary lacks 0x%04X or 0x%04X: %w", kind(transmit, n), ci, mi, canopen.AbortNoObject)
 	}
-	d.OnWrite(ci, -1, func(v *od.Variable, data []byte) error {
+	rm1 := d.OnWrite(ci, -1, func(v *od.Variable, data []byte) error {
 		return checkCommWrite(d, transmit, n, v.SubIndex, canopen.DecodeUint(data))
 	})
-	d.OnWrite(mi, -1, func(v *od.Variable, data []byte) error {
+	rm2 := d.OnWrite(mi, -1, func(v *od.Variable, data []byte) error {
 		return checkMappingWrite(d, transmit, n, v.SubIndex, canopen.DecodeUint(data))
 	})
-	return nil
+	var once sync.Once
+	return func() { once.Do(func() { rm1(); rm2() }) }, nil
 }
 
 // active reports whether the PDO is active in the dictionary now.

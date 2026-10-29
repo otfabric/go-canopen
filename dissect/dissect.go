@@ -296,6 +296,7 @@ func Decode(f *canbus.Frame) Message {
 		if len(d) != 8 {
 			m.Error = fmt.Sprintf("LSS needs 8 bytes, got %d", len(d))
 		}
+	default: // no special case
 	}
 	return m
 }

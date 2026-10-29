@@ -53,12 +53,16 @@ type base struct {
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 	unwatch func()
+	// unprotect removes the hooks Protect installed.
+	unprotect func()
 }
 
 func (b *base) init(bus canopen.Bus, d *od.Dictionary, transmit bool, n int, opts []Option) error {
-	if err := Protect(d, transmit, n); err != nil {
+	unprotect, err := Protect(d, transmit, n)
+	if err != nil {
 		return err
 	}
+	b.unprotect = unprotect
 	b.bus, b.d, b.n, b.transmit = bus, d, n, transmit
 	b.opt = buildOptions(opts)
 	b.log = b.opt.log.With("pdo", kind(transmit, n))
@@ -186,6 +190,7 @@ func (b *base) close() error {
 	if unwatch != nil {
 		unwatch()
 	}
+	b.unprotect()
 	b.wg.Wait()
 	return nil
 }

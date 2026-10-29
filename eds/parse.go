@@ -275,6 +275,7 @@ func (f *File) section(s *rawSection, objs map[uint16]*Object) {
 			o.Denotations = parseTable(s.keys)
 		case kindLinks:
 			o.Links = parseList("ObjectLinks", s.keys)
+		default: // no special case
 		}
 	default:
 		f.Unknown = append(f.Unknown, &Section{Name: s.name, Keys: s.keys})

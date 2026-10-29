@@ -247,12 +247,21 @@ func TestHooksAndWatchers(t *testing.T) {
 	if _, err := d.Read(0x2000, 0); err != canopen.AbortNoData {
 		t.Fatal(err)
 	}
+	n := d.HookCount()
 	rm := d.OnWrite(0x2000, 0, func(*Variable, []byte) error { return canopen.AbortGeneral })
+	rr := d.OnRead(0x2001, 0, func(_ *Variable, b []byte) ([]byte, error) { return b, nil })
+	if d.HookCount() != n+2 {
+		t.Fatal("hook count", d.HookCount(), n)
+	}
 	if err := d.Write(0x2000, 0, []byte{9}); err != canopen.AbortGeneral {
 		t.Fatal(err)
 	}
 	rm()
 	rm()
+	rr()
+	if d.HookCount() != n {
+		t.Fatal("hook count after remove", d.HookCount(), n)
+	}
 	if err := d.Write(0x2000, 0, []byte{9}); err != nil {
 		t.Fatal(err)
 	}

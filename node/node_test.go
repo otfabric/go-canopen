@@ -76,10 +76,17 @@ func TestNMTStates(t *testing.T) {
 	if _, err := c.ReadUint(ctx, od.IndexDeviceType, 0); err != nil {
 		t.Fatalf("SDO in Operational: %v", err)
 	}
+	// Initialising→Pre-op, →Stopped, →Pre-op, →Operational. The state is
+	// visible before the state handler has run: wait for the handler.
+	nettest.Eventually(t, 5*time.Second, "4 state changes", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(changes) == 4
+	})
+	time.Sleep(20 * time.Millisecond)
 	mu.Lock()
 	got := len(changes)
 	mu.Unlock()
-	// Initialising→Pre-op, →Stopped, →Pre-op, →Operational.
 	if got != 4 {
 		t.Fatalf("%d state changes, want 4", got)
 	}

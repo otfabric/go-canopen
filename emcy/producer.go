@@ -129,6 +129,7 @@ type Producer struct {
 	histN  int
 	dictH  bool // the dictionary has 0x1003
 	stats  ProducerStats
+	unhook []func() // removes the dictionary hooks
 }
 
 // NewProducer returns the emergency producer of a node. Options:
@@ -153,7 +154,7 @@ func NewProducer(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Produce
 		if o := d.Object(od.IndexErrorField); o != nil {
 			p.dictH, p.histN = true, len(o.Subs)-1
 		}
-		d.OnWrite(od.IndexCOBIDEmcy, 0, func(_ *od.Variable, data []byte) error {
+		p.unhook = append(p.unhook, d.OnWrite(od.IndexCOBIDEmcy, 0, func(_ *od.Variable, data []byte) error {
 			x, _ := d.GetUint(od.IndexCOBIDEmcy, 0)
 			cur := canopen.COBID(x)
 			nw := canopen.COBID(canopen.DecodeUint(data))
@@ -161,9 +162,9 @@ func NewProducer(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Produce
 				return canopen.AbortInvalidValue
 			}
 			return nil
-		})
+		}))
 		if p.dictH {
-			d.OnWrite(od.IndexErrorField, 0, func(_ *od.Variable, data []byte) error {
+			p.unhook = append(p.unhook, d.OnWrite(od.IndexErrorField, 0, func(_ *od.Variable, data []byte) error {
 				if canopen.DecodeUint(data) != 0 {
 					return canopen.AbortInvalidValue
 				}
@@ -172,7 +173,7 @@ func NewProducer(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Produce
 				p.mu.Unlock()
 				p.syncDict()
 				return nil
-			})
+			}))
 		}
 	}
 	if p.cfg.cobSet {
@@ -182,6 +183,7 @@ func NewProducer(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Produce
 		p.inh = max(p.cfg.inhibit, 0)
 	}
 	if p.histN < 0 || p.histN > 254 {
+		p.removeHooks()
 		return nil, fmt.Errorf("emcy: history length %d out of range 0..254", p.histN)
 	}
 	p.syncDict()
@@ -481,9 +483,22 @@ func (p *Producer) History() []uint32 {
 }
 
 // Close stops the queue and waits for it; queued messages are dropped.
+// It removes the write hooks the producer installed on the dictionary.
 func (p *Producer) Close() error {
 	p.lc.close()
+	p.removeHooks()
 	return nil
+}
+
+// removeHooks removes the dictionary hooks; later calls do nothing.
+func (p *Producer) removeHooks() {
+	p.mu.Lock()
+	hs := p.unhook
+	p.unhook = nil
+	p.mu.Unlock()
+	for _, rm := range hs {
+		rm()
+	}
 }
 
 // Stats returns the counters.

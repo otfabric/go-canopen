@@ -274,6 +274,7 @@ func (s *SDO) String() string {
 		fmt.Fprintf(&b, " toggle=%d", s.Toggle)
 	case PhaseSubBlock:
 		fmt.Fprintf(&b, " seq=%d", s.Seq)
+	default: // no special case
 	}
 	if s.Last {
 		b.WriteString(" last")

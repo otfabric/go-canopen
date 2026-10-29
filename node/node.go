@@ -225,14 +225,18 @@ func (n *Node) build(id canopen.NodeID) error {
 }
 
 // newServer returns a started SDO server on the COB-IDs of the
-// dictionary, disabled until the state handler enables it.
+// dictionary. It is enabled at once: it is created just before the
+// boot-up message (at Start and at a reset), and the boot-up message
+// announces Pre-operational, where the server answers. A master that
+// reacts to the boot-up message at once (a boot procedure) must not find
+// the server still disabled; the state handler keeps it enabled in
+// Pre-operational.
 func (n *Node) newServer() (*sdo.Server, error) {
 	opts := append([]sdo.ServerOption{sdo.WithLogger(n.log)}, n.cfg.sdoOpts...)
 	srv, err := sdo.NewServer(n.bus, n.d, opts...)
 	if err != nil {
 		return nil, err
 	}
-	srv.SetEnabled(false)
 	if err := srv.Start(); err != nil {
 		return nil, err
 	}
@@ -434,6 +438,11 @@ func (n *Node) onReset(kind nmt.ResetKind) {
 		_ = n.guard.SetNodeID(id)
 		n.guard.ResetToggle()
 	}
+	if n.hbCons != nil {
+		// The supervision restarts: each node waits for its first
+		// heartbeat again.
+		n.hbCons.Restart()
+	}
 	// The error state restarts: the emergencies of the reset (sent while
 	// Initialising) are suppressed by the gate.
 	n.errMu.Lock()
@@ -480,6 +489,7 @@ func (n *Node) onHeartbeat(ev nmt.HeartbeatEvent) {
 		n.commLost(ev.Node)
 	case nmt.EventResumed:
 		n.commBack(ev.Node)
+	default: // no special case
 	}
 	if h := n.cfg.onHB; h != nil {
 		h(ev)
@@ -493,6 +503,7 @@ func (n *Node) onGuard(ev nmt.GuardEvent) {
 		n.commLost(0)
 	case nmt.GuardResumed:
 		n.commBack(0)
+	default: // no special case
 	}
 }
 

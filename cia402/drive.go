@@ -134,7 +134,7 @@ type Drive struct {
 	publishing  bool
 	published   outputs
 	events      []func()
-	cancelWatch func()
+	unhook      []func() // removes the write hooks and the watcher
 }
 
 type outputs struct {
@@ -178,15 +178,16 @@ func NewDrive(dict *od.Dictionary, cfg DriveConfig) (*Drive, error) {
 	if m := Mode(d.getInt(IndexModesOfOperation, 0)); d.modes[m] {
 		d.mode = m
 	}
-	dict.OnWrite(IndexControlword, 0, d.checkControlword)
-	dict.OnWrite(IndexModesOfOperation, 0, d.checkMode)
-	dict.OnWrite(IndexTargetPosition, 0, d.checkTarget)
-	dict.OnWrite(IndexHomingMethod, 0, d.checkHomingMethod)
+	d.unhook = append(d.unhook,
+		dict.OnWrite(IndexControlword, 0, d.checkControlword),
+		dict.OnWrite(IndexModesOfOperation, 0, d.checkMode),
+		dict.OnWrite(IndexTargetPosition, 0, d.checkTarget),
+		dict.OnWrite(IndexHomingMethod, 0, d.checkHomingMethod))
 	for _, idx := range []uint16{IndexQuickStopOptionCode, IndexShutdownOptionCode, IndexDisableOperationOptionCode,
 		IndexHaltOptionCode, IndexFaultReactionOptionCode} {
-		dict.OnWrite(idx, 0, d.checkOptionCode)
+		d.unhook = append(d.unhook, dict.OnWrite(idx, 0, d.checkOptionCode))
 	}
-	d.cancelWatch = dict.Watch(d.watch)
+	d.unhook = append(d.unhook, dict.Watch(d.watch))
 	d.mu.Lock()
 	d.ver++
 	d.mu.Unlock()
@@ -197,15 +198,17 @@ func NewDrive(dict *od.Dictionary, cfg DriveConfig) (*Drive, error) {
 // Dictionary returns the drive's object dictionary.
 func (d *Drive) Dictionary() *od.Dictionary { return d.dict }
 
-// Close detaches the drive from the dictionary: writes are no longer
-// processed (the write hooks stay registered but accept everything) and
+// Close detaches the drive from the dictionary: its write hooks and its
+// watcher are removed, so writes are no longer checked or processed, and
 // Step does nothing.
 func (d *Drive) Close() {
 	d.mu.Lock()
-	defer d.mu.Unlock()
-	if !d.closed {
-		d.closed = true
-		d.cancelWatch()
+	hs := d.unhook
+	d.unhook = nil
+	d.closed = true
+	d.mu.Unlock()
+	for _, rm := range hs {
+		rm()
 	}
 }
 
@@ -399,6 +402,7 @@ func (d *Drive) controlwordLocked(cw uint16) {
 		if fell {
 			d.homing = false
 		}
+	default: // no special case
 	}
 }
 
@@ -873,6 +877,7 @@ func (d *Drive) statuswordLocked() uint16 {
 		if d.state == OperationEnabled && !halted {
 			sw |= StatusFollowsCommand
 		}
+	default: // no special case
 	}
 	return sw
 }

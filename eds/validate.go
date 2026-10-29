@@ -177,7 +177,9 @@ func (v *validator) deviceInfo() {
 		{"NrOfTXPDO", d.NrOfTXPDO, od.IndexTPDOMapping, "TPDO mapping"},
 	} {
 		if n := count(c.from, c.from+od.MaxPDOs-1); n != int(c.declared) {
-			v.add(Error, "DeviceInfo", c.key, "%d declared, but the file has %d %s parameter objects", c.declared, n, c.what)
+			// A warning: Lely CANopen and python canopen accept such files,
+			// and the PDO objects present are what a dictionary is built from.
+			v.add(Warning, "DeviceInfo", c.key, "%d declared, but the file has %d %s parameter objects", c.declared, n, c.what)
 		}
 	}
 }

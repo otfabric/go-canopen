@@ -176,6 +176,7 @@ func sample(typ reflect.Type, dt canopen.DataType) reflect.Value {
 			n = 3
 		}
 		v.Set(reflect.ValueOf(bytes.Repeat([]byte{0xA5}, n)))
+	default: // no special case
 	}
 	return v
 }

@@ -115,7 +115,7 @@ func (c *Client) Close() error {
 		c.cancel()
 		c.sem <- struct{}{} // wait for the running transfer; never released
 		if c.link != nil {
-			c.link.sub.Close()
+			_ = c.link.sub.Close()
 			c.link = nil
 		}
 	})
@@ -255,7 +255,7 @@ func (c *Client) attempt(ctx context.Context, index uint16, sub uint8, fn func(*
 	x := &xfer{c: c, l: c.link, ctx: ctx, index: index, sub: sub}
 	err := x.finish(fn(x))
 	if err != nil {
-		c.link.sub.Close()
+		_ = c.link.sub.Close()
 		c.link = nil
 	}
 	return err

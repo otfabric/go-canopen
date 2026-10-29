@@ -31,7 +31,7 @@ func TestConfigureReadConfig(t *testing.T) {
 	}
 	for _, tt := range tests {
 		d := device(t, 5)
-		_ = Protect(d, tt.transmit, tt.n)
+		_, _ = Protect(d, tt.transmit, tt.n)
 		sdo := &fakeSDO{d: d}
 		if err := Configure(context.Background(), sdo, tt.transmit, tt.n, tt.cfg); err != nil {
 			t.Fatalf("%s: %v (writes %v)", kind(tt.transmit, tt.n), err, sdo.writes)
@@ -51,7 +51,7 @@ func TestConfigureReadConfig(t *testing.T) {
 
 func TestConfigureSequence(t *testing.T) {
 	d := device(t, 5)
-	_ = Protect(d, true, 1)
+	_, _ = Protect(d, true, 1)
 	// The default TPDO1 is valid with an empty mapping; configure it twice
 	// so the second run must invalidate an active PDO first.
 	cfg := Config{COBID: 0x185, TransmissionType: 1, InhibitTime: 3, Mapping: Mapping{{idxU8, 0, 8}}}

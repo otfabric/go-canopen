@@ -120,6 +120,7 @@ func StateBits(s State) uint16 {
 		return 0x1F
 	case Fault:
 		return 0x08
+	default: // no special case
 	}
 	return 0
 }
@@ -246,6 +247,7 @@ func (c Command) canonical() Command {
 		return SwitchOn
 	case SwitchOnAndEnable:
 		return EnableOperation
+	default: // no special case
 	}
 	return c
 }
@@ -324,6 +326,7 @@ func Path(from, to State) []Command {
 		from = SwitchOnDisabled
 	case FaultReactionActive:
 		from = Fault
+	default: // no special case
 	}
 	if from == to {
 		return []Command{}

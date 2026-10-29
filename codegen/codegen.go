@@ -245,6 +245,7 @@ func goType(t canopen.DataType) (typ, helper string) {
 		return "float64", "asFloat64"
 	case canopen.VisibleString, canopen.UnicodeString:
 		return "string", "asString"
+	default: // no special case
 	}
 	return "[]byte", "asBytes"
 }

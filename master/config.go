@@ -4,11 +4,13 @@ package master
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/pdo"
+	"github.com/otfabric/go-canopen/sdo"
 )
 
 // Entry is one value to write into a node's dictionary: the neutral form
@@ -52,7 +54,10 @@ func pdoOf(index uint16) (k pdoKey, mapping, ok bool) {
 // current configuration (read from the node) and written with
 // pdo.Configure, in the order the PDOs first appear: so the sequence
 // CiA 301 requires (invalidate, clear the mapping, map, enable, make
-// valid) is kept however the entries are ordered. The first failure stops
+// valid) is kept however the entries are ordered. An EMCY (0x1014), SYNC
+// (0x1005) or TIME (0x1012) COB-ID that changes the CAN-ID of an object in
+// use is preceded by a write of the current COB-ID without its in-use bits,
+// since devices refuse that change (CiA 301). The first failure stops
 // the configuration; the error names the entry or the PDO.
 func (m *Master) Configure(ctx context.Context, node canopen.NodeID, entries []Entry) error {
 	c, err := m.SDO(node)
@@ -68,6 +73,9 @@ func (m *Master) Configure(ctx context.Context, node canopen.NodeID, entries []E
 			}
 			groups[k] = append(groups[k], e)
 			continue
+		}
+		if err := releaseCOBID(ctx, c, e); err != nil {
+			return fmt.Errorf("master: node %d: release %04X:%02X: %w", node, e.Index, e.SubIndex, err)
 		}
 		if err := c.Download(ctx, e.Index, e.SubIndex, e.Data); err != nil {
 			return fmt.Errorf("master: node %d: write %04X:%02X: %w", node, e.Index, e.SubIndex, err)
@@ -87,6 +95,66 @@ func (m *Master) Configure(ctx context.Context, node canopen.NodeID, entries []E
 		}
 	}
 	return nil
+}
+
+// cobidInUse returns the bits of a COB-ID object (EMCY 0x1014, SYNC
+// 0x1005, TIME 0x1012) under which a device refuses a change of its CAN-ID
+// (CiA 301), and whether they are set: for EMCY a valid COB-ID (bit 31
+// clear), for SYNC bit 30 (generate), for TIME bits 31 and 30 (consume,
+// produce). ok is false for other objects.
+func cobidInUse(index uint16, cob canopen.COBID) (inUse, ok bool) {
+	switch index {
+	case od.IndexCOBIDEmcy:
+		return cob.Valid(), true
+	case od.IndexCOBIDSync:
+		return cob&canopen.COBGenerate != 0, true
+	case od.IndexCOBIDTime:
+		return cob&(canopen.COBGenerate|canopen.COBConsume) != 0, true
+	}
+	return false, false
+}
+
+// released returns the COB-ID with its in-use bits changed so that the
+// CAN-ID may change: EMCY invalid, SYNC not generated, TIME neither
+// consumed nor produced.
+func released(index uint16, cob canopen.COBID) canopen.COBID {
+	switch index {
+	case od.IndexCOBIDEmcy:
+		return cob | canopen.COBInvalid
+	case od.IndexCOBIDSync:
+		return cob &^ canopen.COBGenerate
+	}
+	return cob &^ (canopen.COBGenerate | canopen.COBConsume)
+}
+
+// releaseCOBID prepares the write of an EMCY, SYNC or TIME COB-ID that
+// changes the CAN-ID of one in use: a device refuses that change (CiA
+// 301: the CAN-ID may only change while the object is not in use), so
+// the current COB-ID is first written back without its in-use bits, and
+// the entry, written next, sets the new CAN-ID and bits together. Other
+// entries need nothing. When the current value cannot be read, nothing
+// is done and the entry's own write reports the device's answer.
+func releaseCOBID(ctx context.Context, c *sdo.Client, e Entry) error {
+	if e.SubIndex != 0 || len(e.Data) != 4 {
+		return nil
+	}
+	nw := canopen.COBID(canopen.DecodeUint(e.Data))
+	if _, ok := cobidInUse(e.Index, nw); !ok {
+		return nil
+	}
+	b, err := c.Upload(ctx, e.Index, 0)
+	if err != nil || len(b) != 4 {
+		return nil //nolint:nilerr // the entry's write reports the device's answer
+	}
+	cur := canopen.COBID(canopen.DecodeUint(b))
+	curUse, _ := cobidInUse(e.Index, cur)
+	nwUse, _ := cobidInUse(e.Index, nw)
+	if !curUse || !nwUse || (cur.ID() == nw.ID() && cur.Extended() == nw.Extended()) {
+		return nil
+	}
+	var data [4]byte
+	binary.LittleEndian.PutUint32(data[:], uint32(released(e.Index, cur)))
+	return c.Download(ctx, e.Index, 0, data[:])
 }
 
 func pdoName(k pdoKey) string {

@@ -195,6 +195,7 @@ func TestPath(t *testing.T) {
 				start = SwitchOnDisabled
 			case FaultReactionActive:
 				start = Fault
+			default: // no special case
 			}
 			reachable := to != NotReadyToSwitchOn && to != FaultReactionActive && to != Unknown &&
 				(to != Fault || start == Fault) && start != Unknown

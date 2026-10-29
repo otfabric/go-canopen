@@ -259,7 +259,7 @@ func TestValidateBroken(t *testing.T) {
 	for _, want := range []key{
 		{Error, "FileInfo", "FileVersion"},
 		{Error, "DeviceInfo", "Granularity"},
-		{Error, "DeviceInfo", "NrOfRXPDO"},
+		{Warning, "DeviceInfo", "NrOfRXPDO"}, // count mismatch: a warning
 		{Error, "DeviceComissioning", "NodeID"},
 		{Warning, "DeviceComissioning", "Baudrate"},
 		{Error, "MandatoryObjects", "SupportedObjects"},
