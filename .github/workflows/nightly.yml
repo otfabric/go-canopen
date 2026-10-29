@@ -1,0 +1,38 @@
+name: Nightly chaos
+run-name: "Nightly chaos on ${{ github.ref_name }}"
+
+# The chaos-monkey suites with many more seeds than CI runs on every push:
+# random fault schedules (drops, duplicates, delays, reordering,
+# corruption) between CANopen masters and devices on the virtual bus.
+
+on:
+  schedule:
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: Seeds per monkey test
+        required: false
+        default: "500"
+
+permissions:
+  contents: read
+
+jobs:
+  chaos:
+    name: Chaos (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Chaos monkey
+        run: make chaos CHAOS_ITERATIONS=${{ inputs.iterations || '500' }}

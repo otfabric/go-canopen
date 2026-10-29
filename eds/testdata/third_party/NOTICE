@@ -1,0 +1,17 @@
+Third-party EDS files used as test fixtures. They are unmodified copies,
+used only by the tests of package eds and package codegen.
+
+canopennode_ds301_profile.eds
+    Source:  https://github.com/CANopenNode/CANopenNode, example/DS301_profile.eds
+             (master, commit 9b8beed8367241e96ac03f916cd5a500bcb2cf23, fetched 2026-10-29)
+    Licence: Apache License 2.0, LICENSES/CANopenNode-Apache-2.0.txt
+    Copyright (c) the CANopenNode authors (Janez Paternoster and contributors).
+
+python_canopen_sample.eds
+    Source:  https://github.com/christiansandberg/canopen, test/sample.eds
+             (master, commit 14b3336bc973023e82325426adf6d71046ebcf55, fetched 2026-10-29)
+    Licence: MIT, LICENSES/python-canopen-MIT.txt
+    Copyright (c) 2016 Christian Sandberg.
+
+All other files in eds/testdata were written for go-canopen and are under
+the go-canopen licence (MIT).

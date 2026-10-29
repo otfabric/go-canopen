@@ -1,0 +1,154 @@
+name: CI
+run-name: "CI (${{ github.event_name }}) on ${{ github.ref_name }} by @${{ github.actor }}"
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # Lint, vet, module checks and the test matrix on every supported Go
+  # version. Coverage is measured and uploaded by the vcan job, which also
+  # runs the SocketCAN tests (run-codecov: false here).
+  ci:
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    with:
+      codecov-name: go-canopen
+      run-codecov: false
+      coverpkg: >-
+        github.com/otfabric/go-canopen,github.com/otfabric/go-canopen/cia402,github.com/otfabric/go-canopen/codegen,github.com/otfabric/go-canopen/dissect,github.com/otfabric/go-canopen/eds,github.com/otfabric/go-canopen/emcy,github.com/otfabric/go-canopen/master,github.com/otfabric/go-canopen/nmt,github.com/otfabric/go-canopen/node,github.com/otfabric/go-canopen/od,github.com/otfabric/go-canopen/pdo,github.com/otfabric/go-canopen/sdo,github.com/otfabric/go-canopen/sync,github.com/otfabric/go-canopen/timestamp
+      go-versions: '["1.23", "1.24", "1.25", "1.26"]'
+    secrets: inherit
+
+  # Every test on real vcan interfaces (the e2e suite runs CANopen over
+  # Linux SocketCAN), natively on amd64 and arm64. CANOPEN_REQUIRE_VCAN=1
+  # turns a missing interface into a failure, never a skip. Coverage of
+  # the whole library is measured here, gated at 90 % and uploaded.
+  vcan:
+    name: vcan (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Load the CAN modules and create vcan0 and vcan1
+        run: |
+          scripts/ci-can-modules.sh
+          for i in vcan0 vcan1; do sudo ip link add $i type vcan; sudo ip link set $i mtu 72 up; done
+          ip -d link show vcan0
+      - name: Install Wireshark (CANopen dissector oracle)
+        run: |
+          sudo add-apt-repository -y ppa:wireshark-dev/stable
+          sudo apt-get update -qq
+          echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tshark
+          tshark --version | head -1
+      - name: Tests with the race detector
+        env:
+          CANOPEN_REQUIRE_TSHARK: "1"
+        run: make test-vcan
+      - name: Coverage (minimum 90 %)
+        env:
+          CANOPEN_REQUIRE_VCAN: "1"
+          CANOPEN_REQUIRE_TSHARK: "1"
+        run: make coverage-check
+      - name: Upload to Codecov
+        if: matrix.arch == 'amd64'
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage.out
+          flags: vcan
+          name: go-canopen
+          fail_ci_if_error: false
+
+  # The golden output of the code generator follows the generator.
+  generate:
+    name: Generated code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.23.x"
+      - run: make generate-check coverpkg-check
+
+  examples:
+    name: Examples
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.23.x"
+      - run: make build examples
+
+  # Every package builds for the release platforms, including 32-bit ARM.
+  cross:
+    name: Cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make cross
+
+  # The tests on macOS and Windows: everything but SocketCAN runs there.
+  portable:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 ./...
+        env:
+          GOWORK: "off"
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.23.x"
+      - run: make fuzz FUZZTIME=10s
+      - name: Upload the failing inputs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-failures
+          path: "**/testdata/fuzz/"
+          if-no-files-found: warn
+
+  # A short chaos-monkey run on every push; the nightly workflow runs many
+  # more seeds.
+  chaos:
+    name: Chaos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make chaos CHAOS_ITERATIONS=20
