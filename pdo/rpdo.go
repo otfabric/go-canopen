@@ -22,6 +22,9 @@ type RPDOStats struct {
 	Overwritten uint64 `json:"overwritten"` // synchronous PDOs replaced by a newer one before the SYNC
 	WriteErrors uint64 `json:"writeErrors"` // mapped objects the dictionary refused
 	Timeouts    uint64 `json:"timeouts"`    // deadline monitoring expiries
+	// OutsideWindow counts synchronous PDOs discarded because they arrived
+	// after the synchronous window (0x1007) of the last SYNC had closed.
+	OutsideWindow uint64 `json:"outsideWindow"`
 }
 
 // RPDO is a receive PDO of a device: it reads its parameters from the
@@ -33,7 +36,19 @@ type RPDOStats struct {
 //
 // Event-driven RPDOs (254, 255) are written when they arrive. Synchronous
 // ones (0..240) are buffered and written on the next SYNC ([RPDO.OnSync]);
-// a newer PDO before the SYNC replaces the buffered one.
+// a newer PDO before the SYNC replaces the buffered one. With a
+// synchronous window (object 0x1007, µs, of the dictionary) a synchronous
+// PDO that arrives after the window of the last SYNC has closed is
+// discarded until the next SYNC, as CiA 301 describes object 0x1007 (and
+// device manuals quoting it, e.g. Nanotec's "RxPDOs are rejected until
+// the next SYNC"); it is counted in [RPDOStats.OutsideWindow]. Before the
+// first SYNC there is no window. CANopenNode does not check the window
+// for RPDOs (CO_PDO.c ignores it): this is a deliberate difference. The
+// discarded PDO still counts as received for deadline monitoring and the
+// length check.
+//
+// A CANopen FD RPDO ([WithFD]) takes mappings of up to 512 bits; frames
+// padded to the next CAN FD length are not "too long".
 //
 // A PDO shorter than the mapping is discarded and reported with EMCY code
 // 0x8210; a longer one is used (its first bytes) and reported with 0x8220,
@@ -52,9 +67,10 @@ type RPDO struct {
 	missed  bool   // deadline missed, reported
 	lenErr  uint16 // active length error code
 	pending []ErrorEvent
+	winEnd  time.Time // end of the synchronous window of the last SYNC; zero: none
 
 	st struct {
-		received, applied, ignored, short, long, overwritten, writeErrors, timeouts atomic.Uint64
+		received, applied, ignored, short, long, overwritten, writeErrors, timeouts, outsideWindow atomic.Uint64
 	}
 }
 
@@ -97,6 +113,7 @@ func (r *RPDO) Stats() RPDOStats {
 		Received: r.st.received.Load(), Applied: r.st.applied.Load(), Ignored: r.st.ignored.Load(),
 		Short: r.st.short.Load(), Long: r.st.long.Load(), Overwritten: r.st.overwritten.Load(),
 		WriteErrors: r.st.writeErrors.Load(), Timeouts: r.st.timeouts.Load(),
+		OutsideWindow: r.st.outsideWindow.Load(),
 	}
 }
 
@@ -104,13 +121,24 @@ func (r *RPDO) resetLocked() {
 	r.buf = nil
 	r.armed, r.missed = false, false
 	r.lenErr = 0
+	r.winEnd = time.Time{}
 }
 
-// OnSync applies a buffered synchronous PDO, from the calling goroutine.
-func (r *RPDO) OnSync(uint8) {
+// OnSync applies a buffered synchronous PDO, from the calling goroutine,
+// and opens the synchronous window the dictionary's 0x1007 defines.
+func (r *RPDO) OnSync(counter uint8) { r.OnSyncWindow(counter, r.windowEnd()) }
+
+// OnSyncWindow processes a SYNC as [RPDO.OnSync] does, with the end of its
+// synchronous window given (a syncobj.Event's WindowEnd; the zero time:
+// no window). Synchronous PDOs received after windowEnd are discarded
+// until the next SYNC.
+func (r *RPDO) OnSyncWindow(_ uint8, windowEnd time.Time) {
 	r.mu.Lock()
 	data, m := r.buf, r.cfg.Mapping
 	r.buf = nil
+	if r.enabled {
+		r.winEnd = windowEnd
+	}
 	ok := r.enabled && r.active && r.cfg.TransmissionType.Synchronous()
 	r.mu.Unlock()
 	if ok && data != nil {
@@ -120,7 +148,7 @@ func (r *RPDO) OnSync(uint8) {
 
 // apply writes PDO data to the mapped objects.
 func (r *RPDO) apply(m Mapping, data []byte) {
-	vals, err := Unpack(m, data)
+	vals, err := unpack(m, data, r.opt.maxBits())
 	if err != nil {
 		return
 	}
@@ -205,12 +233,16 @@ func (r *RPDO) receive(f *canbus.Frame) {
 	r.st.received.Add(1)
 	data := append([]byte(nil), f.Payload()...)
 	need := cfg.Mapping.Len()
+	most := need
+	if r.opt.fd {
+		most = canbus.RoundUpFDLen(need)
+	}
 	code := uint16(0)
 	switch {
 	case len(data) < need:
 		code = EMCYPDOLength
 		r.st.short.Add(1)
-	case len(data) > need:
+	case len(data) > most:
 		code = EMCYPDOLengthExceeded
 		r.st.long.Add(1)
 	}
@@ -234,6 +266,12 @@ func (r *RPDO) receive(f *canbus.Frame) {
 		r.pending = append(r.pending, ErrorEvent{PDO: r.n, Code: EMCYRPDOTimeout, Active: false})
 	}
 	if cfg.TransmissionType.Synchronous() {
+		if r.windowClosed(r.winEnd) {
+			r.st.outsideWindow.Add(1)
+			r.mu.Unlock()
+			r.log.Debug("synchronous PDO outside the synchronous window, discarded")
+			return
+		}
 		if r.buf != nil {
 			r.st.overwritten.Add(1)
 		}

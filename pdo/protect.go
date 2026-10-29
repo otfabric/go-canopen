@@ -33,6 +33,8 @@ import (
 //     ODR_UNSUPP_ACCESS).
 //   - an entry other than 0 that [ValidateEntry] refuses: its code
 //     ([canopen.AbortNoObject] or [canopen.AbortNotMappable]).
+//   - sub 00h FEh or FFh (MPDO, CiA 301) is accepted as 0 is, without
+//     checking entries; the PDO is then inactive for [TPDO] and [RPDO].
 //   - sub 00h above the number of entries or [MaxEntries], or entries
 //     longer than [MaxBits] in total: [canopen.AbortPDOLength]; an entry
 //     1..n that is invalid: its [ValidateEntry] code.
@@ -42,6 +44,17 @@ import (
 // installing them twice is harmless. [NewTPDO] and [NewRPDO] call
 // Protect, and their Close calls unprotect.
 func Protect(d *od.Dictionary, transmit bool, n int) (unprotect func(), err error) {
+	return protect(d, transmit, n, MaxBits)
+}
+
+// ProtectFD installs the write hooks of [Protect] for a CANopen FD PDO:
+// the mapping may total up to [MaxBitsFD] bits. [NewTPDO] and [NewRPDO]
+// call it when given [WithFD].
+func ProtectFD(d *od.Dictionary, transmit bool, n int) (unprotect func(), err error) {
+	return protect(d, transmit, n, MaxBitsFD)
+}
+
+func protect(d *od.Dictionary, transmit bool, n, maxBits int) (unprotect func(), err error) {
 	if err := checkNumber(n); err != nil {
 		return nil, err
 	}
@@ -53,7 +66,7 @@ func Protect(d *od.Dictionary, transmit bool, n int) (unprotect func(), err erro
 		return checkCommWrite(d, transmit, n, v.SubIndex, canopen.DecodeUint(data))
 	})
 	rm2 := d.OnWrite(mi, -1, func(v *od.Variable, data []byte) error {
-		return checkMappingWrite(d, transmit, n, v.SubIndex, canopen.DecodeUint(data))
+		return checkMappingWrite(d, transmit, n, v.SubIndex, canopen.DecodeUint(data), maxBits)
 	})
 	var once sync.Once
 	return func() { once.Do(func() { rm1(); rm2() }) }, nil
@@ -103,7 +116,7 @@ func checkCommWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint64)
 }
 
 // checkMappingWrite applies the mapping parameter rules.
-func checkMappingWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint64) error {
+func checkMappingWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint64, maxBits int) error {
 	if active(d, transmit, n) {
 		return canopen.AbortUnsupported
 	}
@@ -118,7 +131,7 @@ func checkMappingWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint
 		return ValidateEntry(d, ParseEntry(uint32(x)), transmit)
 	}
 	o := d.Object(mi)
-	if x == 0 {
+	if x == 0 || isMPDO(x) {
 		return nil
 	}
 	if x > MaxEntries || o.Sub(uint8(x)) == nil {
@@ -135,5 +148,5 @@ func checkMappingWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint
 		}
 		m = append(m, ParseEntry(uint32(e)))
 	}
-	return m.Validate(d, transmit)
+	return m.validate(d, transmit, maxBits)
 }

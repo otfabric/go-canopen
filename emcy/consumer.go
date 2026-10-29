@@ -20,6 +20,10 @@ type Event struct {
 	COBID canopen.COBID
 	Message
 	Time time.Time // the frame's receive timestamp, or the time it was processed
+	// FD is the CANopen FD message (a consumer made [WithFD] receiving a
+	// 20-byte CAN FD emergency); nil for a classical one. Message holds its
+	// classical part.
+	FD *FDMessage `json:"fd,omitempty"`
 }
 
 // ConsumerStats counts what a [Consumer] did.
@@ -43,7 +47,7 @@ type Consumer struct {
 }
 
 // NewConsumer returns an emergency consumer. Options: [WithLogger],
-// [WithHandler], [WithProducer].
+// [WithHandler], [WithProducer], [WithFD], [WithFDLayout].
 func NewConsumer(bus canopen.Bus, opts ...Option) *Consumer {
 	return &Consumer{bus: bus, cfg: newConfig(opts), last: map[canopen.NodeID]Event{}}
 }
@@ -98,9 +102,14 @@ func (c *Consumer) receive(f *canbus.Frame) {
 	node, cob, ok := c.source(f)
 	var (
 		m   Message
+		fd  *FDMessage
 		err error
 	)
-	if ok {
+	switch {
+	case !ok:
+	case c.cfg.fd:
+		m, fd, err = ParseFDFrame(f, c.cfg.layout)
+	default:
 		m, err = ParseFrame(f)
 	}
 	c.mu.Lock()
@@ -114,7 +123,7 @@ func (c *Consumer) receive(f *canbus.Frame) {
 	if t.IsZero() {
 		t = time.Now()
 	}
-	e := Event{Node: node, COBID: cob, Message: m, Time: t}
+	e := Event{Node: node, COBID: cob, Message: m, Time: t, FD: fd}
 	c.stats.Received++
 	if m.IsReset() {
 		c.stats.Resets++

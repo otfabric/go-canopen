@@ -35,7 +35,8 @@ func ReadConfig(ctx context.Context, sdo SDO, transmit bool, n int) (Config, err
 //  1. invalidate: COB-ID with bit 31 set (and the new identifier)
 //  2. disable the mapping: sub 00h of the mapping = 0
 //  3. write the mapping entries
-//  4. enable the mapping: sub 00h = number of entries
+//  4. enable the mapping: sub 00h = number of entries (or cfg.MPDO, FEh
+//     or FFh, for a multiplexed PDO without entries)
 //  5. transmission type, inhibit time (TPDO), event timer, SYNC start
 //     value (TPDO)
 //  6. if cfg.COBID is valid: the COB-ID, which makes the PDO valid
@@ -76,8 +77,13 @@ func Configure(ctx context.Context, sdo SDO, transmit bool, n int, cfg Config) e
 			return err
 		}
 	}
-	if len(cfg.Mapping) > 0 {
+	switch {
+	case len(cfg.Mapping) > 0:
 		if err := w(mi, 0, u8(uint8(len(cfg.Mapping))), false); err != nil {
+			return err
+		}
+	case cfg.MPDO != 0:
+		if err := w(mi, 0, u8(cfg.MPDO), false); err != nil {
 			return err
 		}
 	}

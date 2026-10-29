@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
@@ -20,6 +21,9 @@ var (
 	// ErrInactive reports a transmission of a PDO that is not active: its
 	// COB-ID is invalid or nothing is mapped.
 	ErrInactive = errors.New("pdo: PDO not active (invalid COB-ID or empty mapping)")
+	// ErrNoRTR reports a remote transmission request for a CANopen FD PDO:
+	// CAN FD has no remote frames (CiA 1301).
+	ErrNoRTR = errors.New("pdo: no remote frames in CANopen FD")
 )
 
 // EMCY error codes the PDO services report (CiA 301 table 21).
@@ -52,6 +56,8 @@ type options struct {
 	log     *slog.Logger
 	onError func(ErrorEvent)
 	onRx    func(data []byte)
+	fd, brs bool
+	clock   func() time.Time
 }
 
 // WithLogger sets the logger (default: discard).
@@ -78,12 +84,58 @@ func WithReceiveHandler(f func(data []byte)) Option {
 	return func(o *options) { o.onRx = f }
 }
 
+// WithFD makes the PDO a CANopen FD PDO (CiA 1301): it is sent in CAN FD
+// frames (with bit rate switching when brs is true), padded with zeros to
+// the next valid CAN FD length, and its mapping may total up to
+// [MaxBitsFD] bits (64 bytes). CiA 1301 runs every service of a CANopen FD
+// network in CAN FD frames and has no per-PDO FD flag in the dictionary,
+// so the choice is an option, normally the same for all PDOs of a device.
+// Remote frames do not exist in CAN FD: an FD TPDO answers no remote
+// request (types 252 and 253 therefore never transmit), and
+// [Listener.Request] fails with [ErrNoRTR]. An FD RPDO also accepts
+// classical frames; its length check allows the CAN FD padding (a mapping
+// of 9 bytes arrives in a 12-byte frame). Applies to [TPDO], [RPDO],
+// [NewDecoder], [NewEncoder] (and so [Sender] and [Listener]) and
+// [ProtectFD]-style validation of the services.
+func WithFD(brs bool) Option {
+	return func(o *options) { o.fd, o.brs = true, brs }
+}
+
+// WithClock sets the clock the SYNC window (0x1007) is measured with
+// (default time.Now). It exists for tests; inhibit and event timers use
+// the system clock.
+func WithClock(now func() time.Time) Option {
+	return func(o *options) {
+		if now != nil {
+			o.clock = now
+		}
+	}
+}
+
 func buildOptions(opts []Option) options {
-	o := options{log: slog.New(discard{})}
+	o := options{log: slog.New(discard{}), clock: time.Now}
 	for _, f := range opts {
 		f(&o)
 	}
 	return o
+}
+
+// maxBits returns the mapping limit: [MaxBits] or, for CANopen FD,
+// [MaxBitsFD].
+func (o *options) maxBits() int {
+	if o.fd {
+		return MaxBitsFD
+	}
+	return MaxBits
+}
+
+// frame returns the data frame of a PDO: classical, or CAN FD padded to a
+// valid CAN FD length.
+func (o *options) frame(c canopen.COBID, data []byte) (canbus.Frame, error) {
+	if o.fd {
+		return canbus.NewFD(c.ID(), c.Extended(), o.brs, canbus.PadFD(data, 0))
+	}
+	return newFrame(c, data)
 }
 
 // discard is a slog.Handler that drops everything.

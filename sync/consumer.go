@@ -59,7 +59,7 @@ type Consumer struct {
 
 // NewConsumer returns a SYNC consumer. Options: [WithLogger],
 // [WithHandler], [WithDictionary], [WithCOBID], [WithWindow],
-// [WithOverflow].
+// [WithOverflow], [WithFD].
 func NewConsumer(bus canopen.Bus, opts ...Option) (*Consumer, error) {
 	c := &Consumer{bus: bus, cfg: newConfig(opts), wake: make(chan struct{}, 1)}
 	c.cob = c.cfg.cob
@@ -175,7 +175,11 @@ func (c *Consumer) run(ctx context.Context, sub *canbus.Subscription, cob canope
 
 // receive processes one frame; ok is false for a frame that is no SYNC.
 func (c *Consumer) receive(f *canbus.Frame, cob canopen.COBID) (Event, bool) {
-	if !cob.Matches(f) || f.Flags&(canbus.FlagRemote|canbus.FlagFD|canbus.FlagError) != 0 {
+	reject := canbus.FlagRemote | canbus.FlagError
+	if !c.cfg.fd {
+		reject |= canbus.FlagFD
+	}
+	if !cob.Matches(f) || f.Flags&reject != 0 {
 		return Event{}, false
 	}
 	t := f.Timestamp
@@ -230,6 +234,16 @@ func (c *Consumer) InWindow(now time.Time) bool {
 		return true
 	}
 	return now.Before(c.last.Time.Add(c.window))
+}
+
+// Window returns the synchronous window length (0x1007, or the
+// [WithWindow] option; 0: no window) that [Event.WindowEnd] and
+// [Consumer.InWindow] use. Synchronous PDOs are bound to it: pass
+// Event.WindowEnd to pdo's OnSyncWindow.
+func (c *Consumer) Window() time.Duration {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.window
 }
 
 // Close stops the consumer and waits for it. It removes the write hooks

@@ -33,6 +33,7 @@ type config struct {
 	window      time.Duration
 	windowSet   bool
 	handler     func(Event)
+	fd, brs     bool
 }
 
 func newConfig(opts []Option) config {
@@ -85,6 +86,15 @@ func WithWindow(d time.Duration) Option { return func(c *config) { c.window, c.w
 // goroutine; h must not block for long (synchronous PDOs are due).
 func WithHandler(h func(Event)) Option { return func(c *config) { c.handler = h } }
 
+// WithFD selects CANopen FD (CiA 1301), which carries every protocol in
+// CAN FD frames: a [Producer] sends SYNC as a CAN FD frame (with bit rate
+// switching when brs is true) of the same 0 or 1 data byte, and a
+// [Consumer] accepts SYNC in CAN FD frames as well as classical ones
+// (without the option it ignores CAN FD frames). The SYNC protocol itself
+// is unchanged in CANopen FD (CiA's CANopen FD poster: SYNC with an
+// optional 1-byte counter on CAN-ID 080h).
+func WithFD(brs bool) Option { return func(c *config) { c.fd, c.brs = true, brs } }
+
 func checkOverflow(n uint64) error {
 	if n == 1 || n > MaxOverflow {
 		return fmt.Errorf("syncobj: counter overflow %d not in 0, 2..%d", n, MaxOverflow)
@@ -136,14 +146,17 @@ func (u *unhook) remove() {
 	}
 }
 
-// frame returns the SYNC frame on cob with the counter (none when 0).
-func frame(cob canopen.COBID, counter uint8) canbus.Frame {
+// frame returns the SYNC frame on cob with the counter (none when 0), a
+// CAN FD frame when fd is set.
+func frame(cob canopen.COBID, counter uint8, fd, brs bool) canbus.Frame {
 	var data []byte
 	if counter != 0 {
 		data = []byte{counter}
 	}
 	var f canbus.Frame
-	if cob.Extended() {
+	if fd {
+		f, _ = canbus.NewFD(cob.ID(), cob.Extended(), brs, data)
+	} else if cob.Extended() {
 		f, _ = canbus.NewExtended(cob.ID(), data)
 	} else {
 		f, _ = canbus.NewStandard(cob.ID(), data)
@@ -185,7 +198,7 @@ type Producer struct {
 }
 
 // NewProducer returns a SYNC producer. Options: [WithLogger],
-// [WithDictionary], [WithCOBID], [WithPeriod], [WithOverflow].
+// [WithDictionary], [WithCOBID], [WithPeriod], [WithOverflow], [WithFD].
 func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 	p := &Producer{bus: bus, cfg: newConfig(opts), wake: make(chan struct{}, 1), generate: true}
 	p.cob = p.cfg.cob
@@ -329,7 +342,7 @@ func (p *Producer) Send(ctx context.Context) error {
 			p.counter = 1
 		}
 	}
-	f := frame(p.cob, c)
+	f := frame(p.cob, c, p.cfg.fd, p.cfg.brs)
 	p.mu.Unlock()
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()

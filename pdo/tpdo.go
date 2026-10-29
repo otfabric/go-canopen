@@ -5,6 +5,7 @@ package pdo
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -23,6 +24,9 @@ type TPDOStats struct {
 	Syncs       uint64 `json:"syncs"`       // SYNCs seen while enabled and active
 	RTRs        uint64 `json:"rtrs"`        // remote transmission requests received
 	EventTimers uint64 `json:"eventTimers"` // transmissions caused by the event timer
+	// WindowMissed counts synchronous transmissions discarded because the
+	// synchronous window (0x1007) closed before they were sent.
+	WindowMissed uint64 `json:"windowMissed"`
 }
 
 // TPDO is a transmit PDO of a device: it reads its parameters from the
@@ -45,7 +49,17 @@ type TPDOStats struct {
 //     the previous transmission. The event timer restarts with every
 //     transmission.
 //
-// Remote requests are answered unless COB-ID bit 30 is set. The TPDO
+// Synchronous transmissions (types 0..240) are made only within the
+// synchronous window after the SYNC (object 0x1007, µs, of the
+// dictionary; 0 or absent: no window): a PDO sampled at the SYNC but not
+// sent before the window closes is discarded and counted in
+// [TPDOStats.WindowMissed], as CiA 301 and CANopenNode (which clears the
+// pending synchronous TPDOs when the window passes, CO_SYNC.c/CANopen.c)
+// do. The send is bounded by the window: a bus that cannot take the frame
+// in time drops it.
+//
+// Remote requests are answered unless COB-ID bit 30 is set or the PDO is
+// a CANopen FD PDO ([WithFD]: CAN FD has no remote frames). The TPDO
 // transmits only while enabled ([TPDO.SetEnabled]: NMT operational) and
 // active ([Config.Active]). Mapped objects are read with remote reads, so
 // read hooks may supply values. SYNC reaches the TPDO through
@@ -65,7 +79,7 @@ type TPDO struct {
 	evDue     time.Time // event timer deadline
 
 	st struct {
-		sent, sendErrors, readErrors, unchanged, syncs, rtrs, eventTimers atomic.Uint64
+		sent, sendErrors, readErrors, unchanged, syncs, rtrs, eventTimers, windowMissed atomic.Uint64
 	}
 }
 
@@ -79,7 +93,7 @@ func NewTPDO(bus canopen.Bus, d *od.Dictionary, n int, opts ...Option) (*TPDO, e
 	}
 	t.remote = canbus.RemoteOnly
 	t.reset = t.resetLocked
-	t.wantSub = func() bool { return t.active && t.cfg.COBID&canopen.COBNoRTR == 0 }
+	t.wantSub = func() bool { return t.active && t.cfg.COBID&canopen.COBNoRTR == 0 && !t.opt.fd }
 	t.onValue = t.watchValues
 	t.mu.Lock()
 	t.reloadLocked()
@@ -109,7 +123,7 @@ func (t *TPDO) Stats() TPDOStats {
 	return TPDOStats{
 		Sent: t.st.sent.Load(), SendErrors: t.st.sendErrors.Load(), ReadErrors: t.st.readErrors.Load(),
 		Unchanged: t.st.unchanged.Load(), Syncs: t.st.syncs.Load(), RTRs: t.st.rtrs.Load(),
-		EventTimers: t.st.eventTimers.Load(),
+		EventTimers: t.st.eventTimers.Load(), WindowMissed: t.st.windowMissed.Load(),
 	}
 }
 
@@ -156,9 +170,16 @@ func (t *TPDO) event(force bool) {
 	t.mu.Unlock()
 }
 
-// OnSync processes a SYNC with its counter (0 for a SYNC without one). It
-// sends the TPDO from the calling goroutine when it is due.
-func (t *TPDO) OnSync(counter uint8) {
+// OnSync processes a SYNC with its counter (0 for a SYNC without one),
+// received now. It sends the TPDO from the calling goroutine when it is
+// due, within the synchronous window the dictionary's 0x1007 defines.
+func (t *TPDO) OnSync(counter uint8) { t.OnSyncWindow(counter, t.windowEnd()) }
+
+// OnSyncWindow processes a SYNC as [TPDO.OnSync] does, with the end of its
+// synchronous window given (a syncobj.Event's WindowEnd; the zero time:
+// no window). A synchronous transmission not made before windowEnd is
+// discarded and counted in [TPDOStats.WindowMissed].
+func (t *TPDO) OnSyncWindow(counter uint8, windowEnd time.Time) {
 	t.mu.Lock()
 	if !t.enabled || !t.active {
 		t.mu.Unlock()
@@ -206,7 +227,32 @@ func (t *TPDO) OnSync(counter uint8) {
 		t.mu.Unlock()
 		return
 	}
-	_ = t.transmit(t.ctx, cfg.COBID, data)
+	t.transmitInWindow(cfg.COBID, data, windowEnd)
+}
+
+// transmitInWindow sends a synchronous PDO if the window that ends at end
+// is still open, with the send bounded by it.
+func (t *TPDO) transmitInWindow(c canopen.COBID, data []byte, end time.Time) {
+	if end.IsZero() {
+		_ = t.transmit(t.ctx, c, data)
+		return
+	}
+	left := end.Sub(t.opt.clock())
+	if left <= 0 {
+		t.st.windowMissed.Add(1)
+		t.log.Debug("synchronous window closed, PDO discarded")
+		return
+	}
+	ctx, cancel := context.WithTimeout(t.ctx, left)
+	defer cancel()
+	if err := t.transmitCounted(ctx, c, data, false); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() != nil && t.ctx.Err() == nil {
+			t.st.windowMissed.Add(1)
+			t.log.Debug("synchronous window closed during send, PDO discarded")
+			return
+		}
+		t.st.sendErrors.Add(1)
+	}
 }
 
 // Transmit reads the mapped objects and sends the TPDO now, whatever its
@@ -241,7 +287,7 @@ func (t *TPDO) read(m Mapping) ([]byte, error) {
 		}
 		vals[i] = b
 	}
-	data, err := Pack(m, vals)
+	data, err := pack(m, vals, t.opt.maxBits())
 	if err != nil {
 		t.st.readErrors.Add(1)
 		return nil, err
@@ -251,6 +297,12 @@ func (t *TPDO) read(m Mapping) ([]byte, error) {
 
 // transmit sends data and restarts the inhibit and event timers.
 func (t *TPDO) transmit(ctx context.Context, c canopen.COBID, data []byte) error {
+	return t.transmitCounted(ctx, c, data, true)
+}
+
+// transmitCounted is transmit; countErr selects whether a failure counts
+// as a send error.
+func (t *TPDO) transmitCounted(ctx context.Context, c canopen.COBID, data []byte, countErr bool) error {
 	t.mu.Lock()
 	now := time.Now()
 	t.lastSent, t.lastData = now, data
@@ -260,7 +312,9 @@ func (t *TPDO) transmit(ctx context.Context, c canopen.COBID, data []byte) error
 	t.mu.Unlock()
 	t.poke()
 	if err := t.send(ctx, c, data); err != nil {
-		t.st.sendErrors.Add(1)
+		if countErr {
+			t.st.sendErrors.Add(1)
+		}
 		t.log.Debug("send", "err", err)
 		return err
 	}
@@ -340,7 +394,7 @@ func (t *TPDO) step() time.Time {
 func (t *TPDO) onRTR(f *canbus.Frame) {
 	t.mu.Lock()
 	cfg := t.cfg
-	if !f.IsRemote() || !cfg.COBID.Matches(f) || cfg.COBID&canopen.COBNoRTR != 0 || !t.enabled || !t.active {
+	if !f.IsRemote() || !cfg.COBID.Matches(f) || cfg.COBID&canopen.COBNoRTR != 0 || !t.enabled || !t.active || t.opt.fd {
 		t.mu.Unlock()
 		return
 	}

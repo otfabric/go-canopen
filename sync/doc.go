@@ -12,7 +12,15 @@
 // with a counter byte 1..overflow when the synchronous counter overflow
 // value (0x1019) is 2..240. A [Consumer] receives SYNC messages and
 // reports them with their counter and the end of the synchronous window
-// (0x1007), which is what synchronous PDOs are driven by.
+// (0x1007), which is what synchronous PDOs are driven by: the pdo
+// package's OnSyncWindow takes [Event.WindowEnd] and enforces the window
+// (synchronous TPDOs not sent and RPDOs not received within it are
+// discarded); [Consumer.Window] and [Consumer.InWindow] expose it.
+//
+// CANopen FD (CiA 1301) keeps the SYNC protocol (0 or 1 data byte, default
+// CAN-ID 080h) but carries it, like every protocol, in CAN FD frames:
+// [WithFD] makes the producer send CAN FD frames and the consumer accept
+// them.
 //
 // Timing: the producer uses a time.Ticker, so SYNC does not drift over
 // time, but every message is subject to the scheduling latency of the Go
