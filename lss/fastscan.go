@@ -286,6 +286,15 @@ func (fs *fastscan) selectOne() (Address, bool, error) {
 				return Address{}, false, err
 			}
 			if !ok {
+				if p == PartSerial {
+					// Only the acknowledgement may be lost: the slave is
+					// then in the configuration state, where it no longer
+					// answers Fastscan and would take the node-ID meant
+					// for the next device selected.
+					if err := fs.leave(); err != nil {
+						return Address{}, false, err
+					}
+				}
 				done = false
 				break
 			}
@@ -377,9 +386,12 @@ func AssignHandler(h func(Assignment)) AssignOption { return func(c *assignConfi
 // sent, the node-ID counts as used even when no confirmation arrives (the
 // call then fails with an [*AssignError] naming it). Before each identification the master switches every
 // slave to waiting and checks with "inquire node-ID" that none stayed in
-// the configuration state; after it, it inquires the whole address and
-// requires answers from the identified device only. The assignments made
-// are returned also when an error ends the run.
+// the configuration state, and again when the acknowledgement of the
+// selection is lost; after it, it inquires the whole address and requires
+// answers from the identified device only. An answer lost on the bus
+// cannot be told from no answer, so these checks do not exclude two slaves
+// in the configuration state on a link that loses frames (LIMITATIONS.md).
+// The assignments made are returned also when an error ends the run.
 func (m *Master) AssignAll(ctx context.Context, first canopen.NodeID, opts ...AssignOption) ([]Assignment, error) {
 	if err := first.Check(); err != nil {
 		return nil, fmt.Errorf("lss: %w", err)
@@ -528,13 +540,18 @@ func (m *Master) leaveConfiguration(ctx context.Context, o FastscanOptions) erro
 		return err
 	}
 	defer s.end()
-	fs := m.newFastscan(s, o)
+	return m.newFastscan(s, o).leave()
+}
+
+// leave is [Master.leaveConfiguration] within a session. The switch is
+// sent before every check, as it is unconfirmed: a check is silent also
+// when its request or the answer was lost.
+func (fs *fastscan) leave() error {
+	s, m := fs.s, fs.s.m
 	silent := 0
 	for round := 0; round < 2*(m.cfg.retries+m.cfg.fsAttempts); round++ {
-		if silent == 0 {
-			if err := s.send(frame(MasterID, CmdSwitchGlobal, byte(Waiting))); err != nil {
-				return err
-			}
+		if err := s.send(frame(MasterID, CmdSwitchGlobal, byte(Waiting))); err != nil {
+			return err
 		}
 		s.drain()
 		if err := s.send(frame(MasterID, CmdInquireNodeID)); err != nil {
