@@ -81,6 +81,16 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
   byte's encoding is not public (carried raw).
 - **MPDO dispatcher entry**: the block size is read at bits 56..63 (Lely
   reads bit 54, apparently a slip; `mpdo` package documentation).
+- **LSS** configure node-ID is addressed to every slave in the
+  configuration state, and all slaves answer on one identifier: a master
+  cannot tell an answer lost on the way from a slave that did not answer.
+  `AssignAll` switches the slaves to waiting and checks with inquire
+  node-ID before each selection, again after a lost selection
+  acknowledgement, and inquires the whole address after it. A slave that
+  stays in the configuration state through all of that (its waiting
+  switches lost and its answers to every check lost) would take the next
+  node-ID too. CAN retransmits a frame until it is received, so this needs
+  a link that loses frames, as the chaos suite injects.
 - **LSS**: where CANopenNode and Lely differ (order of switch state
   selective, Fastscan answered by unconfigured devices only, inquire
   node-ID answers the active node-ID, bit timing refusal codes), the
