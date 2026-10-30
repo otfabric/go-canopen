@@ -18,6 +18,12 @@ import (
 // scanTimeout is the default SDO timeout of a scan.
 const scanTimeout = 100 * time.Millisecond
 
+// scanRetries is how many times a scan repeats a request that timed out:
+// without it one lost frame or stalled answer hides a device, which the
+// scan cannot tell from an absent one. It makes a scan of absent nodes
+// take twice as long.
+const scanRetries = 1
+
 // Identity is the content of the identity object 0x1018.
 type Identity struct {
 	VendorID     uint32 `json:"vendorId"`
@@ -43,8 +49,8 @@ type NodeInfo struct {
 
 // Scan queries nodes in parallel (all of 1..127 when nodes is empty) with
 // SDO uploads of the device type 0x1000 and the identity 0x1018, and
-// returns the nodes that answered, by node-ID. A node that does not answer
-// 0x1000 is absent; one that answers 0x1000 but fails on 0x1018 sub 1
+// returns the nodes that answered, by node-ID. A request that times out is
+// repeated once. A node that does not answer 0x1000 is absent; one that answers 0x1000 but fails on 0x1018 sub 1
 // (mandatory) is reported with that error in the joined error, as are
 // invalid node-IDs. Scan uses its own SDO clients ([WithScanOptions]).
 func (m *Master) Scan(ctx context.Context, nodes []canopen.NodeID) ([]NodeInfo, error) {
@@ -110,7 +116,7 @@ func (m *Master) scanNode(ctx context.Context, n canopen.NodeID) (NodeInfo, bool
 		defer func() { _ = sc.Close() }()
 		c = client{sc}
 	}
-	dt, err := readUint(ctx, c, od.IndexDeviceType, 0)
+	dt, err := readUintRetry(ctx, c, scanRetries, od.IndexDeviceType, 0)
 	if err != nil {
 		var ae *canopen.AbortError
 		if errors.As(err, &ae) && ae.Remote {
@@ -120,7 +126,7 @@ func (m *Master) scanNode(ctx context.Context, n canopen.NodeID) (NodeInfo, bool
 		return NodeInfo{}, false, nil
 	}
 	info := NodeInfo{Node: n, DeviceType: uint32(dt)}
-	id, err := readIdentity(ctx, c)
+	id, err := readIdentity(ctx, c, scanRetries)
 	info.Identity = id
 	if err != nil {
 		return info, true, fmt.Errorf("node %d: %w", n, err)
@@ -128,12 +134,13 @@ func (m *Master) scanNode(ctx context.Context, n canopen.NodeID) (NodeInfo, bool
 	return info, true, nil
 }
 
-// readIdentity reads 0x1018 sub 1 (mandatory) and 2..4 (optional).
-func readIdentity(ctx context.Context, c remote) (Identity, error) {
+// readIdentity reads 0x1018 sub 1 (mandatory) and 2..4 (optional), with
+// retries as [retry].
+func readIdentity(ctx context.Context, c remote, retries int) (Identity, error) {
 	var id Identity
 	dst := []*uint32{&id.VendorID, &id.ProductCode, &id.Revision, &id.SerialNumber}
 	for i, p := range dst {
-		v, err := readUint(ctx, c, od.IndexIdentity, uint8(i+1))
+		v, err := readUintRetry(ctx, c, retries, od.IndexIdentity, uint8(i+1))
 		if err != nil {
 			if i > 0 && optionalMissing(err) {
 				continue
@@ -158,5 +165,5 @@ func (m *Master) Identity(ctx context.Context, node canopen.NodeID) (Identity, e
 	if err != nil {
 		return Identity{}, err
 	}
-	return readIdentity(ctx, c)
+	return readIdentity(ctx, c, 0)
 }

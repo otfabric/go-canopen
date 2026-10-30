@@ -162,8 +162,10 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 
 ## Master
 
-- `Scan` reads 0x1000 and 0x1018 by SDO with a short timeout: a node
-  whose SDO server is not answering (Stopped) is not found.
+- `Scan` reads 0x1000 and 0x1018 by SDO with a short timeout, repeated
+  once: a node whose SDO server is not answering (Stopped) is not found,
+  and neither is one that misses both tries; a node that is not found is
+  not an error.
 - `Configure` writes entries in order with a single SDO channel per node;
   the CiA 302 boot-up checks the configuration date and time (0x1020
   against 0x1F26/0x1F27) and stores the configuration with

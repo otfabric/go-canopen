@@ -178,21 +178,48 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 	ctrl := func(cmd program.Command) error {
 		return c.Download(ctx, program.IndexControl, n, []byte{byte(cmd)})
 	}
-	// 1. Stop.
-	if b, err := c.Upload(ctx, program.IndexControl, n); err != nil || len(b) != 1 || b[0] != byte(program.Stopped) {
-		if err := ctrl(program.Stop); err != nil && !timedOut(err) {
-			return fail("stop", err)
+	// 1, 2. Stop and clear. Every try starts from the state the device
+	// reports: a command that timed out may have been carried out, and
+	// repeating it blindly would be refused (Clear needs a stopped program).
+	step := "stop"
+	err = retryLate(ctx, t.SDORetries, func() error {
+		st, err := programState(ctx, c, t.SDORetries, n)
+		if err == nil && st == program.Cleared {
+			return nil
+		}
+		if err != nil || st != program.Stopped {
+			step = "stop"
+			if err := ctrl(program.Stop); err != nil {
+				return err
+			}
+		}
+		step = "clear"
+		return ctrl(program.Clear)
+	})
+	if err != nil {
+		return fail(step, err)
+	}
+	// 3. Program data: block transfer, segmented when refused. A transfer
+	// that timed out may have reached the device, whose flash then left the
+	// cleared state: sending it again would be refused, and giving up
+	// would leave the new program stopped, which the next boot slave
+	// process takes for up to date.
+	send := func(block bool) func() error {
+		return func() error {
+			err := downloadProgramData(ctx, c, n, data, block)
+			if !timedOut(err) {
+				return err
+			}
+			if st, serr := programState(ctx, c, t.SDORetries, n); serr == nil && st == program.Stopped {
+				return nil
+			}
+			return err
 		}
 	}
-	// 2. Clear.
-	if err := retry(ctx, t.SDORetries, func() error { return ctrl(program.Clear) }); err != nil {
-		return fail("clear", err)
-	}
-	// 3. Program data: block transfer, segmented when refused.
-	err = retry(ctx, t.SDORetries, func() error { return downloadProgramData(ctx, c, n, data, true) })
+	err = retry(ctx, t.SDORetries, send(true))
 	if err != nil && !timedOut(err) && ctx.Err() == nil {
 		m.log.Debug("master: block (bulk) download of the program refused, trying segmented", "node", int(node), "error", err)
-		err = retry(ctx, t.SDORetries, func() error { return downloadProgramData(ctx, c, n, data, false) })
+		err = retry(ctx, t.SDORetries, send(false))
 	}
 	if err != nil {
 		return fail("program data", err)
@@ -225,8 +252,18 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 			return fail("identification", fmt.Errorf("%w: 0x1F56 is 0x%08X, want 0x%08X", ErrProgram, got, want))
 		}
 	}
-	// 6. Start.
-	if err := ctrl(program.Start); err != nil && !timedOut(err) {
+	// 6. Start; a command that timed out is repeated unless the program
+	// runs.
+	err = retryLate(ctx, t.SDORetries, func() error {
+		err := ctrl(program.Start)
+		if timedOut(err) {
+			if st, serr := programState(ctx, c, t.SDORetries, n); serr == nil && st == program.Started {
+				return nil
+			}
+		}
+		return err
+	})
+	if err != nil && !timedOut(err) {
 		return fail("start", err)
 	}
 	// 7. Wait for the program to run.
@@ -237,17 +274,48 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 		if err := sleep(ctx, t.PollInterval); err != nil {
 			return notStarted(err)
 		}
-		b, err := uploadRetry(ctx, c, t.SDORetries, program.IndexControl, n)
+		st, err := programState(ctx, c, t.SDORetries, n)
 		if err != nil {
 			if ctx.Err() != nil || !timedOut(err) {
 				return notStarted(err)
 			}
 			continue
 		}
-		if len(b) == 1 && b[0] == byte(program.Started) {
+		if st == program.Started {
 			return nil
 		}
 	}
+}
+
+// retryLate is [retry] for a request that may meet the late response of
+// the one that timed out before it: that fails with a protocol error, and
+// is repeated as well.
+func retryLate(ctx context.Context, retries int, f func() error) error {
+	var err error
+	for i := 0; i <= retries; i++ {
+		err = f()
+		if err == nil || !timedOut(err) && !errors.Is(err, canopen.ErrProtocol) || ctx.Err() != nil {
+			return err
+		}
+	}
+	return err
+}
+
+// programState reads the state of a program (0x1F51) with [retryLate].
+func programState(ctx context.Context, c remote, retries int, n uint8) (program.State, error) {
+	var b []byte
+	err := retryLate(ctx, retries, func() error {
+		var err error
+		b, err = c.Upload(ctx, program.IndexControl, n)
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+	if len(b) != 1 {
+		return 0, fmt.Errorf("%w: 0x1F51:%02X has %d bytes", ErrProgram, n, len(b))
+	}
+	return program.State(b[0]), nil
 }
 
 // downloadProgramData writes the program data 0x1F50: over SDO with a
