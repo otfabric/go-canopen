@@ -39,6 +39,16 @@ func TestNMTStates(t *testing.T) {
 		changes = append(changes, sc)
 		mu.Unlock()
 	}))
+	// The state is visible before the services have followed it, and the
+	// handler runs after they have.
+	services := func(st canopen.NMTState) {
+		t.Helper()
+		nettest.Eventually(t, 5*time.Second, "services in "+st.String(), func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(changes) > 0 && changes[len(changes)-1].To == st
+		})
+	}
 	if err := r.m.WaitBootUp(ctx, 5, since); err != nil {
 		t.Fatal(err)
 	}
@@ -58,21 +68,21 @@ func TestNMTStates(t *testing.T) {
 	if err := r.m.StopNode(ctx, 5); err != nil {
 		t.Fatal(err)
 	}
-	waitState(t, n, canopen.StateStopped)
+	services(canopen.StateStopped)
 	if _, err := c.ReadUint(ctx, od.IndexDeviceType, 0); err == nil {
 		t.Fatal("SDO answered in Stopped")
 	}
 	if err := r.m.PreOperational(ctx, 5); err != nil {
 		t.Fatal(err)
 	}
-	waitState(t, n, canopen.StatePreOperational)
+	services(canopen.StatePreOperational)
 	if _, err := c.ReadUint(ctx, od.IndexDeviceType, 0); err != nil {
 		t.Fatalf("SDO in Pre-operational: %v", err)
 	}
 	if err := r.m.StartNode(ctx, 5); err != nil {
 		t.Fatal(err)
 	}
-	waitState(t, n, canopen.StateOperational)
+	services(canopen.StateOperational)
 	if _, err := c.ReadUint(ctx, od.IndexDeviceType, 0); err != nil {
 		t.Fatalf("SDO in Operational: %v", err)
 	}
