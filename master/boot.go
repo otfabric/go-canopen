@@ -128,7 +128,7 @@ func (m *Master) Boot(ctx context.Context, node canopen.NodeID, cfg BootConfig) 
 		}
 	}
 	if want := cfg.Identity; want != nil {
-		got, err := readIdentity(ctx, c)
+		got, err := readIdentity(ctx, c, 0)
 		if err != nil {
 			return fmt.Errorf("master: node %d: %w", node, err)
 		}

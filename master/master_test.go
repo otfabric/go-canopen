@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,9 +26,71 @@ import (
 	"github.com/otfabric/go-canopen/sdo"
 )
 
+// TestScanRepeatsTimedOutRequest: a device whose answer does not come in
+// time once is found: it was taken for an absent one, without an error.
+func TestScanRepeatsTimedOutRequest(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		index uint16
+		sub   int
+	}{
+		{"device type", od.IndexDeviceType, 0},
+		{"identity", od.IndexIdentity, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			nettest.CheckLeaks(t)
+			r := newRig(t, 2, master.WithScanOptions(sdo.WithTimeout(30*time.Millisecond)))
+			ctx := nettest.Ctx(t)
+			sub, err := r.buses[2].Subscribe() // a port does not receive its own frames
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = sub.Close() }()
+			entered, release := make(chan struct{}), make(chan struct{})
+			watched := make(chan struct{})
+			go func() { // the client's abort of the request ends the wait
+				defer close(watched)
+				defer close(release)
+				select {
+				case <-entered:
+				case <-ctx.Done():
+					return
+				}
+				for {
+					f, err := sub.Receive(ctx)
+					if err != nil || f.ID == canopen.FuncSDORx+5 && f.Len > 0 && f.Data[0] == 0x80 {
+						return
+					}
+				}
+			}()
+			d := nettest.Dict(t, 5, nil)
+			var once sync.Once
+			d.OnRead(tc.index, tc.sub, func(_ *od.Variable, b []byte) ([]byte, error) {
+				once.Do(func() {
+					close(entered)
+					<-release
+				})
+				return b, nil
+			})
+			startNode(t, r.buses[1], d)
+			r.rec.wait(t, "boot-up", kind(master.EventBootUp, 5))
+			found, err := r.m.Scan(ctx, []canopen.NodeID{5})
+			if err != nil || len(found) != 1 || found[0].Identity.VendorID != nettest.VendorID {
+				t.Fatalf("scan: %+v, %v", found, err)
+			}
+			if err := sub.Close(); err != nil {
+				t.Fatal(err)
+			}
+			<-watched
+		})
+	}
+}
+
 func TestScan(t *testing.T) {
 	nettest.CheckLeaks(t)
-	r := newRig(t, 4, master.WithScanParallelism(32), master.WithScanOptions(sdo.WithTimeout(60*time.Millisecond)))
+	// Every absent node waits out the timeout, so all run at once: the
+	// timeout can be long enough for a loaded system.
+	r := newRig(t, 4, master.WithScanParallelism(int(canopen.MaxNodeID)), master.WithScanOptions(sdo.WithTimeout(500*time.Millisecond)))
 	ctx := nettest.Ctx(t)
 	for i, id := range []canopen.NodeID{5, 6, 7} {
 		startNode(t, r.buses[i+1], nettest.Dict(t, id, nil))

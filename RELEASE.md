@@ -10,7 +10,7 @@ that version as the release notes. Add the section, headed exactly
 **Date:** 2026-10-30
 **Previous release:** v0.3.1
 
-Fix of the program download (CiA 302-3) in `master`.
+Fixes of the program download (CiA 302-3) and of the scan in `master`.
 
 - A step of `DownloadProgram` whose answer came after the SDO timeout
   (a loaded system, a slow flash) was carried out by the device, but the
@@ -24,6 +24,10 @@ Fix of the program download (CiA 302-3) in `master`.
   error) no longer fails the download. A timed-out start is repeated too
   unless the program runs. Found by CI; regression test
   `TestDownloadProgramLateAnswers`.
+- `Master.Scan` took a device for absent, without an error, when one
+  request timed out (a lost frame, a loaded system). It now repeats a
+  request that timed out once, so a scan of absent nodes takes twice as
+  long. Found by CI; regression test `TestScanRepeatsTimedOutRequest`.
 
 ---
 

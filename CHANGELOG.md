@@ -6,7 +6,8 @@ Release notes with details are in [RELEASE.md](RELEASE.md).
 
 `master`: `DownloadProgram` reads the program state before repeating a
 step that timed out; a late answer no longer fails a software update or
-leaves the new program stopped.
+leaves the new program stopped. `Scan` repeats a request that timed out
+once, so that one late answer does not hide a device.
 
 ## v0.3.1 (2026-10-30)
 
