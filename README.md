@@ -4,7 +4,9 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/otfabric/go-canopen.svg)](https://pkg.go.dev/github.com/otfabric/go-canopen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Status](https://github.com/otfabric/go-canopen/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/go-canopen/actions/workflows/ci.yml)
+[![Interop](https://github.com/otfabric/go-canopen/actions/workflows/interop.yml/badge.svg)](https://github.com/otfabric/go-canopen/actions/workflows/interop.yml)
 [![Code Coverage](https://codecov.io/gh/otfabric/go-canopen/graph/badge.svg)](https://codecov.io/gh/otfabric/go-canopen)
+[![Latest Release](https://img.shields.io/github/v/release/otfabric/go-canopen?label=release)](https://github.com/otfabric/go-canopen/releases)
 
 A pure Go implementation of CANopen (CiA 301 application layer and
 communication profile): the object dictionary, SDO client and server with
