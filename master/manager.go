@@ -280,6 +280,7 @@ func (g *manager) bootNetwork(ctx context.Context) error {
 	g.mu.Lock()
 	for _, e := range list {
 		if s := g.slave(e.id); s.booting && s.cancel != nil {
+			g.m.log.Debug("master: cancelling a boot slave process", "node", int(e.id))
 			s.cancel()
 			running = append(running, s.done)
 		}
