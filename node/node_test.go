@@ -146,7 +146,8 @@ func TestPDOsOnlyOperational(t *testing.T) {
 	r := newRig(t, 1)
 	ctx := nettest.Ctx(t)
 	d := nettest.Dict(t, 5, nil)
-	n := startNode(t, r.buses[1], d)
+	var en enabled
+	n := startNode(t, r.buses[1], d, en.option())
 	r.rec.wait(t, "boot-up", func(e master.Event) bool { return e.Kind == master.EventBootUp })
 	if err := r.m.ConfigurePDO(ctx, 5, true, 1, eventPDO(0x185, 255, pdo.Entry{Index: nettest.IdxIn32, Bits: 32})); err != nil {
 		t.Fatal(err)
@@ -201,7 +202,7 @@ func TestPDOsOnlyOperational(t *testing.T) {
 	if err := r.m.StopNode(ctx, 5); err != nil {
 		t.Fatal(err)
 	}
-	waitState(t, n, canopen.StateStopped)
+	en.waitFor(t, canopen.StateStopped)
 	before := log.len()
 	_ = d.SetValue(nettest.IdxIn32, 0, int32(99))
 	_ = snd.Send(ctx, uint16(1))
@@ -329,7 +330,8 @@ func TestSYNCDrivenPDOs(t *testing.T) {
 	r := newRig(t, 1)
 	ctx := nettest.Ctx(t)
 	d := nettest.Dict(t, 5, nil)
-	n := startNode(t, r.buses[1], d)
+	var en enabled
+	n := startNode(t, r.buses[1], d, en.option())
 	r.rec.wait(t, "boot-up", func(e master.Event) bool { return e.Kind == master.EventBootUp })
 	if err := r.m.ConfigurePDO(ctx, 5, true, 1, eventPDO(0x185, 1, pdo.Entry{Index: nettest.IdxIn8, Bits: 8})); err != nil {
 		t.Fatal(err)
@@ -346,7 +348,7 @@ func TestSYNCDrivenPDOs(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = r.m.StartNode(ctx, 5)
-	waitState(t, n, canopen.StateOperational)
+	en.wait(t)
 	time.Sleep(30 * time.Millisecond)
 	if log.len() != 0 {
 		t.Fatal("synchronous TPDO without SYNC")
@@ -477,14 +479,15 @@ func TestRPDOErrors(t *testing.T) {
 	r := newRig(t, 1)
 	ctx := nettest.Ctx(t)
 	d := nettest.Dict(t, 5, nil)
-	n := startNode(t, r.buses[1], d)
+	var en enabled
+	startNode(t, r.buses[1], d, en.option())
 	r.rec.wait(t, "boot-up", func(e master.Event) bool { return e.Kind == master.EventBootUp })
 	cfg := eventPDO(0x205, 255, pdo.Entry{Index: nettest.IdxOut16, Bits: 16})
 	if err := r.m.ConfigurePDO(ctx, 5, false, 1, cfg); err != nil {
 		t.Fatal(err)
 	}
 	_ = r.m.StartNode(ctx, 5)
-	waitState(t, n, canopen.StateOperational)
+	en.wait(t)
 	send := func(data ...byte) {
 		t.Helper()
 		f, _ := canbus.NewStandard(0x205, data)
@@ -505,6 +508,7 @@ func TestRPDOErrors(t *testing.T) {
 	// Leaving Operational clears the PDO errors.
 	_ = r.m.PreOperational(ctx, 5)
 	r.rec.wait(t, "error reset", emcyFrom(5, emcy.CodeNoError))
+	en.waitFor(t, canopen.StatePreOperational)
 
 	// Deadline monitoring.
 	r.rec.reset()
@@ -513,7 +517,7 @@ func TestRPDOErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = r.m.StartNode(ctx, 5)
-	waitState(t, n, canopen.StateOperational)
+	en.wait(t)
 	send(1, 2)
 	r.rec.wait(t, "EMCY 0x8250", emcyFrom(5, emcy.CodeRPDOTimeout))
 	send(1, 2)
