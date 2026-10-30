@@ -347,6 +347,7 @@ func TestManagerConfigurationSkip(t *testing.T) {
 		return d, &writes
 	}
 	d5, w5 := slaveDict()
+	ups := bootUps(t, buses[0], 5)
 	n5, err := node.New(buses[1], d5, node.WithStore(s))
 	if err != nil {
 		t.Fatal(err)
@@ -354,6 +355,7 @@ func TestManagerConfigurationSkip(t *testing.T) {
 	if err := n5.Start(); err != nil {
 		t.Fatal(err)
 	}
+	ups() // else the manager boots it, and boots it again after its reset
 	d := mgrDict(t)
 	set32(t, d, master.IndexNMTStartup, 0, master.StartupMaster)
 	assign(t, d, 5, master.NewAssignment(master.AssignSlave|master.AssignBoot|master.AssignMandatory, 0, 0))
@@ -370,7 +372,7 @@ func TestManagerConfigurationSkip(t *testing.T) {
 		master.WithSDOOptions(sdo.WithTimeout(2*time.Second)))
 	r.rec.wait(t, "network boot", kind(master.EventNetworkBootDone, masterID))
 	if w5.Load() != 1 || s.Saves() != 1 {
-		t.Fatalf("first boot: %d writes, %d saves", w5.Load(), s.Saves())
+		t.Fatalf("first boot: %d writes, %d saves; events %v", w5.Load(), s.Saves(), r.rec.all())
 	}
 	_ = n5.Close()
 

@@ -10,7 +10,8 @@ that version as the release notes. Add the section, headed exactly
 **Date:** 2026-10-30
 **Previous release:** v0.3.1
 
-Fixes of the program download (CiA 302-3) and of the scan in `master`.
+Fixes of the program download (CiA 302-3) and of the scan in `master`, and
+of the node-ID assignment in `lss`.
 
 - A step of `DownloadProgram` whose answer came after the SDO timeout
   (a loaded system, a slow flash) was carried out by the device, but the
@@ -28,6 +29,15 @@ Fixes of the program download (CiA 302-3) and of the scan in `master`.
   request timed out (a lost frame, a loaded system). It now repeats a
   request that timed out once, so a scan of absent nodes takes twice as
   long. Found by CI; regression test `TestScanRepeatsTimedOutRequest`.
+- `lss.Master.FastscanSelect` and `AssignAll`: when the acknowledgement of
+  the Fastscan step that selects a slave was lost, the selection restarted
+  with that slave still in the configuration state. If its answer to the
+  check of the next selection was lost too, the configure node-ID request
+  reached both slaves and they took the same node-ID. The master now
+  switches the slaves to waiting and checks before it restarts, and sends
+  the switch before each check of that step. The case needs lost frames;
+  see LIMITATIONS.md. Found by `make chaos`; regression test
+  `TestAssignAllLostSelectionAck`.
 
 ---
 
