@@ -16,8 +16,9 @@ jobs:
   # version. Coverage is measured and uploaded by the vcan job, which also
   # runs the SocketCAN tests (run-codecov: false here).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@v2
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2.1.0
     with:
+      run-govulncheck: true
       codecov-name: go-canopen
       run-codecov: false
       coverpkg: >-
@@ -76,19 +77,6 @@ jobs:
           fail_ci_if_error: false
 
   # The golden output of the code generator follows the generator.
-  # govulncheck (otfabric/engineering GO-010). v1.9.0 needs Go >= 1.26 and
-  # reports stdlib findings for the toolchain it runs with: use stable.
-  vuln:
-    name: govulncheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: stable
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-
   generate:
     name: Generated code
     runs-on: ubuntu-latest
