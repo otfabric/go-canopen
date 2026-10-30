@@ -16,7 +16,7 @@ jobs:
   # version. Coverage is measured and uploaded by the vcan job, which also
   # runs the SocketCAN tests (run-codecov: false here).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@v2.1.0
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v2.1.0.1.1
     with:
       run-govulncheck: true
       codecov-name: go-canopen
