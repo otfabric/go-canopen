@@ -5,6 +5,32 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.3.2
+
+**Date:** 2026-10-30
+**Previous release:** v0.3.1
+
+Fixes of the program download (CiA 302-3) and of the scan in `master`.
+
+- A step of `DownloadProgram` whose answer came after the SDO timeout
+  (a loaded system, a slow flash) was carried out by the device, but the
+  master repeated it: Clear and the program data were then refused with
+  abort 0x08000022 (the program was no longer in the state they need).
+  The download failed, a boot slave process ended with status I, and when
+  the data had reached the device the new program stayed stopped: the
+  next boot slave process found it up to date and did not start it. A
+  step that timed out is now repeated only after reading the program
+  state (0x1F51), and a late answer met by the next request (a protocol
+  error) no longer fails the download. A timed-out start is repeated too
+  unless the program runs. Found by CI; regression test
+  `TestDownloadProgramLateAnswers`.
+- `Master.Scan` took a device for absent, without an error, when one
+  request timed out (a lost frame, a loaded system). It now repeats a
+  request that timed out once, so a scan of absent nodes takes twice as
+  long. Found by CI; regression test `TestScanRepeatsTimedOutRequest`.
+
+---
+
 ## v0.3.1
 
 **Date:** 2026-10-30

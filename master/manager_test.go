@@ -474,7 +474,10 @@ func TestManagerKeepAlive(t *testing.T) {
 	consume(t, d, 1, 5, 300*time.Millisecond)
 	consume(t, d, 2, 6, 300*time.Millisecond)
 	ups()
-	r := startManager(t, buses, d)
+	// Node 7 must answer the guarding in time on a loaded system.
+	timing := fastBoot
+	timing.GuardTimeout = time.Second
+	r := startManager(t, buses, d, master.WithBootTiming(timing))
 	r.rec.wait(t, "network boot", kind(master.EventNetworkBootDone, masterID))
 	if ev := r.rec.wait(t, "boot 5", bootOK(5)); ev.Status != master.BootOperational {
 		t.Fatalf("node 5 status %s", ev.Status)
@@ -674,8 +677,9 @@ func TestManagerSoftwareUpdate(t *testing.T) {
 			nettest.CheckLeaks(t)
 			buses := testbus.Ports(t, 2)
 			f := &flasher{image: []byte("v1")}
-			n5 := startNode(t, buses[1], nettest.Dict(t, 5, func(c *od.Config) { c.HeartbeatMs = 20 }), node.WithProgram(program.Config{Handler: f}))
-			_ = n5
+			ups := bootUps(t, buses[0], 5)
+			startNode(t, buses[1], nettest.Dict(t, 5, func(c *od.Config) { c.HeartbeatMs = 20 }), node.WithProgram(program.Config{Handler: f}))
+			ups() // else the network boot-up cancels a process it starts, and the update runs twice
 			d := mgrDict(t)
 			set32(t, d, master.IndexNMTStartup, 0, master.StartupMaster)
 			assign(t, d, 5, master.NewAssignment(tc.a, 0, 0))
@@ -979,19 +983,11 @@ type failingFlasher struct {
 	flasher
 	failStart bool
 	pending   bool
-	// stopAfter stops the program again right after its start.
-	stopAfter func()
 }
 
 func (f *failingFlasher) Control(n uint8, cmd program.Command) error {
 	if f.failStart && cmd == program.Start {
 		return canopen.AbortLocalControl
-	}
-	if cmd == program.Start && f.stopAfter != nil {
-		go func() {
-			time.Sleep(2 * time.Millisecond)
-			f.stopAfter()
-		}()
 	}
 	return f.flasher.Control(n, cmd)
 }
@@ -1012,12 +1008,14 @@ func TestDownloadProgramFailures(t *testing.T) {
 	n5 := startNode(t, r.buses[1], nettest.Dict(t, 5, nil), node.WithProgram(program.Config{Handler: f}))
 	dev := n5.Program()
 	startNode(t, r.buses[2], nettest.Dict(t, 6, nil))
-	opts := master.ProgramOptions{Timing: master.BootTiming{ProgramTimeout: 300 * time.Millisecond}}
+	// short for the two cases that wait out the time limit.
+	short := master.ProgramOptions{Timing: master.BootTiming{ProgramTimeout: 300 * time.Millisecond}}
+	opts := master.ProgramOptions{Timing: master.BootTiming{ProgramTimeout: waitTimeout}}
 	if err := r.m.DownloadProgram(ctx, 5, []byte{1}, opts); !errors.Is(err, canopen.AbortLocalControl) {
 		t.Fatalf("start refused: %v", err)
 	}
 	f.failStart, f.pending = false, true
-	if err := r.m.DownloadProgram(ctx, 5, []byte{1}, opts); !errors.Is(err, context.DeadlineExceeded) {
+	if err := r.m.DownloadProgram(ctx, 5, []byte{1}, short); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("flash never done: %v", err)
 	}
 	// The flash reports an error after a pending download.
@@ -1031,10 +1029,16 @@ func TestDownloadProgramFailures(t *testing.T) {
 	if err := r.m.DownloadProgram(ctx, 5, []byte{1}, opts); !errors.Is(err, program.FlashWriteError) {
 		t.Fatalf("flash error: %v", err)
 	}
-	// A program that does not start.
+	// A program that does not start: the device takes the command, but
+	// the program never reports running.
 	f.pending = false
-	f.stopAfter = func() { dev.SetState(1, program.Stopped) }
-	if err := r.m.DownloadProgram(ctx, 5, []byte{1}, opts); !errors.Is(err, master.ErrProgram) {
+	n5.Dictionary().OnRead(program.IndexControl, -1, func(_ *od.Variable, b []byte) ([]byte, error) {
+		if len(b) == 1 && b[0] == byte(program.Started) {
+			return []byte{byte(program.Stopped)}, nil
+		}
+		return b, nil
+	})
+	if err := r.m.DownloadProgram(ctx, 5, []byte{1}, short); !errors.Is(err, master.ErrProgram) {
 		t.Fatalf("not started: %v", err)
 	}
 	// A node without the program objects.

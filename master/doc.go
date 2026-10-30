@@ -132,7 +132,10 @@
 // reads of the identity, software identification and configuration date
 // and time, the restore and store requests and every concise DCF entry
 // (writing the same value again), so that a lost frame or a loaded system
-// does not fail the process with a wrong status (D, J...).
+// does not fail the process with a wrong status (D, J...). A program
+// download repeats a timed-out step only after reading the state of the
+// program (0x1F51): the step may have been carried out, its answer late,
+// and the device would refuse it a second time.
 //
 // With [WithLSSBoot] the network boot-up starts with an LSS step: the
 // master lists the unconfigured devices with LSS Fastscan and gives each

@@ -2,6 +2,13 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.3.2 (2026-10-30)
+
+`master`: `DownloadProgram` reads the program state before repeating a
+step that timed out; a late answer no longer fails a software update or
+leaves the new program stopped. `Scan` repeats a request that timed out
+once, so that one late answer does not hide a device.
+
 ## v0.3.1 (2026-10-30)
 
 `master`: a network boot-up cancels the boot slave processes that run
