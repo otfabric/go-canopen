@@ -2,10 +2,10 @@
   "findings": [
     {
       "fingerprint": "gosec/G703/d5e4cd221e1a5406e74f",
-      "justification": "A generator run by maintainers; the path comes from a fixed list in the generator, not from outside input.",
+      "justification": "A generator run by maintainers; it writes to a fixed list of files under its -root flag.",
       "owner": "bartvanbos",
       "path": "internal/cmd/gengolden/main.go",
-      "reconsider": "when gengolden takes a path from outside",
+      "reconsider": "when gengolden is run on anything but this repository",
       "ref": "https://github.com/otfabric/engineering/blob/main/docs/adoption/sast-pilot-reports.md",
       "reviewed": "2026-11-01",
       "rule": "G703",
