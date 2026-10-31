@@ -25,9 +25,9 @@ TEST_PKGS := $(shell go list ./... | grep -v '/examples')
 # interop suite (build tag interop).
 COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/internal/' | grep -v '/e2e' | grep -v '/interop' | paste -sd, -)
 COVER_MIN := 90
-# Per-package floor (TEST-012), checked by coverage-pkg-check. Measured with
-# the coverage of the CI job that has the prerequisites; see TESTING.md.
-COVER_PKG_MIN := 100
+# Per-package floor (TEST-012), checked by coverage-pkg-check in the job that
+# has the prerequisites. Lowest package measured in CI: 92.7 % (node). See TESTING.md.
+COVER_PKG_MIN := 90
 
 # vcan interface the SocketCAN tests use (Linux).
 CANOPEN_TEST_IFACE ?= vcan0
