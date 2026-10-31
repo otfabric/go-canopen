@@ -5,6 +5,18 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.3.3
+
+**Date:** 2026-10-31
+**Previous release:** v0.3.2
+
+### Changed
+
+- Policy 1.2: build output in `bin/` and `release/`, a per-package coverage floor, and more tests and CI. No change in behaviour.
+- Built on go-canbus v0.7.2.
+
+---
+
 ## v0.3.2
 
 **Date:** 2026-10-30
