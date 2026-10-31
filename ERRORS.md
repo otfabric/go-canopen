@@ -17,6 +17,7 @@ structure with `errors.As`.
 | `ErrNumber` | pdo | PDO number outside 1..512 |
 | `ErrDisabled`, `ErrInactive` | pdo | `TPDO.Transmit` while the TPDO is disabled (node not Operational), or while the PDO is not active (invalid COB-ID or empty mapping); `ErrInactive` also from `master.ListenTPDO` and `RPDOSender` for a node's inactive PDO |
 | `ErrLength` | pdo | `Unpack` of data shorter than the mapping |
+| `ErrNoRTR` | pdo | `Request` on a CANopen FD PDO (a decoder made `WithFD`): CAN FD has no remote frames (CiA 1301), so a TPDO cannot be requested that way |
 | `ErrNotProducer` | timestamp | `Send` while 0x1012 bit 30 is clear |
 | `ErrNoObject` | node | A service the dictionary does not configure (`Node.SendTime` without 0x1012) |
 | `ErrIdentity` | master | Boot procedure: device type or identity differs from the `BootConfig` (or, in the CiA 302 boot-up, from 0x1F84..0x1F88) |
