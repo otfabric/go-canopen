@@ -65,7 +65,7 @@ jobs:
         env:
           CANOPEN_REQUIRE_VCAN: "1"
           CANOPEN_REQUIRE_TSHARK: "1"
-        run: make coverage-check
+        run: make coverage-check coverage-pkg-check
       - name: Upload to Codecov
         if: matrix.arch == 'amd64'
         uses: codecov/codecov-action@v7
