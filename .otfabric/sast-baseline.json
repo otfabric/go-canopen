@@ -1,0 +1,17 @@
+{
+  "findings": [
+    {
+      "fingerprint": "gosec/G703/d5e4cd221e1a5406e74f",
+      "justification": "A generator run by maintainers; the path comes from a fixed list in the generator, not from outside input.",
+      "owner": "bartvanbos",
+      "path": "internal/cmd/gengolden/main.go",
+      "reconsider": "when gengolden takes a path from outside",
+      "ref": "https://github.com/otfabric/engineering/blob/main/docs/adoption/sast-pilot-reports.md",
+      "reviewed": "2026-11-01",
+      "rule": "G703",
+      "state": "false-positive",
+      "tool": "gosec"
+    }
+  ],
+  "schema": 1
+}
