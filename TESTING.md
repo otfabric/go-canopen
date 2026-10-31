@@ -12,6 +12,7 @@
 | Chaos monkey | any OS | `make chaos CHAOS_ITERATIONS=200`; CI: 20 seeds on every push; the Nightly chaos workflow: 500 seeds on amd64 and arm64 |
 | Fuzzing | any OS | `make fuzz FUZZTIME=30s` (CI: 10 s per target); the targets are found automatically (`go test -list '^Fuzz'`) |
 | Coverage gate (90 %) | any OS; CI measures it on Linux with vcan | `make coverage-check` |
+| Per-package floor (90 %) | as above | `make coverage-pkg-check` |
 | Golden code generation | any OS | `make generate-check` |
 | Examples | any OS | `make examples` (each self-contained example must exit successfully) |
 | Cross builds | any OS | `make cross` (linux amd64/arm64/arm, darwin amd64/arm64, windows amd64/arm64) |
