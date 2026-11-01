@@ -16,12 +16,10 @@ jobs:
   # version. Coverage is measured and uploaded by the vcan job, which also
   # runs the SocketCAN tests (run-codecov: false here).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@4ba6b62616925de230bcee4ee6a18c04479d01b6
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v3.4.0
     with:
-      # SAST pilot, on an unreleased commit of otfabric/.github.
       run-sast: true
       sast-mode: baseline
-      sast-bundle-ref: 4ba6b62616925de230bcee4ee6a18c04479d01b6
       run-govulncheck: true
       codecov-name: go-canopen
       run-codecov: false
