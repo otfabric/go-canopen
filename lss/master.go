@@ -101,7 +101,9 @@ func WithInhibit(d time.Duration) MasterOption {
 // query and of the inquiries that check a selection (default
 // [DefaultFastscanTimeout]). Silence is the "no" answer of Fastscan, so
 // every query costs this window when no slave matches; it must exceed
-// the slaves' response time (two frame times plus processing).
+// the slaves' response time (two frame times plus processing). A step
+// whose silence contradicts an earlier answer is repeated with the
+// window doubled, up to 8 times this value.
 func WithFastscanTimeout(d time.Duration) MasterOption {
 	return func(c *masterConfig) {
 		if d > 0 {

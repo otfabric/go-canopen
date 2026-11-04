@@ -26,6 +26,10 @@ fuzz and chaos tests found four more.
 - `pdo.CommIndex` and `pdo.MappingIndex` return 0 for a PDO number
   outside 1..512; `CommIndex(false, 513)` returned RPDO1's mapping index.
 - `master`: the event queue is bounded (see Fixed).
+- `od`: `Dictionary.Add` refuses a node-ID-relative default that does
+  not fit its type for node-ID 127 (UNSIGNED8 0x81 and above); it
+  wrapped at the type's width (0xF0 on node 0x20 gave 0x10). EDS and DCF
+  input refused such values only for the node-ID they were loaded with.
 
 ### Fixed
 
@@ -43,6 +47,15 @@ fuzz and chaos tests found four more.
 - `lss`: `Fastscan` against a slave that acknowledges every query never
   ended before its context; it now stops at `Max` and fails with
   `ErrFastscan` beyond 127 devices.
+- `lss`: an LSS answer later than the Fastscan window (a busy device or
+  host) made `FastscanSelect` and `AssignAll` fail with `ErrFastscan`
+  and made `Fastscan` and `AssignAll` miss devices. A restarted
+  identification and a listing step whose silence contradicts the
+  acknowledged prefix are repeated with the window doubled each time,
+  up to 8 times `WithFastscanTimeout`, which then applies again. A
+  healthy bus costs nothing more.
+- `od`: with a node-ID above 127 (0xFF, LSS unconfigured) a
+  node-ID-relative default no longer wraps; it keeps its plain value.
 - `master`: an EMCY or heartbeat flood with a slow event handler grew
   the event queue without limit. Frame-driven events (EMCY, boot-up,
   state change) are queued up to `DefaultEventQueue` (4096, option

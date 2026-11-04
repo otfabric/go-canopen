@@ -32,6 +32,7 @@ type FastscanOptions struct {
 type fastscan struct {
 	s       *session
 	window  time.Duration
+	base    time.Duration // window before any restart widened it
 	retries int
 	known   map[Part]uint32
 }
@@ -41,6 +42,7 @@ func (m *Master) newFastscan(s *session, o FastscanOptions) *fastscan {
 	if fs.window <= 0 {
 		fs.window = m.cfg.fsTimeout
 	}
+	fs.base = fs.window
 	switch {
 	case fs.retries == 0:
 		fs.retries = m.cfg.fsRetries
@@ -48,6 +50,25 @@ func (m *Master) newFastscan(s *session, o FastscanOptions) *fastscan {
 		fs.retries = 0
 	}
 	return fs
+}
+
+// maxWiden bounds how far a repeated step widens the listening window.
+const maxWiden = 8
+
+// restart counts a restart of the identification.
+func (fs *fastscan) restart() {
+	fs.s.m.count(func(st *MasterStats) { st.Restarts++ })
+}
+
+// widened sets the listening window for the n-th repetition of a step:
+// the configured window doubled n times, up to maxWiden times. A step is
+// repeated when silence contradicts an earlier answer: the answer
+// usually came after its window (a busy slave or a loaded host) and the
+// same window would miss it again. Callers return to widened(0) once
+// the step is done, so later silences, the normal "no" of Fastscan, cost
+// the configured window.
+func (fs *fastscan) widened(n int) {
+	fs.window = min(fs.base<<min(n, 3), maxWiden*fs.base)
 }
 
 // query sends one Fastscan request and reports whether at least one
@@ -95,10 +116,12 @@ func (fs *fastscan) verify(v uint32, p, next Part) (bool, error) {
 // whose address starts with prefix wait for part len(prefix). ok is
 // false when no slave answers.
 func (fs *fastscan) position(prefix []uint32) (bool, error) {
+	defer fs.widened(0)
 	for attempt := 0; attempt <= fs.retries+1; attempt++ {
 		if attempt > 0 {
-			fs.s.m.count(func(st *MasterStats) { st.Restarts++ })
+			fs.restart()
 		}
+		fs.widened(attempt)
 		ok, err := fs.reset()
 		if err != nil || !ok {
 			return false, err
@@ -146,32 +169,52 @@ func (fs *fastscan) scanPart(p Part, first bool, limit int) ([]uint32, error) {
 		return fs.scanOne(p)
 	}
 	var out []uint32
+	// walk runs only below an acknowledged prefix: a slave matched it, so
+	// it must match the confirmation or one of the two next bits. When
+	// none answers, an answer was lost or came after its window; the step
+	// is repeated (up to retries+1 times) with a wider window. Silence
+	// after that hides the branch, as a lost frame may.
 	var walk func(value uint32, k uint8) error
 	walk = func(value uint32, k uint8) error {
-		if len(out) >= limit {
-			return nil
-		}
-		if k == 0 {
-			ack, err := fs.query(value, 0, p, p, fs.retries)
-			if ack {
-				out = append(out, value)
+		for again := 0; ; again++ {
+			if len(out) >= limit {
+				return nil
 			}
-			return err
-		}
-		b := k - 1
-		for _, bit := range [2]uint32{0, 1} {
-			v := value | bit<<b
-			ack, err := fs.query(v, b, p, p, fs.retries)
-			if err != nil {
-				return err
-			}
-			if ack {
-				if err := walk(v, b); err != nil {
+			fs.widened(again)
+			acked := false
+			if k == 0 {
+				ack, err := fs.query(value, 0, p, p, fs.retries)
+				fs.widened(0)
+				if err != nil {
 					return err
 				}
+				if ack {
+					out = append(out, value)
+					return nil
+				}
+			} else {
+				b := k - 1
+				for _, bit := range [2]uint32{0, 1} {
+					v := value | bit<<b
+					fs.widened(again)
+					ack, err := fs.query(v, b, p, p, fs.retries)
+					fs.widened(0)
+					if err != nil {
+						return err
+					}
+					if ack {
+						acked = true
+						if err := walk(v, b); err != nil {
+							return err
+						}
+					}
+				}
 			}
+			if acked || again > fs.retries {
+				return nil
+			}
+			fs.s.m.count(func(st *MasterStats) { st.Retries++ })
 		}
-		return nil
 	}
 	err := walk(0, 32)
 	return out, err
@@ -296,10 +339,12 @@ func (m *Master) FastscanSelect(ctx context.Context, o FastscanOptions) (a Addre
 
 func (fs *fastscan) selectOne() (Address, bool, error) {
 	attempts := fs.retries + fs.s.m.cfg.fsAttempts
+	defer fs.widened(0)
 	for attempt := range attempts {
 		if attempt > 0 {
-			fs.s.m.count(func(st *MasterStats) { st.Restarts++ })
+			fs.restart()
 		}
+		fs.widened(attempt)
 		ok, err := fs.reset()
 		if err != nil || !ok {
 			return Address{}, false, err

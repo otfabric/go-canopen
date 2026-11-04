@@ -10,7 +10,10 @@ SDO server; USDO client uploads are limited (1 MiB default) and sizes of
 a slave that acknowledges everything; the master's event queue is
 bounded (`WithEventQueue`, `Stats.EventsDropped`); out-of-range values in
 concise DCF, EDS literals and wide dictionary objects are refused instead
-of truncated. Hostile-peer, fuzz and chaos tests added.
+of truncated; `od.Dictionary.Add` refuses node-ID-relative defaults that
+would wrap for node-ID 127; Fastscan repeats a step whose silence
+contradicts an earlier answer with a doubled window, so late answers no
+longer hide devices. Hostile-peer, fuzz and chaos tests added.
 
 ## v0.3.2 (2026-10-30)
 
