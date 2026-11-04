@@ -320,11 +320,9 @@ func TestConcurrentClients(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 100)
 	for i, c := range clients {
-		for g := 0; g < 3; g++ { // several goroutines share each client
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				for k := 0; k < 5; k++ {
+		for g := range 3 { // several goroutines share each client
+			wg.Go(func() {
+				for k := range 5 {
 					want := pattern(100*i + 37*g + k)
 					if err := c.Download(ctx, idxDomain, 0, want); err != nil {
 						errs <- err
@@ -340,7 +338,7 @@ func TestConcurrentClients(t *testing.T) {
 					// apart, the content must match its pattern.
 					equalPatternOK(errs, got)
 				}
-			}()
+			})
 		}
 	}
 	wg.Wait()
@@ -380,7 +378,7 @@ func TestClientTimeout(t *testing.T) {
 		t.Errorf("3 attempts took only %v", el)
 	}
 	// Three initiates, each followed by an abort.
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if f := obs.recv(time.Second); f[0] != ccsInitiateUpload<<5 {
 			t.Fatalf("frame %d: % X, want initiate", 2*i, f)
 		}

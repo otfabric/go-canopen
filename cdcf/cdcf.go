@@ -122,7 +122,7 @@ func Decode(b []byte) ([]Entry, error) {
 		return nil, fmt.Errorf("%w: %d entries announced in %d bytes", ErrFormat, n, len(b))
 	}
 	out := make([]Entry, 0, n)
-	for i := uint32(0); i < n; i++ {
+	for i := range n {
 		if len(b) < entrySize {
 			return nil, fmt.Errorf("%w: entry %d truncated", ErrFormat, i+1)
 		}

@@ -472,11 +472,9 @@ func (m *Master) goBoot(f func(ctx context.Context)) bool {
 	if m.bootCtx.Err() != nil {
 		return false
 	}
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
+	m.wg.Go(func() {
 		f(m.bootCtx)
-	}()
+	})
 	return true
 }
 

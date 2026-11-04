@@ -67,7 +67,7 @@ func TestNoSDOAnswerAfterResetCommand(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		// Reset communication, then an upload of 0x1000 at once.
 		send(0x000, byte(canopen.NMTResetCommunication), 5)
 		send(0x605, 0x40, 0x00, 0x10, 0x00, 0, 0, 0, 0)

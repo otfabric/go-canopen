@@ -82,9 +82,7 @@ func (m *Master) bootUp(node canopen.NodeID, at time.Time) {
 	}
 	ctx, cancel := context.WithCancel(m.bootCtx)
 	m.running[node] = cancel
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
+	m.wg.Go(func() {
 		err := m.Boot(ctx, node, *cfg)
 		m.mu.Lock()
 		superseded := ctx.Err() != nil && m.bootCtx.Err() == nil
@@ -101,7 +99,7 @@ func (m *Master) bootUp(node canopen.NodeID, at time.Time) {
 		default:
 			m.disp.push(Event{Kind: EventBootDone, Node: node, State: m.State(node)})
 		}
-	}()
+	})
 }
 
 // Boot runs a boot procedure now: device type and identity check,

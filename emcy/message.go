@@ -68,9 +68,6 @@ func ParseFrame(f *canbus.Frame) (Message, error) {
 	if f.Flags&(canbus.FlagRemote|canbus.FlagFD|canbus.FlagError) != 0 {
 		return Message{}, fmt.Errorf("%w: not an emergency data frame", canopen.ErrProtocol)
 	}
-	n := int(f.Len)
-	if n > len(f.Data) {
-		n = len(f.Data)
-	}
+	n := min(int(f.Len), len(f.Data))
 	return ParseMessage(f.Data[:n])
 }

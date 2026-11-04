@@ -329,8 +329,7 @@ func u32(x uint32) []byte { return binary.LittleEndian.AppendUint32(nil, x) }
 
 // toAbort converts a handler's error to the abort the SDO server sends.
 func toAbort(err error) error {
-	var ac canopen.AbortCode
-	if errors.As(err, &ac) {
+	if ac, ok := errors.AsType[canopen.AbortCode](err); ok {
 		return ac
 	}
 	return canopen.AbortHardware

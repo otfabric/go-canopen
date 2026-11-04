@@ -755,7 +755,7 @@ func FuzzReceive(f *testing.F) {
 		var fr canbus.Frame
 		fr.ID, fr.Flags = canbus.ID(id), canbus.Flags(flags)
 		fr.Len = uint8(copy(fr.Data[:], data))
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			c.receive(&fr)
 			c.report()
 		}

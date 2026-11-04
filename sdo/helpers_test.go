@@ -209,9 +209,7 @@ func script(t testing.TB, bus *canbus.Bus, respond func(req frame) []frame) *[]f
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var got []frame
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			cf, err := p.sub.Receive(ctx)
 			if err != nil {
@@ -226,7 +224,7 @@ func script(t testing.TB, bus *canbus.Bus, respond func(req frame) []frame) *[]f
 				_ = bus.Send(ctx, &out)
 			}
 		}
-	}()
+	})
 	t.Cleanup(func() { cancel(); wg.Wait() })
 	return &got
 }

@@ -553,8 +553,7 @@ func TestControllerStatusSource(t *testing.T) {
 	c := NewController(f, &ControllerOptions{Status: newChanStatus(td.dict), PollInterval: time.Microsecond})
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() { defer wg.Done(); _ = td.drive.Run(ctx, 200*time.Microsecond) }()
+	wg.Go(func() { ; _ = td.drive.Run(ctx, 200*time.Microsecond) })
 	defer func() { cancel(); wg.Wait() }()
 	if err := c.Enable(ctx); err != nil {
 		t.Fatal(err)

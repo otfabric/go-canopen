@@ -42,7 +42,7 @@ func Example() {
 	_ = producer.Start()
 	defer func() { _ = producer.Close() }()
 
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		fmt.Print(<-counters, " ")
 	}
 	fmt.Println()

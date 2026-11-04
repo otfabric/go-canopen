@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -273,10 +274,8 @@ func (d *Drive) checkControlword(_ *od.Variable, data []byte) error {
 	default: // automatic states and Fault accept every controlword
 		return nil
 	}
-	for _, h := range hold {
-		if h == cmd {
-			return nil
-		}
+	if slices.Contains(hold, cmd) {
+		return nil
 	}
 	return canopen.AbortDeviceState
 }

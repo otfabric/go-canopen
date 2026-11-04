@@ -261,7 +261,7 @@ func (m *Master) FastscanSelect(ctx context.Context, o FastscanOptions) (a Addre
 
 func (fs *fastscan) selectOne() (Address, bool, error) {
 	attempts := fs.retries + fs.s.m.cfg.fsAttempts
-	for attempt := 0; attempt < attempts; attempt++ {
+	for attempt := range attempts {
 		if attempt > 0 {
 			fs.s.m.count(func(st *MasterStats) { st.Restarts++ })
 		}

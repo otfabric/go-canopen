@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -374,6 +374,6 @@ func sortedKeys[K int | uint8 | uint16, V any](m map[K]V) []K {
 	for k := range m {
 		ks = append(ks, k)
 	}
-	sort.Slice(ks, func(i, j int) bool { return ks[i] < ks[j] })
+	slices.Sort(ks)
 	return ks
 }

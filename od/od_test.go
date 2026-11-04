@@ -375,11 +375,11 @@ func TestNames(t *testing.T) {
 func TestConcurrent(t *testing.T) {
 	d := testDict(t)
 	var wg sync.WaitGroup
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			for j := 0; j < 200; j++ {
+			for j := range 200 {
 				_ = d.Write(0x2000, 0, []byte{byte(1 + (i+j)%100)})
 				_, _ = d.Read(0x2000, 0)
 				_ = d.Objects()

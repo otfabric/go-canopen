@@ -100,8 +100,7 @@ func TestMonkeyAssignAll(t *testing.T) {
 					assigned[a.Address] = a.NodeID
 					first = a.NodeID + 1
 				}
-				var ae *AssignError
-				if errors.As(err, &ae) {
+				if ae, ok := errors.AsType[*AssignError](err); ok {
 					first = ae.NodeID + 1 // possibly taken
 				}
 				if err != nil {
@@ -165,9 +164,7 @@ func filteredNetwork(t *testing.T, n int, drop func(f, request *canbus.Frame) bo
 		if err != nil {
 			t.Fatal(err)
 		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() { _ = sub.Close() }()
 			for {
 				f, err := sub.Receive(ctx)
@@ -180,7 +177,7 @@ func filteredNetwork(t *testing.T, n int, drop func(f, request *canbus.Frame) bo
 					_ = to.Send(ctx, &out)
 				}
 			}
-		}()
+		})
 	}
 	forward(ma, sa, func(f *canbus.Frame) bool {
 		mu.Lock()

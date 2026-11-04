@@ -557,8 +557,7 @@ func (c *Controller) ensureMode(ctx context.Context, o *op, m Mode) error {
 		return nil
 	}
 	if err := c.SetMode(ctx, m); err != nil {
-		var e *Error
-		if errors.As(err, &e) {
+		if e, ok := errors.AsType[*Error](err); ok {
 			e.Op = o.name
 		}
 		return err

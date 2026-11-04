@@ -55,7 +55,7 @@ func TestConfigureSequence(t *testing.T) {
 	// The default TPDO1 is valid with an empty mapping; configure it twice
 	// so the second run must invalidate an active PDO first.
 	cfg := Config{COBID: 0x185, TransmissionType: 1, InhibitTime: 3, Mapping: Mapping{{idxU8, 0, 8}}}
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		sdo := &fakeSDO{d: d}
 		if err := Configure(context.Background(), sdo, true, 1, cfg); err != nil {
 			t.Fatal(err)

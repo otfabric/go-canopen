@@ -25,7 +25,7 @@ func TestRecreateNodeHooks(t *testing.T) {
 	d := nettest.Dict(t, 5, func(c *od.Config) { c.HeartbeatMs = 50 })
 	base := d.HookCount()
 	var during int
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		var opts []node.Option
 		if i%2 == 1 {
 			opts = append(opts, node.WithDrive(cia402.DriveConfig{}, 0))

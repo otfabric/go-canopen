@@ -145,11 +145,9 @@ func (c *Consumer) Start() error {
 	}
 	c.started = true
 	c.unwatch = c.d.Watch(c.watch)
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		c.run()
-	}()
+	})
 	return nil
 }
 

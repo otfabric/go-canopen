@@ -161,8 +161,7 @@ func TestLSSConfiguredNode(t *testing.T) {
 		}
 		return lm.Store(ctx)
 	})
-	var ce *lss.ConfigError
-	if !errors.As(err, &ce) {
+	if _, ok := errors.AsType[*lss.ConfigError](err); !ok {
 		t.Fatalf("store without a store: %v", err)
 	}
 	if n.NodeID() != 9 {

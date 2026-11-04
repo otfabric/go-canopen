@@ -115,10 +115,10 @@ func TestBootNetworkSuperseded(t *testing.T) {
 	set32(t, d, master.IndexNMTStartup, 0, master.StartupMaster)
 	ctx := nettest.Ctx(t)
 	errs := make(chan error, 3)
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		go func() { errs <- r.m.BootNetwork(ctx) }()
 	}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := <-errs; err != nil {
 			t.Fatalf("call %d: %v", i, err)
 		}
@@ -126,10 +126,10 @@ func TestBootNetworkSuperseded(t *testing.T) {
 	r.rec.wait(t, "boot done", bootOK(5))
 	// A boot-up that fails is reported to the superseded calls as well.
 	set32(t, d, master.IndexExpectedVendorID, 5, 0xBAD)
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		go func() { errs <- r.m.BootNetwork(ctx) }()
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		var be *master.BootError
 		if err := <-errs; !errors.As(err, &be) || be.Status != master.BootVendorID {
 			t.Fatalf("call %d: %v", i, err)

@@ -177,7 +177,7 @@ func TestPeriodic(t *testing.T) {
 	p, _ := NewProducer(a, WithCOBID(canopen.NewCOBID(0x101)), WithPeriod(5*time.Millisecond), WithClock(func() time.Time { return fixed }))
 	_ = p.Start()
 	defer func() { _ = p.Close() }()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		if e := ev.wait(t, time.Second, func(Event) bool { return true }); !e.Time.Equal(fixed) {
 			t.Fatal(e)
 		}

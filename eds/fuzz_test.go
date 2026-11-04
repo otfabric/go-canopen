@@ -22,7 +22,7 @@ func randFile(r *rand.Rand) *File {
 		const alpha = "abcXYZ019 _-+$=;[]#%äö"
 		n := r.Intn(12)
 		var b strings.Builder
-		for i := 0; i < n; i++ {
+		for range n {
 			b.WriteRune([]rune(alpha)[r.Intn(len([]rune(alpha)))])
 		}
 		return strings.TrimSpace(b.String())
@@ -139,7 +139,7 @@ func randFile(r *rand.Rand) *File {
 
 func TestRoundTripProperty(t *testing.T) {
 	r := rand.New(rand.NewSource(42))
-	for i := 0; i < 2000; i++ {
+	for i := range 2000 {
 		f := randFile(r)
 		g, out := roundTrip(t, f)
 		if !reflect.DeepEqual(f, strip(g)) {

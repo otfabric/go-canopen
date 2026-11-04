@@ -30,7 +30,7 @@ arm64): cross-compile the test binary into the repository's `bin/`
 about 6.5 minutes.
 
 A plain `go test ./...` passes on macOS and Windows: tests that need vcan
-or tshark skip there. CI runs the module on Go 1.23–1.26 (with and
+or tshark skip there. CI runs the module on Go 1.26 and 1.27 (with and
 without the race detector) through the shared otfabric workflow, on macOS
 and Windows, and on Linux amd64 and arm64 with vcan.
 

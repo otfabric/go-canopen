@@ -5,6 +5,7 @@ package nmt
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -226,12 +227,8 @@ func (c *HeartbeatConsumer) loadDict() {
 // take precedence over 0x1016) to the node records.
 func (c *HeartbeatConsumer) reconfigureLocked() {
 	eff := map[canopen.NodeID]time.Duration{}
-	for n, t := range c.fromDict {
-		eff[n] = t
-	}
-	for n, t := range c.explicit {
-		eff[n] = t
-	}
+	maps.Copy(eff, c.fromDict)
+	maps.Copy(eff, c.explicit)
 	for n := range eff {
 		if _, ok := c.nodes[n]; !ok {
 			c.nodes[n] = &hbNode{state: canopen.StateUnknown}

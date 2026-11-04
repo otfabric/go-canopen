@@ -199,7 +199,7 @@ func putBits(dst []byte, pos int, src []byte, n int) {
 		copy(dst[pos/8:], src[:n/8])
 		return
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if src[i/8]>>(uint(i)%8)&1 != 0 {
 			p := pos + i
 			dst[p/8] |= 1 << (uint(p) % 8)
@@ -215,7 +215,7 @@ func getBits(src []byte, pos, n int) []byte {
 		copy(out, src[pos/8:pos/8+n/8])
 		return out
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		p := pos + i
 		if src[p/8]>>(uint(p)%8)&1 != 0 {
 			out[i/8] |= 1 << (uint(i) % 8)

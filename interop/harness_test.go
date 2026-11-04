@@ -31,7 +31,7 @@ import (
 // runs (container contract 1.1). Override the tag with
 // CANOPEN_INTEROP_TAG (dev for images built by make interop-images) or one
 // image with CANOPEN_INTEROP_<ADAPTER>_IMAGE (upper case).
-const InteropRelease = "v0.2.0"
+const InteropRelease = "v0.3.1"
 
 // adapters are the canopen-interop images.
 var adapters = []string{"canopennode", "lely", "pythoncanopen"}
@@ -39,9 +39,9 @@ var adapters = []string{"canopennode", "lely", "pythoncanopen"}
 // digests pin the InteropRelease images by multi-arch index digest, so a
 // re-pushed tag cannot change what the suite tests.
 var digests = map[string]string{
-	"canopennode":   "sha256:a6bcc486bf4a752c526cbaae13a9c12709acca73411aeea9c0153862839b5cae",
-	"lely":          "sha256:52455c38167d3e149bd3b3fc96953921a0639652c79f33661b200ca69e698cc9",
-	"pythoncanopen": "sha256:e1243943f62942adae74a939379b185f1bb3f69b208756bbe6d37b0c07062024",
+	"canopennode":   "sha256:1430fc9a54af9fc501cdb53fef9fd8cfc971fdc1470511e73dd49cd17ee6d67d",
+	"lely":          "sha256:fc0b80cff1d09cf667ab88df09720a15bacb12074cf3462172f7b33c426383d8",
+	"pythoncanopen": "sha256:ea530a624645c215b4416f33870e17aff04ad10f933521c900de94ce92e943aa",
 }
 
 // Directions of the report.

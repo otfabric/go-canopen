@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -400,11 +400,9 @@ func (n *Node) startProtocol() error {
 		n.mu.Lock()
 		n.stop = cancel
 		n.mu.Unlock()
-		n.wg.Add(1)
-		go func() {
-			defer n.wg.Done()
+		n.wg.Go(func() {
 			_ = n.drive.Run(ctx, n.cfg.drivePer)
-		}()
+		})
 	}
 	return nil
 }
@@ -757,7 +755,7 @@ func (n *Node) clearPDOErrors() {
 	}
 	clear(n.pdoErr)
 	n.errMu.Unlock()
-	sort.Slice(codes, func(i, j int) bool { return codes[i] < codes[j] })
+	slices.Sort(codes)
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
 	for _, c := range codes {
