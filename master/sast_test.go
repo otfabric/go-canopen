@@ -125,6 +125,9 @@ func TestEventQueueBounded(t *testing.T) {
 	hb := canbus.Frame{ID: canopen.FuncHeartbeat + 9, Len: 1}
 	hb.Data[0] = byte(canopen.StateOperational)
 	send(hb)
+	// A monitored node starts Unknown: wait for the heartbeat first, or
+	// the loss below is "seen" before the node was ever heard.
+	nettest.Eventually(t, 5*time.Second, "heartbeat", func() bool { return r.m.State(9) == canopen.StateOperational })
 	for i := range frames / 2 {
 		send(emcyFrame(i))
 	}
@@ -142,13 +145,17 @@ func TestEventQueueBounded(t *testing.T) {
 	nettest.Eventually(t, 5*time.Second, "delivery", func() bool {
 		mu.Lock()
 		defer mu.Unlock()
-		n := 0
+		n, lost := 0, false
 		for _, e := range got {
-			if e.Kind == master.EventEMCY {
+			switch e.Kind {
+			case master.EventEMCY:
 				n++
+			case master.EventHeartbeatLost:
+				lost = true
+			default: // state changes
 			}
 		}
-		return uint64(n)+dropped >= frames
+		return lost && uint64(n)+dropped >= frames
 	})
 	mu.Lock()
 	defer mu.Unlock()
