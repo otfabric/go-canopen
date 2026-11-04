@@ -138,15 +138,18 @@ func TestServerTimeout(t *testing.T) {
 	}
 }
 
+// The SDO timeout is long enough that a stalled runner does not let it
+// expire (a correct abort) before SetEnabled(false); the silent waits
+// outlast it.
 func TestServerDisabledMidTransfer(t *testing.T) {
 	a, b := testbus.Pair(t)
-	s := startServer(t, b, testDict(t), WithTimeout(80*time.Millisecond))
+	s := startServer(t, b, testDict(t), WithTimeout(250*time.Millisecond))
 	p := newPeer(t, a, canopen.NewCOBID(0x585), canopen.NewCOBID(0x605))
 	p.send(muxFrame(0x21, idxDomain, 0, 20))
 	p.recv(time.Second)
 	s.SetEnabled(false)
 	// No abort for the dropped transfer, no answer to requests.
-	if f, ok := p.tryRecv(150 * time.Millisecond); ok {
+	if f, ok := p.tryRecv(400 * time.Millisecond); ok {
 		t.Fatalf("disabled server sent % X", f)
 	}
 	p.send(seg(0x00))
@@ -163,7 +166,7 @@ func TestServerDisabledMidTransfer(t *testing.T) {
 	p.recv(time.Second)
 	time.Sleep(5 * time.Millisecond)
 	s.SetEnabled(false)
-	if f, ok := p.tryRecv(150 * time.Millisecond); ok {
+	if f, ok := p.tryRecv(400 * time.Millisecond); ok {
 		t.Fatalf("disabled server sent % X", f)
 	}
 }
