@@ -99,6 +99,12 @@ fuzz and chaos tests found four more.
 
 ### Changed
 
+- go-canbus v0.8.0 (Go 1.26 floor, its own SAST hardening): the slcan
+  read loop no longer panics on a reader reporting more bytes than its
+  buffer; `unsafe` in SocketCAN is confined to three syscalls; capture
+  writers refuse timestamps their format cannot hold
+  (`capture.ErrUnrepresentable`) instead of wrapping. No API change for
+  go-canopen.
 - canopen-interop images v0.3.1 (contract 1.1 unchanged), shared
   workflows v3.3.1, CI on Go 1.26 and 1.27.
 

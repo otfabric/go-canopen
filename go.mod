@@ -2,4 +2,4 @@ module github.com/otfabric/go-canopen
 
 go 1.26.0
 
-require github.com/otfabric/go-canbus v0.7.2
+require github.com/otfabric/go-canbus v0.8.0
