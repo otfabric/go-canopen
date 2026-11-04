@@ -2,6 +2,16 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.4.0 (2026-11-04)
+
+Go 1.26 floor. SAST hardening: a malformed NMT frame no longer fences the
+SDO server; USDO client uploads are limited (1 MiB default) and sizes of
+4 GiB or more are refused instead of wrapped; LSS Fastscan stops against
+a slave that acknowledges everything; the master's event queue is
+bounded (`WithEventQueue`, `Stats.EventsDropped`); out-of-range values in
+concise DCF, EDS literals and wide dictionary objects are refused instead
+of truncated. Hostile-peer, fuzz and chaos tests added.
+
 ## v0.3.2 (2026-10-30)
 
 `master`: `DownloadProgram` reads the program state before repeating a

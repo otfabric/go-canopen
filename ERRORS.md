@@ -27,7 +27,7 @@ structure with `errors.As`.
 | `*BootError` | master | A failed CiA 302 boot slave process: node, `BootStatus` (error status letter) and cause |
 | `ErrNoStore` | node | `SaveParameters` / `RestoreDefaults` without `WithStore` |
 | `ErrNumber`, `ErrDisabled`, `ErrInactive`, `ErrMode`, `ErrNotScanned`, `ErrNotStarted`, `ErrLength` | mpdo | No such PDO; MPDO sent while not operational; TPDO not an active MPDO; SAM call on a DAM producer (or the reverse); SAM object not in a scanner list; not started; MPDO shorter than 8 bytes |
-| `ErrNoNodeID`, `ErrConflict`, `ErrFastscan`, `*AssignError`, `*ConfigError` | lss | No free node-ID for `AssignAll`; more than one slave (or the wrong one) selected; Fastscan did not converge; an assignment that failed after the configure request (names the node-ID, which is never offered again); a slave's refusal of a configuration service (error code and implementation-specific code) |
+| `ErrNoNodeID`, `ErrConflict`, `ErrFastscan`, `*AssignError`, `*ConfigError` | lss | No free node-ID for `AssignAll`; more than one slave (or the wrong one) selected; Fastscan did not converge, or a listing answered for more than 127 devices (a slave acknowledging every query); an assignment that failed after the configure request (names the node-ID, which is never offered again); a slave's refusal of a configuration service (error code and implementation-specific code) |
 | `ErrCommand`, `ErrSessions`, `ErrNotStarted`, `*AbortError` | usdo | Unknown command specifier; no free session-ID; client not started; a USDO abort (below) |
 | `ErrFormat` | cdcf | Malformed concise DCF |
 | `ErrPending`, `FlashError` | program | A program handler that finishes programming later; the flash status error codes of 0x1F57 |

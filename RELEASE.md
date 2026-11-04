@@ -5,6 +5,92 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.4.0
+
+**Date:** 2026-11-04
+**Previous release:** v0.3.3
+
+Hardening after a full SAST review (gosec and opengrep, every severity
+and confidence): 216 findings to 0 open, two of them false positives
+recorded in otfabric/sast-triage. Most integer conversions were already
+bounded and now show it; the ones below were real defects. New hostile-peer,
+fuzz and chaos tests found four more.
+
+### Breaking
+
+- Go 1.26 or later is required (`go fix` applied).
+- `usdo`: `WithMaxSize` now limits client uploads too, with the server's
+  default of 1 MiB. A USDO upload larger than that fails with
+  `AbortOutOfMemory` unless the client raises the limit or sets 0 (no
+  limit), as the `sdo` client already did.
+- `pdo.CommIndex` and `pdo.MappingIndex` return 0 for a PDO number
+  outside 1..512; `CommIndex(false, 513)` returned RPDO1's mapping index.
+- `master`: the event queue is bounded (see Fixed).
+
+### Fixed
+
+- `sdo`: one malformed frame on ID 0 (remote, 3 or 8 bytes, Len 64, FD on
+  a classical node) fenced the node's SDO server until the next real
+  reset. The server now takes exactly the reset frames the NMT slave
+  executes (`nmt.ParseCommand`).
+- `usdo`: a server indicating an upload of 0xFFFFFFFF made the client
+  request segments until its context ended. On 32-bit platforms a size
+  of 2 GiB or more made client and server panic. Data of 4 GiB or more was
+  downloaded with a truncated size. Values of 4 GiB or more are refused
+  with `AbortOutOfMemory` (SDO: 0x05040005) instead of being announced
+  with a wrapped size; a server `WithMaxSize` of 4 GiB or more no longer
+  wraps into a small limit.
+- `lss`: `Fastscan` against a slave that acknowledges every query never
+  ended before its context; it now stops at `Max` and fails with
+  `ErrFastscan` beyond 127 devices.
+- `master`: an EMCY or heartbeat flood with a slow event handler grew
+  the event queue without limit. Frame-driven events (EMCY, boot-up,
+  state change) are queued up to `DefaultEventQueue` (4096, option
+  `WithEventQueue`); the oldest are dropped and counted in
+  `Stats.EventsDropped`. Boot results, heartbeat and guarding events are
+  never dropped.
+- `master`: a concise DCF or `Overlay` entry with a mapping count of
+  0xFF.. panicked; values wider than their PDO field are refused with
+  `AbortPDOLength` / `AbortValueHigh` instead of being truncated.
+  Identity (0x1000, 0x1018), program identification (0x1F56) and
+  date/time answers wider than 32 bits no longer match on their low 32
+  bits; `Scan` and `Identity` return `ErrDataType`.
+- `ParseValue` and EDS/DCF parsing: a `$NODEID` literal whose sum
+  overflows its type, and a REAL32 bit pattern wider than 32 bits, were
+  accepted with a wrapped value; they are now errors.
+- `od.NewArray` with a negative count gave sub-index 0 the value 255;
+  `od.PDOObjects` with n outside 1..512 wrapped the index.
+  `eds.FromDictionary` exports SubNumber 255 (not 0) for an object with
+  256 sub-indices.
+- PDO, MPDO, SYNC, EMCY, NMT, LSS and SDO parameters stored with a type
+  wider than CiA 301 gives them (a malformed EDS) were truncated, often
+  into a valid value: a 0x1019 of 256 acted as 0, a transmission type
+  0x1FE as 254, a 0x1029 of 0x100 as 0. Such values are now refused on
+  write and ignored when read. A local 0x1019 of 1 or 241..255 is no
+  longer applied by the SYNC consumer.
+- `nmt`: guard time × life time factor beyond `time.Duration` wrapped to
+  a negative life time and an immediate life-guarding event; it
+  saturates. `WithLifeGuarding` with a negative guard time turns life
+  guarding off, as `SetLifeGuarding` did. Heartbeat, guard and EMCY
+  inhibit times saturate instead of wrapping.
+
+### Added
+
+- `master.WithEventQueue`, `master.DefaultEventQueue`,
+  `Stats.EventsDropped`.
+- Tests: `e2e/hostile_test.go` (scripted hostile SDO/USDO servers and
+  clients, LSS, NMT, EMCY/heartbeat floods, malformed frames; leak and
+  memory bounds), `TestMonkeyNodeSDO` (node and SDO client through a
+  dropping, duplicating, reordering bus), fuzz targets `FuzzNodeFrames`
+  and `FuzzMasterFrames`, and boundary tests per package.
+
+### Changed
+
+- canopen-interop images v0.3.1 (contract 1.1 unchanged), shared
+  workflows v3.3.1, CI on Go 1.26 and 1.27.
+
+---
+
 ## v0.3.3
 
 **Date:** 2026-10-31

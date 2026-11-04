@@ -62,7 +62,7 @@ reset.
 | EMCY producer / consumer | `emcy.ProducerStats`, `ConsumerStats` | sent, queued, suppressed, dropped, errors / received, resets, invalid |
 | TIME producer / consumer | `timestamp.ProducerStats`, `ConsumerStats` | sent, errors / received, ignored, invalid |
 | Node | `node.Stats` | nodeId, state, resets, suppressed (EMCY/SYNC/TIME not sent outside Pre-operational and Operational), and the stats of every service above (TPDO, RPDO, mpdoProducer and mpdoConsumer keyed by PDO number; lss with `WithLSS`; usdo with `WithFD`) |
-| Master | `master.Stats` | nmt, heartbeat, emcy, sync, time, the SDO client stats per node, lss (the LSS master), usdo (the USDO client of `WithFD` / `WithUSDOClient`) |
+| Master | `master.Stats` | nmt, heartbeat, emcy, sync, time, the SDO client stats per node, lss (the LSS master), usdo (the USDO client of `WithFD` / `WithUSDOClient`), eventsDropped (bus-driven events dropped from the full event queue, `WithEventQueue`) |
 
 ## Events
 
@@ -82,8 +82,13 @@ reset.
 | `master.Master` | `WithEventHandler` | `master.Event`: boot-up, state-change, heartbeat-lost, heartbeat-resumed, emcy, boot-done, boot-failed, network-boot-done, network-boot-failed, guarding-lost, guarding-resumed, node-error, lss-assigned (`Event.LSS`: address and node-ID); `Status` holds the CiA 302 boot status |
 
 Handlers run on the service's goroutine and must not block for long. The
-master's handler is the exception: its events are queued (unbounded) and
-delivered in order on a goroutine of their own, so it may call the master.
+master's handler is the exception: its events are queued and delivered
+in order on a goroutine of their own, so it may call the master. Events
+driven by bus frames (boot-up, state-change, emcy) wait in a bounded
+queue (`master.WithEventQueue`, default `master.DefaultEventQueue` =
+4096); when it is full the oldest of them is dropped and counted in
+`Stats().EventsDropped`. The results of the master's own processes and
+supervision events (loss, resumption) are never dropped.
 
 ## On the wire
 

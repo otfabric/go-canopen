@@ -225,8 +225,9 @@ A `Master` composes an NMT master, a heartbeat consumer (state of every
 node, supervision with `Monitor`), an EMCY consumer, SYNC and TIME
 producers, an optional heartbeat producer, and a cached SDO client per
 node. Everything it observes becomes an `Event` on **one handler**,
-delivered in order on the master's own goroutine through an unbounded
-queue, so the handler may itself call the master (SDO, NMT) without
+delivered in order on the master's own goroutine through a queue
+(frame-driven events bounded by `WithEventQueue`, oldest dropped and
+counted; results of the master's own processes never dropped), so the handler may itself call the master (SDO, NMT) without
 stalling the network services. Boot procedures (`SetBoot`) run in a
 goroutine per node, started by a boot-up; a new boot-up cancels the
 running one, whose end is then not reported. `Configure` writes entries

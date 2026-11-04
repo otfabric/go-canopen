@@ -49,8 +49,14 @@ report errors instead of panicking. Resource bounds:
 - EMCY producer: at most 256 queued messages.
 - Dictionary writes are checked against access rights, data type lengths,
   limits and `MaxSize` before hooks run.
-- `master` event delivery uses an unbounded queue: a handler that never
-  returns makes it grow with the network's traffic.
+- `master` event delivery bounds the frame-driven events (EMCY, boot-up,
+  state change; `WithEventQueue`, default 4096): under a flood with a
+  slow handler the oldest are dropped and counted in
+  `Stats().EventsDropped`. Boot results and heartbeat/guarding events are
+  not bounded; their rate is set by protocol round trips and timeouts.
+- `sdo` and `usdo` clients and servers refuse transfers above
+  `WithMaxSize` (1 MiB by default) before allocating; a malformed NMT
+  frame on ID 0 cannot fence the SDO server.
 
 ### Generated code
 

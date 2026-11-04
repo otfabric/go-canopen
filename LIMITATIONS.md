@@ -111,6 +111,11 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 
 ## Behaviour to be aware of
 
+- **Node-relative defaults wrap at the type's width.** A hand-built
+  `od.Variable` with `NodeIDRelative` whose default plus node-ID exceeds
+  its data type (UNSIGNED8 0xF0 on node 0x20) keeps the low bytes (0x10):
+  `SetNodeID` has no error return. EDS and DCF input refuse such a value.
+
 - **Segmented SDO cannot detect corruption.** CiA 301 relies on the CAN
   CRC; a corrupted segment is stored as received. Block transfers with
   the CRC detect corruption; even there a corrupted command byte can turn

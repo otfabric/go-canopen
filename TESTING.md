@@ -36,10 +36,12 @@ and Windows, and on Linux amd64 and arm64 with vcan.
 
 ## Test inventory
 
-402 `Test` functions, 25 fuzz targets, 13 `Example` functions and 4
-benchmarks (SDO), in every library package and `e2e`; and the interop
+473 `Test` functions, 27 fuzz targets, 13 `Example` functions and 4
+benchmarks (SDO), in every library package and `e2e` (including the
+hostile-peer suite `e2e/hostile_test.go` and the chaos test
+`TestMonkeyNodeSDO`); and the interop
 suite (`interop/`, build tag `interop`): 4 `Test` functions with 1,620
-scenarios against three stacks, canopen-interop v0.2.0 (contract 1.1:
+scenarios against three stacks, canopen-interop v0.3.1 (contract 1.1:
 LSS, MPDO, CiA 302 boot-up, concise DCF and SYNC window included;
 [INTEROPERABILITY.md](INTEROPERABILITY.md)).
 `go test -race -count=10 ./node ./master ./e2e` passes (twice, macOS), and
