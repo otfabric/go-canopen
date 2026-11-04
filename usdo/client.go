@@ -230,6 +230,7 @@ type xfer struct {
 	sub     uint8
 	timeout time.Duration
 	tunit   time.Duration
+	maxSize int // upload limit (0: none)
 }
 
 func (c *Client) newXfer(ctx context.Context, server canopen.NodeID, index uint16, sub uint8, cl call) (*xfer, func(), error) {
@@ -242,7 +243,7 @@ func (c *Client) newXfer(ctx context.Context, server canopen.NodeID, index uint1
 		to = cl.timeout
 	}
 	x := &xfer{st: &c.st, l: &busLink{c, ch}, ctx: ctx, server: server, dest: Address(server), sid: sid,
-		index: index, sub: sub, timeout: to, tunit: c.cfg.tunit}
+		index: index, sub: sub, timeout: to, tunit: c.cfg.tunit, maxSize: c.cfg.maxSize}
 	return x, func() { c.closeSession(sid) }, nil
 }
 
@@ -360,7 +361,13 @@ func (x *xfer) uploadFrom(m Message) ([]byte, error) {
 		x.st.bytesUp.Add(uint64(len(m.Data)))
 		return m.Data, nil
 	}
-	size := int(m.Size)
+	if lim := x.maxSize; lim > 0 && int64(m.Size) > int64(lim) {
+		return nil, x.fail(x.abort(AbortOutOfMemory))
+	}
+	size, ok := sizeInt(m.Size)
+	if !ok {
+		return nil, x.fail(x.abort(AbortOutOfMemory))
+	}
 	buf := make([]byte, 0, min(size, 1<<16))
 	for n := 1; ; n++ {
 		req := Message{Dest: x.dest, Cmd: CmdUploadSegment, Session: x.sid, Counter: counter(n)}
@@ -391,7 +398,7 @@ func (x *xfer) uploadFrom(m Message) ([]byte, error) {
 				return nil, x.fail(x.abort(AbortSize))
 			}
 			x.st.uploads.Add(1)
-			x.st.bytesUp.Add(uint64(size))
+			x.st.bytesUp.Add(u64(size))
 			return buf, nil
 		}
 	}
@@ -403,6 +410,9 @@ func (x *xfer) uploadFrom(m Message) ([]byte, error) {
 func (c *Client) Download(ctx context.Context, server canopen.NodeID, index uint16, sub uint8, data []byte, opts ...CallOption) error {
 	if err := server.Check(); err != nil {
 		return err
+	}
+	if _, ok := sizeField(len(data)); !ok {
+		return errTooLarge(len(data))
 	}
 	cl := callOf(opts)
 	x, done, err := c.newXfer(ctx, server, index, sub, cl)
@@ -438,7 +448,7 @@ func (x *xfer) downloadExpedited(data []byte, cl call) error {
 
 func (x *xfer) downloaded(n int) {
 	x.st.downloads.Add(1)
-	x.st.bytesDown.Add(uint64(n))
+	x.st.bytesDown.Add(u64(n))
 }
 
 // chunks splits download data into segments: all but the last are
@@ -453,8 +463,12 @@ func chunks(data []byte) [][]byte {
 }
 
 func (x *xfer) downloadSegmented(data []byte, cl call) error {
+	size, ok := sizeField(len(data))
+	if !ok {
+		return errTooLarge(len(data))
+	}
 	m := x.msg(CmdDownloadInit)
-	m.DataType, m.Size = cl.dataType, uint32(len(data))
+	m.DataType, m.Size = cl.dataType, size
 	if err := x.send(m); err != nil {
 		return x.fail(err)
 	}
@@ -501,8 +515,12 @@ func (x *xfer) downloadSegmented(data []byte, cl call) error {
 
 func (x *xfer) downloadBulk(data []byte, cl call) error {
 	x.st.bulk.Add(1)
+	size, ok := sizeField(len(data))
+	if !ok {
+		return errTooLarge(len(data))
+	}
 	m := x.msg(CmdBulkInit)
-	m.DataType, m.Size = cl.dataType, uint32(len(data))
+	m.DataType, m.Size = cl.dataType, size
 	if err := x.send(m); err != nil {
 		return x.fail(err)
 	}
@@ -633,6 +651,10 @@ func (mu *multi) remoteAbort(from canopen.NodeID, m Message) error {
 // the whole response timeout. The error is for the transfer as a whole (a
 // send failure, the context).
 func (c *Client) DownloadMulti(ctx context.Context, dest Address, index uint16, sub uint8, data []byte, opts ...CallOption) (map[canopen.NodeID]error, error) {
+	size, ok := sizeField(len(data))
+	if !ok {
+		return nil, errTooLarge(len(data))
+	}
 	cl := callOf(opts)
 	mu, done, err := c.newMulti(ctx, dest, index, sub, cl)
 	if err != nil {
@@ -671,7 +693,7 @@ func (c *Client) DownloadMulti(ctx context.Context, dest Address, index uint16, 
 		return out, err
 	}
 	c.st.bulk.Add(1)
-	m := Message{Dest: dest, Cmd: CmdBulkInit, Session: mu.sid, Index: index, SubIndex: sub, DataType: cl.dataType, Size: uint32(len(data))}
+	m := Message{Dest: dest, Cmd: CmdBulkInit, Session: mu.sid, Index: index, SubIndex: sub, DataType: cl.dataType, Size: size}
 	if err := mu.l.send(ctx, m); err != nil {
 		return nil, err
 	}
@@ -800,7 +822,7 @@ func (c *Client) UploadMulti(ctx context.Context, dest Address, index uint16, su
 	slices.Sort(nodes)
 	for _, n := range nodes {
 		x := &xfer{st: &c.st, l: mu.l, ctx: ctx, server: n, dest: Address(n), sid: mu.sid, index: index, sub: sub,
-			timeout: mu.timeout, tunit: c.cfg.tunit}
+			timeout: mu.timeout, tunit: c.cfg.tunit, maxSize: c.cfg.maxSize}
 		data, err := x.uploadFrom(segmented[n])
 		out[n] = Result{Data: data, Err: err}
 		if ctx.Err() != nil {

@@ -86,18 +86,20 @@ func Size(entries []Entry) int {
 // Encode returns the concise DCF of entries. It fails only when an
 // entry's data or the number of entries exceeds the UNSIGNED32 range.
 func Encode(entries []Entry) ([]byte, error) {
-	if uint64(len(entries)) > math.MaxUint32 {
-		return nil, fmt.Errorf("%w: %d entries", ErrFormat, len(entries))
+	count := int64(len(entries))
+	if count > math.MaxUint32 {
+		return nil, fmt.Errorf("%w: %d entries", ErrFormat, count)
 	}
 	b := make([]byte, 0, Size(entries))
-	b = binary.LittleEndian.AppendUint32(b, uint32(len(entries)))
+	b = binary.LittleEndian.AppendUint32(b, uint32(count))
 	for _, e := range entries {
-		if uint64(len(e.Data)) > math.MaxUint32 {
-			return nil, fmt.Errorf("%w: %04X:%02X: %d bytes of data", ErrFormat, e.Index, e.SubIndex, len(e.Data))
+		size := int64(len(e.Data))
+		if size > math.MaxUint32 {
+			return nil, fmt.Errorf("%w: %04X:%02X: %d bytes of data", ErrFormat, e.Index, e.SubIndex, size)
 		}
 		b = binary.LittleEndian.AppendUint16(b, e.Index)
 		b = append(b, e.SubIndex)
-		b = binary.LittleEndian.AppendUint32(b, uint32(len(e.Data)))
+		b = binary.LittleEndian.AppendUint32(b, uint32(size))
 		b = append(b, e.Data...)
 	}
 	return b, nil
@@ -122,7 +124,7 @@ func Decode(b []byte) ([]Entry, error) {
 		return nil, fmt.Errorf("%w: %d entries announced in %d bytes", ErrFormat, n, len(b))
 	}
 	out := make([]Entry, 0, n)
-	for i := uint32(0); i < n; i++ {
+	for i := range n {
 		if len(b) < entrySize {
 			return nil, fmt.Errorf("%w: entry %d truncated", ErrFormat, i+1)
 		}

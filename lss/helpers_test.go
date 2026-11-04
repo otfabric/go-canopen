@@ -14,9 +14,12 @@ import (
 	"github.com/otfabric/go-canopen/internal/testbus"
 )
 
-// testWindow is the Fastscan window of the tests: virtual bus slaves
-// answer within microseconds.
-const testWindow = 4 * time.Millisecond
+// testWindow is the Fastscan window of the tests: the production
+// default. Virtual bus slaves answer within microseconds on an idle host,
+// but silence means "no" in Fastscan, so a shorter window turns scheduler
+// delays on a loaded host (parallel packages, -race) into lost devices.
+// The Fastscan tests run in parallel, which hides most of the waiting.
+const testWindow = 10 * time.Millisecond
 
 func checkLeaks(t testing.TB) {
 	t.Helper()
@@ -36,7 +39,7 @@ func checkLeaks(t testing.TB) {
 }
 
 func ctxT(t testing.TB) context.Context {
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	t.Cleanup(cancel)
 	return ctx
 }

@@ -39,8 +39,8 @@ func FromTime(t time.Time) (TimeOfDay, error) {
 	if u.Before(Epoch) || u.After(Latest.Add(time.Millisecond-1)) {
 		return TimeOfDay{}, fmt.Errorf("timestamp: %v outside the TIME_OF_DAY range", t)
 	}
-	d := u.Sub(Epoch)
-	return TimeOfDay{Ms: uint32(d % day / time.Millisecond), Days: uint16(d / day)}, nil
+	ms, days := split(u.Sub(Epoch))
+	return TimeOfDay{Ms: ms, Days: days}, nil
 }
 
 // Time returns the instant in UTC.
@@ -89,7 +89,8 @@ func FromDuration(d time.Duration) (TimeDifference, error) {
 	if d < 0 || d > MaxTimeDifference {
 		return TimeDifference{}, fmt.Errorf("timestamp: duration %v outside the TIME_DIFFERENCE range", d)
 	}
-	return TimeDifference{Ms: uint32(d % day / time.Millisecond), Days: uint16(d / day)}, nil
+	ms, days := split(d)
+	return TimeDifference{Ms: ms, Days: days}, nil
 }
 
 // Duration returns the duration.
@@ -116,9 +117,30 @@ func ParseTimeDifference(b []byte) (TimeDifference, error) {
 	return TimeDifference{Ms: ms, Days: days}, nil
 }
 
+// split returns the milliseconds after midnight and the days of d, which
+// the callers have checked to lie in 0..[MaxTimeDifference]; the clamps
+// never fire.
+func split(d time.Duration) (uint32, uint16) {
+	ms := int64(d % day / time.Millisecond)
+	if ms < 0 {
+		ms = 0
+	}
+	if ms > int64(msPerDay-1) {
+		ms = int64(msPerDay - 1)
+	}
+	days := int64(d / day)
+	if days < 0 {
+		days = 0
+	}
+	if days > 0xFFFF {
+		days = 0xFFFF
+	}
+	return uint32(ms), uint16(days)
+}
+
 func encode(ms uint32, days uint16) [Size]byte {
 	ms &= msMask
-	return [Size]byte{byte(ms), byte(ms >> 8), byte(ms >> 16), byte(ms >> 24), byte(days), byte(days >> 8)}
+	return [Size]byte{byte(ms & 0xFF), byte(ms >> 8 & 0xFF), byte(ms >> 16 & 0xFF), byte(ms >> 24 & 0xFF), byte(days & 0xFF), byte(days >> 8)}
 }
 
 func decode(b []byte) (uint32, uint16, error) {

@@ -152,8 +152,7 @@ func monkeyLSSBoot(t *testing.T, cfg chaos.Config) {
 		return ok
 	})
 	for attempt := 0; ev.Kind == master.EventNetworkBootFailed; attempt++ {
-		var be *master.BootError
-		if !errors.As(ev.Err, &be) {
+		if _, ok := errors.AsType[*master.BootError](ev.Err); !ok {
 			t.Fatalf("unclean boot failure: %v", ev.Err)
 		}
 		if attempt == 8 {

@@ -92,8 +92,10 @@ func WithGroups(groups ...Address) Option {
 // 16); one more is refused with [AbortBusy].
 func WithMaxSessions(n int) Option { return func(c *config) { c.sessions = n } }
 
-// WithMaxSize limits the size of a download a [Server] accepts (default
-// 1 MiB; 0: no limit); a larger one is refused with [AbortOutOfMemory].
+// WithMaxSize limits the size of a download a [Server] accepts and of an
+// upload a [Client] accepts (default 1 MiB; 0: no limit); a larger one is
+// refused (server) or aborted before any segment (client) with
+// [AbortOutOfMemory].
 func WithMaxSize(n int) Option { return func(c *config) { c.maxSize = n } }
 
 // WithProcessingTime sets the time a [Server] needs between two segments

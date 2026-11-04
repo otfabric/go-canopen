@@ -199,6 +199,9 @@ func AddressFromDictionary(d *od.Dictionary) (Address, error) {
 		if err != nil {
 			return Address{}, fmt.Errorf("lss: identity 0x1018:%d: %w", p+1, err)
 		}
+		if v > 0xFFFFFFFF {
+			return Address{}, fmt.Errorf("lss: identity 0x1018:%d: value 0x%X exceeds UNSIGNED32", p+1, v)
+		}
 		a.SetPart(p, uint32(v))
 	}
 	return a, nil
@@ -344,9 +347,12 @@ func lssFrame(f *canbus.Frame, id canbus.ID) bool {
 // delayMs converts a switch delay to the 16-bit millisecond value of
 // "activate bit timing parameters".
 func delayMs(d time.Duration) (uint16, error) {
-	ms := d.Milliseconds()
-	if d < 0 || ms > 0xFFFF {
+	if d < 0 {
 		return 0, fmt.Errorf("lss: switch delay %v outside 0..65535 ms", d)
 	}
-	return uint16(ms), nil
+	ms := d.Milliseconds()
+	if ms > 0xFFFF {
+		return 0, fmt.Errorf("lss: switch delay %v outside 0..65535 ms", d)
+	}
+	return uint16(max(ms, 0)), nil
 }

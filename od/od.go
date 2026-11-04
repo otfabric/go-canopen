@@ -19,6 +19,7 @@ package od
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -117,7 +118,9 @@ type Variable struct {
 	// PDOMappable allows mapping into a PDO.
 	PDOMappable bool
 	// Default is the encoded default value. When NodeIDRelative is true
-	// the node-ID is added to it (EDS "$NODEID+..." defaults).
+	// the node-ID is added to it (EDS "$NODEID+..." defaults); Add
+	// refuses a default to which node-ID 127 cannot be added without
+	// leaving the type.
 	Default        []byte
 	NodeIDRelative bool
 	// Low and High are optional encoded inclusive limits for numeric
@@ -271,6 +274,9 @@ func check(o *Object) error {
 		if v.NodeIDRelative && !v.DataType.IsInteger() {
 			return fmt.Errorf("od: %s: a node-ID-relative default needs an integer type", v.Key())
 		}
+		if v.NodeIDRelative && !relativeFits(v, canopen.MaxNodeID) {
+			return fmt.Errorf("od: %s: node-ID-relative default plus node-ID %d exceeds %s", v.Key(), canopen.MaxNodeID, v.DataType)
+		}
 	}
 	return nil
 }
@@ -283,13 +289,32 @@ func (d *Dictionary) defaultLocked(v *Variable) []byte {
 	if n == 0 {
 		return b[:len(v.Default)]
 	}
-	if v.NodeIDRelative {
+	if v.NodeIDRelative && relativeFits(v, d.nodeID) {
 		x := canopen.DecodeUint(b) + uint64(d.nodeID)
 		for i := range b {
-			b[i] = byte(x >> (8 * i))
+			b[i] = byte(x >> (8 * i) & 0xFF)
 		}
 	}
 	return b
+}
+
+// relativeFits reports whether v's node-ID-relative default plus node
+// stays within v's integer type. Add refuses defaults that do not fit
+// every valid node-ID, so only a node-ID above 127 (LSS "unconfigured")
+// can fail here; defaultLocked then keeps the default unchanged instead
+// of wrapping.
+func relativeFits(v *Variable, node canopen.NodeID) bool {
+	bits := v.DataType.Size() * 8
+	if bits == 0 || bits > 64 {
+		return false
+	}
+	n := uint64(node)
+	if v.DataType.IsSigned() {
+		maxS := int64(math.MaxInt64) >> (64 - bits)
+		return canopen.DecodeInt(v.Default) <= maxS-int64(node)
+	}
+	maxU := ^uint64(0) >> (64 - bits)
+	return canopen.DecodeUint(v.Default) <= maxU-n
 }
 
 // DefaultValue returns v's default value evaluated for the dictionary's

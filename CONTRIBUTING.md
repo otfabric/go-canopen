@@ -12,7 +12,7 @@ git checkout -b feature/my-change
 
 ## Prerequisites
 
-- Go 1.23+ (see [go.mod](go.mod)); the code must build and pass on Go 1.23
+- Go 1.26+ (see [go.mod](go.mod)); the code must build and pass on Go 1.26
 - [staticcheck](https://staticcheck.dev/), [golangci-lint](https://golangci-lint.run/) (configuration in `.golangci.yml`, the same linters CI's shared workflow runs), [govulncheck](https://pkg.go.dev/golang.org/x/vuln/cmd/govulncheck)
 - Optional: Wireshark's `tshark` (the `dissect` oracle) and a Python with `pip install canopen` (`EDS_PYCANOPEN`, the `eds` cross-check)
 - For the SocketCAN tests: Linux with the `vcan` module: `make vcan-setup`. On macOS, a Linux VM (for example [Lima](https://lima-vm.io/) with Ubuntu) works.

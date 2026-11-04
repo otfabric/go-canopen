@@ -167,7 +167,7 @@ func NewFlashStatus(inProgress bool, code FlashError) FlashStatus {
 func (s FlashStatus) InProgress() bool { return s&1 != 0 }
 
 // Code returns the error code (bits 1..7).
-func (s FlashStatus) Code() FlashError { return FlashError(s>>1) & 0x7F }
+func (s FlashStatus) Code() FlashError { return FlashError(s >> 1 & 0x7F) }
 
 // Err returns nil when no programming is in progress and the code is
 // FlashOK, the code otherwise (nil while in progress).
@@ -329,8 +329,7 @@ func u32(x uint32) []byte { return binary.LittleEndian.AppendUint32(nil, x) }
 
 // toAbort converts a handler's error to the abort the SDO server sends.
 func toAbort(err error) error {
-	var ac canopen.AbortCode
-	if errors.As(err, &ac) {
+	if ac, ok := errors.AsType[canopen.AbortCode](err); ok {
 		return ac
 	}
 	return canopen.AbortHardware

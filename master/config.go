@@ -130,7 +130,7 @@ func releaseCOBID(ctx context.Context, c remote, e Entry) error {
 	if e.SubIndex != 0 || len(e.Data) != 4 {
 		return nil
 	}
-	nw := canopen.COBID(canopen.DecodeUint(e.Data))
+	nw := canopen.COBID(binary.LittleEndian.Uint32(e.Data))
 	if _, ok := cobidInUse(e.Index, nw); !ok {
 		return nil
 	}
@@ -138,7 +138,7 @@ func releaseCOBID(ctx context.Context, c remote, e Entry) error {
 	if err != nil || len(b) != 4 {
 		return nil //nolint:nilerr // the entry's write reports the device's answer
 	}
-	cur := canopen.COBID(canopen.DecodeUint(b))
+	cur := canopen.COBID(binary.LittleEndian.Uint32(b))
 	curUse, _ := cobidInUse(e.Index, cur)
 	nwUse, _ := cobidInUse(e.Index, nw)
 	if !curUse || !nwUse || (cur.ID() == nw.ID() && cur.Extended() == nw.Extended()) {
@@ -147,6 +147,37 @@ func releaseCOBID(ctx context.Context, c remote, e Entry) error {
 	var data [4]byte
 	binary.LittleEndian.PutUint32(data[:], uint32(released(e.Index, cur)))
 	return c.Download(ctx, e.Index, 0, data[:])
+}
+
+// overlayComm applies sub-index sub of a PDO communication parameter
+// with value x; a value wider than the sub-index's type is refused with
+// [canopen.AbortValueHigh] instead of being truncated.
+func overlayComm(cfg *pdo.Config, sub uint8, x uint64) error {
+	var ok bool
+	switch sub {
+	case 1:
+		var v uint32
+		if v, ok = u32Of(x); ok {
+			cfg.COBID = canopen.COBID(v)
+		}
+	case 2:
+		var v uint8
+		if v, ok = u8Of(x); ok {
+			cfg.TransmissionType = pdo.TransmissionType(v)
+		}
+	case 3:
+		cfg.InhibitTime, ok = u16Of(x)
+	case 5:
+		cfg.EventTimer, ok = u16Of(x)
+	case 6:
+		cfg.SyncStart, ok = u8Of(x)
+	default:
+		ok = true
+	}
+	if !ok {
+		return fmt.Errorf("PDO communication parameter sub %d 0x%X: %w", sub, x, canopen.AbortValueHigh)
+	}
+	return nil
 }
 
 func pdoName(k pdoKey) string {
@@ -178,25 +209,24 @@ func Overlay(base pdo.Config, entries []Entry) (pdo.Config, error) {
 		if mapping {
 			switch {
 			case e.SubIndex == 0:
-				count = int(x)
+				n, ok := u8Of(x)
+				if !ok {
+					return cfg, fmt.Errorf("%d mapping entries: %w", x, canopen.AbortPDOLength)
+				}
+				count = int(n)
 			case int(e.SubIndex) <= pdo.MaxEntries:
-				raw[e.SubIndex-1] = uint32(x)
+				v, ok := u32Of(x)
+				if !ok {
+					return cfg, fmt.Errorf("mapping entry %d 0x%X: %w", e.SubIndex, x, canopen.AbortValueHigh)
+				}
+				raw[e.SubIndex-1] = v
 			default:
 				return cfg, fmt.Errorf("mapping entry %d: %w", e.SubIndex, canopen.AbortNoSubIndex)
 			}
 			continue
 		}
-		switch e.SubIndex {
-		case 1:
-			cfg.COBID = canopen.COBID(x)
-		case 2:
-			cfg.TransmissionType = pdo.TransmissionType(x)
-		case 3:
-			cfg.InhibitTime = uint16(x)
-		case 5:
-			cfg.EventTimer = uint16(x)
-		case 6:
-			cfg.SyncStart = uint8(x)
+		if err := overlayComm(&cfg, e.SubIndex, x); err != nil {
+			return cfg, err
 		}
 	}
 	if count > pdo.MaxEntries {

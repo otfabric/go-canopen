@@ -38,7 +38,7 @@ func TestHeartbeatProducer(t *testing.T) {
 	}
 	defer func() { _ = p.Close() }()
 	t0 := time.Now()
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		f := recv(t, sub, nil)
 		if f.ID != 0x703 || f.Len != 1 || f.Data[0] != 0x05 {
 			t.Fatalf("frame %v", f)

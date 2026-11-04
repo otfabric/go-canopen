@@ -5,6 +5,7 @@ package nmt
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -146,7 +147,11 @@ func NewHeartbeatConsumer(bus canopen.Bus, opts ...Option) (*HeartbeatConsumer, 
 			return nil, fmt.Errorf("nmt: consumer heartbeat time 0x1016: %w", canopen.AbortNoObject)
 		}
 		c.unhook = d.OnWrite(od.IndexConsumerHeartbeat, -1, func(v *od.Variable, data []byte) error {
-			return checkConsumerEntry(d, v.SubIndex, uint32(canopen.DecodeUint(data)))
+			e, ok := entryOf(canopen.DecodeUint(data))
+			if !ok {
+				return canopen.AbortInvalidValue
+			}
+			return checkConsumerEntry(d, v.SubIndex, e)
 		})
 		c.loadDict()
 	}
@@ -163,7 +168,7 @@ func ConsumerEntry(node canopen.NodeID, timeout time.Duration) uint32 {
 // ParseConsumerEntry decodes an entry of 0x1016. ok is false for an unused
 // entry (node-ID 0 or above 127, or time 0).
 func ParseConsumerEntry(e uint32) (node canopen.NodeID, timeout time.Duration, ok bool) {
-	n, ms := uint8(e>>16), e&0xFFFF
+	n, ms := uint8(e>>16&0xFF), e&0xFFFF
 	node, timeout = canopen.NodeID(n), time.Duration(ms)*time.Millisecond
 	return node, timeout, node.Valid() && ms != 0
 }
@@ -187,7 +192,11 @@ func checkConsumerEntry(d *od.Dictionary, sub uint8, e uint32) error {
 		if err != nil {
 			continue
 		}
-		if n, _, ok := ParseConsumerEntry(uint32(x)); ok && n == node {
+		e, ok := entryOf(x)
+		if !ok {
+			continue
+		}
+		if n, _, ok := ParseConsumerEntry(e); ok && n == node {
 			return canopen.AbortParamIncompatible
 		}
 	}
@@ -208,7 +217,11 @@ func (c *HeartbeatConsumer) loadDict() {
 			if err != nil {
 				continue
 			}
-			if node, t, ok := ParseConsumerEntry(uint32(x)); ok {
+			e, ok := entryOf(x)
+			if !ok {
+				continue
+			}
+			if node, t, ok := ParseConsumerEntry(e); ok {
 				if _, dup := m[node]; !dup {
 					m[node] = t
 				}
@@ -226,12 +239,8 @@ func (c *HeartbeatConsumer) loadDict() {
 // take precedence over 0x1016) to the node records.
 func (c *HeartbeatConsumer) reconfigureLocked() {
 	eff := map[canopen.NodeID]time.Duration{}
-	for n, t := range c.fromDict {
-		eff[n] = t
-	}
-	for n, t := range c.explicit {
-		eff[n] = t
-	}
+	maps.Copy(eff, c.fromDict)
+	maps.Copy(eff, c.explicit)
 	for n := range eff {
 		if _, ok := c.nodes[n]; !ok {
 			c.nodes[n] = &hbNode{state: canopen.StateUnknown}

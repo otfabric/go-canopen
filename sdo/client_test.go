@@ -309,7 +309,7 @@ func TestClientBlockReack(t *testing.T) {
 	crc := CRC16(data)
 	segs := func(from, n int) []frame {
 		var out []frame
-		for i := 0; i < n; i++ {
+		for i := range n {
 			p := from + 7*i
 			end := min(p+7, len(data))
 			f := seg(byte(i+1), data[p:end]...)

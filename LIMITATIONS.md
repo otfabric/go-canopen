@@ -111,6 +111,18 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 
 ## Behaviour to be aware of
 
+- **Node-relative defaults must fit node-ID 127.** `od.Dictionary.Add`
+  refuses an `od.Variable` with `NodeIDRelative` whose default plus 127
+  exceeds its data type (UNSIGNED8 0x81 and above), so no valid node-ID
+  wraps it. With a node-ID above 127 (LSS "unconfigured", 0xFF) a default
+  whose sum would overflow keeps its plain value.
+- **Fastscan silence is "no".** A query unanswered within its window
+  counts as no match, so an answer later than the window can hide a
+  device. Where silence contradicts an earlier answer (a selection or a
+  listed prefix), the step is repeated with the window doubled, up to
+  8 times `WithFastscanTimeout`; a device that is slow on every answer
+  needs a longer `WithFastscanTimeout`.
+
 - **Segmented SDO cannot detect corruption.** CiA 301 relies on the CAN
   CRC; a corrupted segment is stored as received. Block transfers with
   the CRC detect corruption; even there a corrupted command byte can turn

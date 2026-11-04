@@ -512,7 +512,7 @@ func cmp(t canopen.DataType, a, b []byte) int {
 
 func toFloat(t canopen.DataType, b []byte) float64 {
 	if t == canopen.Real32 {
-		return float64(math.Float32frombits(uint32(canopen.DecodeUint(b))))
+		return float64(math.Float32frombits(uint32(canopen.DecodeUint(b) & math.MaxUint32)))
 	}
 	return math.Float64frombits(canopen.DecodeUint(b))
 }

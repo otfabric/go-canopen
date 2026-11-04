@@ -38,7 +38,7 @@ type Entry struct {
 
 // ParseEntry splits the UNSIGNED32 encoding of a mapping entry.
 func ParseEntry(u uint32) Entry {
-	return Entry{Index: uint16(u >> 16), SubIndex: uint8(u >> 8), Bits: uint8(u)}
+	return Entry{Index: uint16(u >> 16), SubIndex: byte(u >> 8 & 0xFF), Bits: byte(u & 0xFF)}
 }
 
 // Uint32 returns the UNSIGNED32 encoding of the entry.
@@ -199,7 +199,7 @@ func putBits(dst []byte, pos int, src []byte, n int) {
 		copy(dst[pos/8:], src[:n/8])
 		return
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if src[i/8]>>(uint(i)%8)&1 != 0 {
 			p := pos + i
 			dst[p/8] |= 1 << (uint(p) % 8)
@@ -215,7 +215,7 @@ func getBits(src []byte, pos, n int) []byte {
 		copy(out, src[pos/8:pos/8+n/8])
 		return out
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		p := pos + i
 		if src[p/8]>>(uint(p)%8)&1 != 0 {
 			out[i/8] |= 1 << (uint(i) % 8)

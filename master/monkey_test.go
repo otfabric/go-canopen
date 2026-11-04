@@ -61,7 +61,7 @@ func cleanErr(err error) bool {
 func retry(t *testing.T, what string, n int, f func() error) {
 	t.Helper()
 	var err error
-	for i := 0; i < n; i++ {
+	for range n {
 		if err = f(); err == nil {
 			return
 		}
@@ -112,7 +112,7 @@ func monkeyRun(t *testing.T, cfg chaos.Config) {
 	}
 
 	// SDO: every success is the truth.
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		v := rng.Uint32()
 		err := c.WriteUint32(ctx, nettest.IdxParam, 0, v)
 		switch {
@@ -181,7 +181,7 @@ func monkeyRun(t *testing.T, cfg chaos.Config) {
 	_ = l
 	nmtUntil(t, r, n, canopen.NMTStart, canopen.StateOperational)
 	var final int64
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		final = int64(rng.Int31())
 		pmu.Lock()
 		set[final] = true
@@ -245,7 +245,7 @@ func monkeyRun(t *testing.T, cfg chaos.Config) {
 func nmtUntil(t *testing.T, r *rig, n *node.Node, cmd canopen.NMTCommand, st canopen.NMTState) {
 	t.Helper()
 	ctx := nettest.Ctx(t)
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		if err := r.m.NMT(ctx, 5, cmd); err != nil {
 			t.Fatal(err)
 		}

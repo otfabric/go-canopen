@@ -63,7 +63,7 @@ func (m *Master) writeList(ctx context.Context, node canopen.NodeID, first uint1
 			return fmt.Errorf("master: node %d: write %04X:%02X: %w", node, index, i+1, err)
 		}
 	}
-	err = c.Download(ctx, index, 0, []byte{uint8(len(raw))})
+	err = c.Download(ctx, index, 0, []byte{uint8(max(min(len(raw), mpdo.MaxListEntries), 0))})
 	if errors.Is(err, canopen.AbortReadOnly) {
 		return nil
 	}

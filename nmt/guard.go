@@ -378,7 +378,7 @@ func NewGuardResponder(bus canopen.Bus, node canopen.NodeID, state func() canope
 		if err != nil {
 			return nil, fmt.Errorf("nmt: life time factor 0x100D: %w", err)
 		}
-		r.guardTime, r.factor = time.Duration(gt)*time.Millisecond, uint8(lf)
+		r.guardTime, r.factor = millis(gt), lifeFactor(lf)
 	}
 	if r.cfg.guardSet {
 		r.guardTime, r.factor = r.cfg.guardTime, r.cfg.lifeFactor
@@ -402,7 +402,7 @@ func (r *GuardResponder) SetLifeGuarding(guardTime time.Duration, lifeTimeFactor
 }
 
 func (r *GuardResponder) lifeTimeLocked() time.Duration {
-	return r.guardTime * time.Duration(r.factor)
+	return mulSat(r.guardTime, r.factor)
 }
 
 // ResetToggle makes the next response start with the toggle bit clear, as
@@ -440,7 +440,7 @@ func (r *GuardResponder) Start() error {
 				if v.Index == od.IndexGuardTime || v.Index == od.IndexLifeTimeFactor {
 					gt, _ := d.GetUint(od.IndexGuardTime, 0)
 					lf, _ := d.GetUint(od.IndexLifeTimeFactor, 0)
-					r.SetLifeGuarding(time.Duration(gt)*time.Millisecond, uint8(lf))
+					r.SetLifeGuarding(millis(gt), lifeFactor(lf))
 				}
 			})
 		}

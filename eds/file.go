@@ -3,6 +3,7 @@
 package eds
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/otfabric/go-canopen"
@@ -167,12 +168,7 @@ func (l *ObjectList) Contains(index uint16) bool {
 	if l == nil {
 		return false
 	}
-	for _, i := range l.Indices {
-		if i == index {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(l.Indices, index)
 }
 
 // SubTable is a per-sub-index table of an object with compact storage:

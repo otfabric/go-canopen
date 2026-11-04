@@ -25,7 +25,9 @@ var (
 	// leave it.
 	ErrConflict = errors.New("lss: slave selection conflict")
 	// ErrFastscan reports a Fastscan that found candidates but could not
-	// complete the identification of one (persistent frame loss).
+	// complete the identification of one (persistent frame loss), or a
+	// Fastscan listing answered for more than 127 devices (a slave that
+	// acknowledges every query).
 	ErrFastscan = errors.New("lss: fastscan did not converge")
 )
 
@@ -99,7 +101,9 @@ func WithInhibit(d time.Duration) MasterOption {
 // query and of the inquiries that check a selection (default
 // [DefaultFastscanTimeout]). Silence is the "no" answer of Fastscan, so
 // every query costs this window when no slave matches; it must exceed
-// the slaves' response time (two frame times plus processing).
+// the slaves' response time (two frame times plus processing). A step
+// whose silence contradicts an earlier answer is repeated with the
+// window doubled, up to 8 times this value.
 func WithFastscanTimeout(d time.Duration) MasterOption {
 	return func(c *masterConfig) {
 		if d > 0 {
@@ -243,7 +247,8 @@ func (s *session) send(fs ...canbus.Frame) error {
 				}
 			}
 		}
-		err := s.m.bus.Send(s.ctx, &fs[i])
+		f := &fs[i]
+		err := s.m.bus.Send(s.ctx, f)
 		s.m.mu.Lock()
 		s.m.lastSend = time.Now()
 		if err != nil {
@@ -253,7 +258,7 @@ func (s *session) send(fs ...canbus.Frame) error {
 		}
 		s.m.mu.Unlock()
 		if err != nil {
-			return fmt.Errorf("lss: send %s: %w", Command(fs[i].Data[0]), err)
+			return fmt.Errorf("lss: send %s: %w", Command(f.Data[0]), err)
 		}
 	}
 	return nil
@@ -460,7 +465,7 @@ func (m *Master) ActivateBitTiming(ctx context.Context, delay time.Duration) err
 		return err
 	}
 	defer s.end()
-	if err := s.send(frame(MasterID, CmdActivateBitTiming, byte(ms), byte(ms>>8))); err != nil {
+	if err := s.send(frame(MasterID, CmdActivateBitTiming, byte(ms&0xFF), byte(ms>>8))); err != nil {
 		return err
 	}
 	m.count(func(st *MasterStats) { st.Activations++ })

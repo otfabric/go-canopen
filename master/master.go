@@ -48,6 +48,7 @@ type config struct {
 	lssOpts    []lss.MasterOption
 	lssBoot    bool
 	lssFS      lss.FastscanOptions
+	eventQueue int // bus-driven events queued for the handler (0: default)
 }
 
 // WithLogger logs the master's events, and those of its services, to l.
@@ -64,9 +65,23 @@ func WithLogger(l *slog.Logger) Option {
 // are delivered one at a time, in the order they occurred, on a goroutine
 // of the master's own: the handler may call the master (SDO transfers, NMT
 // commands) but not [Master.Close]. A slow handler delays later events,
-// never the services (the queue is unbounded).
+// never the services. Events driven by bus frames (EventBootUp,
+// EventStateChange, EventEMCY) wait in a bounded queue ([WithEventQueue]):
+// when it is full the oldest of them is dropped and counted in
+// [Stats].EventsDropped. The results of the master's own processes (boot,
+// network boot, LSS, node error) and supervision events (heartbeat and
+// guarding loss and resumption) are never dropped.
 func WithEventHandler(h func(Event)) Option {
 	return func(c *config) { c.handler = h }
+}
+
+// WithEventQueue sets how many bus-driven events (EventBootUp,
+// EventStateChange, EventEMCY) the master holds for an event handler that
+// does not keep up; n <= 0 means [DefaultEventQueue]. When the queue is
+// full the oldest of them is dropped, so that a flood of frames cannot
+// grow the master's memory.
+func WithEventQueue(n int) Option {
+	return func(c *config) { c.eventQueue = n }
 }
 
 // WithSDOOptions sets the options of the SDO clients [Master.SDO] creates
@@ -236,7 +251,7 @@ func New(bus canopen.Bus, opts ...Option) (*Master, error) {
 		running: map[canopen.NodeID]context.CancelFunc{},
 	}
 	m.bootCtx, m.stopAll = context.WithCancel(context.Background())
-	m.disp = newDispatcher(c.handler)
+	m.disp = newDispatcher(c.handler, c.eventQueue)
 	nopts := []nmt.Option{nmt.WithLogger(m.log)}
 	eopts := []emcy.Option{emcy.WithLogger(m.log), emcy.WithHandler(m.onEMCY)}
 	sopts := []syncobj.Option{syncobj.WithLogger(m.log)}
@@ -472,11 +487,9 @@ func (m *Master) goBoot(f func(ctx context.Context)) bool {
 	if m.bootCtx.Err() != nil {
 		return false
 	}
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
+	m.wg.Go(func() {
 		f(m.bootCtx)
-	}()
+	})
 	return true
 }
 
@@ -590,6 +603,9 @@ type Stats struct {
 	SDO       map[canopen.NodeID]sdo.ClientStats `json:"sdo"`
 	LSS       lss.MasterStats                    `json:"lss"`
 	USDO      usdo.ClientStats                   `json:"usdo"` // WithFD or WithUSDOClient
+	// EventsDropped counts bus-driven events dropped from the full event
+	// queue of a handler that did not keep up ([WithEventQueue]).
+	EventsDropped uint64 `json:"eventsDropped"`
 }
 
 // Stats returns a snapshot of the counters.
@@ -597,7 +613,7 @@ func (m *Master) Stats() Stats {
 	s := Stats{
 		NMT: m.nmt.Stats(), Heartbeat: m.hb.Stats(), EMCY: m.em.Stats(),
 		SYNC: m.syncP.Stats(), TIME: m.timeP.Stats(), SDO: map[canopen.NodeID]sdo.ClientStats{},
-		LSS: m.lssM.Stats(),
+		LSS: m.lssM.Stats(), EventsDropped: m.disp.droppedEvents(),
 	}
 	if m.usdoC != nil {
 		s.USDO = m.usdoC.Stats()

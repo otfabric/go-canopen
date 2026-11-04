@@ -85,8 +85,7 @@ func (n *Node) storeHook(sig uint32, do func(uint8) error) od.WriteHook {
 		}
 		if err := do(v.SubIndex); err != nil {
 			n.log.Warn("node: parameter store request failed", "sub", v.SubIndex, "error", err)
-			var ac canopen.AbortCode
-			if errors.As(err, &ac) {
+			if ac, ok := errors.AsType[canopen.AbortCode](err); ok {
 				return ac
 			}
 			return canopen.AbortHardware

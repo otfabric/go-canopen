@@ -259,7 +259,7 @@ func TestMachineTimers(t *testing.T) {
 }
 
 func TestIsInitiate(t *testing.T) {
-	for b := 0; b < 256; b++ {
+	for b := range 256 {
 		b0 := byte(b)
 		want := b0>>5 == 1 || b0>>5 == 2 || b0>>5 == 5 && b0&3 == 0 || b0>>5 == 6 && b0&1 == 0
 		if isInitiate(b0) != want {

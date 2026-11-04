@@ -44,7 +44,7 @@ func Example() {
 	_ = producer.Raise(ctx, emcy.CodeTemperatureDevice, emcy.ClassRegister(emcy.CodeTemperatureDevice), [5]byte{0x42})
 	_ = producer.Clear(ctx, emcy.CodeTemperatureDevice)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case e := <-events:
 			fmt.Printf("node %d: 0x%04X %s, register %s\n", e.Node, e.Code, emcy.CodeText(e.Code), e.Register)

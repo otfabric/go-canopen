@@ -148,11 +148,9 @@ func (b *base) start(loop func()) error {
 		return errors.New("pdo: " + kind(b.transmit, b.n) + ": subscribe failed")
 	}
 	b.unwatch = b.d.Watch(b.watch)
-	b.wg.Add(1)
-	go func() {
-		defer b.wg.Done()
+	b.wg.Go(func() {
 		loop()
-	}()
+	})
 	return nil
 }
 

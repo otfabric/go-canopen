@@ -4,6 +4,7 @@ package pdo
 
 import (
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/otfabric/go-canopen"
@@ -38,6 +39,12 @@ import (
 //   - sub 00h above the number of entries or [MaxEntries], or entries
 //     longer than [MaxBits] in total: [canopen.AbortPDOLength]; an entry
 //     1..n that is invalid: its [ValidateEntry] code.
+//
+// A value wider than the CiA 301 data type of its sub-object (possible
+// only with a dictionary that declares it wider) is refused: a COB-ID or
+// transmission type with [canopen.AbortInvalidValue], a mapping entry with
+// [canopen.AbortInvalidValue] when written and [canopen.AbortNotMappable]
+// when enabled by sub 00h. A stored COB-ID above 32 bits counts as invalid.
 //
 // Local writes ([od.Dictionary.Set]) are not checked. The returned
 // unprotect function removes the hooks (later calls do nothing);
@@ -76,14 +83,18 @@ func protect(d *od.Dictionary, transmit bool, n, maxBits int) (unprotect func(),
 func active(d *od.Dictionary, transmit bool, n int) bool {
 	cob, err1 := d.GetUint(CommIndex(transmit, n), 1)
 	cnt, err2 := d.GetUint(MappingIndex(transmit, n), 0)
-	return err1 == nil && err2 == nil && canopen.COBID(cob).Valid() && cnt > 0
+	c, ok := cobID(cob)
+	return err1 == nil && err2 == nil && ok && c.Valid() && cnt > 0
 }
 
 // checkCommWrite applies the communication parameter rules.
 func checkCommWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint64) error {
 	switch sub {
 	case 1:
-		c := canopen.COBID(x)
+		c, ok := cobID(x)
+		if !ok {
+			return canopen.AbortInvalidValue
+		}
 		if err := checkCOBID(c); err != nil {
 			return err
 		}
@@ -95,11 +106,14 @@ func checkCommWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint64)
 			return canopen.AbortInvalidValue
 		}
 		cur, _ := d.GetUint(CommIndex(transmit, n), 1)
-		old := canopen.COBID(cur)
-		if old.Valid() && (old.ID() != c.ID() || old.Extended() != c.Extended()) {
+		old, ok := cobID(cur)
+		if ok && old.Valid() && (old.ID() != c.ID() || old.Extended() != c.Extended()) {
 			return canopen.AbortInvalidValue
 		}
 	case 2:
+		if x > math.MaxUint8 {
+			return canopen.AbortInvalidValue
+		}
 		if !TransmissionType(x).ValidFor(transmit) {
 			return canopen.AbortInvalidValue
 		}
@@ -128,6 +142,9 @@ func checkMappingWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint
 		if x == 0 {
 			return nil
 		}
+		if x > math.MaxUint32 {
+			return canopen.AbortInvalidValue
+		}
 		return ValidateEntry(d, ParseEntry(uint32(x)), transmit)
 	}
 	o := d.Object(mi)
@@ -144,6 +161,9 @@ func checkMappingWrite(d *od.Dictionary, transmit bool, n int, sub uint8, x uint
 			return canopen.AbortPDOLength
 		}
 		if e == 0 {
+			return canopen.AbortNotMappable
+		}
+		if e > math.MaxUint32 {
 			return canopen.AbortNotMappable
 		}
 		m = append(m, ParseEntry(uint32(e)))

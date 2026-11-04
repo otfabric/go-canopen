@@ -145,7 +145,7 @@ Conventions shared by every package:
 
 | Type / function | Purpose |
 |-----------------|---------|
-| `NewClient(bus, node, opts...)` | `Upload`, `Download` (one server), `UploadMulti`, `DownloadMulti` (a group or all); per call `UseBulk`, `Expect`, `WithCallTimeout`, `WithDataType` |
+| `NewClient(bus, node, opts...)` | `Upload`, `Download` (one server), `UploadMulti`, `DownloadMulti` (a group or all); per call `UseBulk`, `Expect`, `WithCallTimeout`, `WithDataType`; `WithMaxSize` (upload limit, default 1 MiB) |
 | `NewServer(bus, d, opts...)` | Serves a dictionary to every client; `SetEnabled`, `SetNodeID`, `Sessions`; `WithGroups`, `WithMaxSessions`, `WithMaxSize`, `WithProcessingTime`, `WithTProcUnit` |
 | `AbortCode`, `AbortError`, `FromSDO` | One-byte USDO aborts and their SDO equivalents |
 | `Message`, `Decode`, `Frame`, `Command`, `Address` | The protocol |

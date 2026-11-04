@@ -5,6 +5,7 @@ package mpdo
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -116,19 +117,25 @@ func (c config) active() bool {
 }
 
 // load reads the configuration with local reads; a missing inhibit time
-// reads as 0.
+// reads as 0. Values wider than their data type make the PDO inactive (a
+// COB-ID above 32 bits reads as invalid, a transmission type above 8 bits
+// as 0), and an inhibit time above 16 bits reads as FFFFh.
 func load(d *od.Dictionary, transmit bool, n int) config {
 	ci := pdo.CommIndex(transmit, n)
 	var c config
+	c.cob = canopen.COBInvalid
 	if x, err := d.GetUint(ci, 1); err == nil {
-		c.cob = canopen.COBID(x)
-	} else {
-		c.cob = canopen.COBInvalid
+		if cob, ok := cobID(x); ok {
+			c.cob = cob
+		}
 	}
 	if x, err := d.GetUint(ci, 2); err == nil {
-		c.tt = pdo.TransmissionType(x)
+		c.tt = transmissionType(x)
 	}
 	if x, err := d.GetUint(ci, 3); err == nil && transmit {
+		if x > math.MaxUint16 {
+			x = math.MaxUint16
+		}
 		c.inhibit = time.Duration(x) * 100 * time.Microsecond
 	}
 	c.mode = ModeOf(d, transmit, n)
@@ -161,7 +168,8 @@ func ProtectPDO(d *od.Dictionary, transmit bool, n int) (unprotect func(), err e
 	ci, mi := pdo.CommIndex(transmit, n), pdo.MappingIndex(transmit, n)
 	valid := func() bool {
 		x, err := d.GetUint(ci, 1)
-		return err == nil && canopen.COBID(x).Valid()
+		cob, ok := cobID(x)
+		return err == nil && ok && cob.Valid()
 	}
 	rm1 := d.OnWrite(mi, -1, func(v *od.Variable, data []byte) error {
 		cur := ModeOf(d, transmit, n)
@@ -184,11 +192,30 @@ func ProtectPDO(d *od.Dictionary, transmit bool, n int) (unprotect func(), err e
 		return nil
 	})
 	rm2 := d.OnWrite(ci, 2, func(_ *od.Variable, data []byte) error {
-		if ModeOf(d, transmit, n) != ModeNone && !pdo.TransmissionType(canopen.DecodeUint(data)).EventDriven() {
+		if ModeOf(d, transmit, n) != ModeNone && !transmissionType(canopen.DecodeUint(data)).EventDriven() {
 			return canopen.AbortInvalidValue
 		}
 		return nil
 	})
 	var once sync.Once
 	return func() { once.Do(func() { rm1(); rm2() }) }, nil
+}
+
+// cobID converts a COB-ID read as an unsigned integer; ok is false for a
+// value wider than the UNSIGNED32 of a COB-ID.
+func cobID(x uint64) (canopen.COBID, bool) {
+	if x > math.MaxUint32 {
+		return 0, false
+	}
+	return canopen.COBID(x), true
+}
+
+// transmissionType converts a transmission type read as an unsigned
+// integer; a value wider than its UNSIGNED8 is 0, which is not
+// event-driven.
+func transmissionType(x uint64) pdo.TransmissionType {
+	if x > math.MaxUint8 {
+		return 0
+	}
+	return pdo.TransmissionType(x)
 }

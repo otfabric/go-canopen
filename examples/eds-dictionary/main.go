@@ -122,6 +122,9 @@ func run() error {
 		return err
 	}
 	fmt.Printf("producer heartbeat after configuration: %d ms\n", hb)
+	if hb > 0xFFFF {
+		return fmt.Errorf("producer heartbeat %d ms is not UNSIGNED16", hb)
+	}
 	if err := m.Monitor(id, time.Duration(hb)*time.Millisecond*3/2); err != nil {
 		return err
 	}

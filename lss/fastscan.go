@@ -32,6 +32,7 @@ type FastscanOptions struct {
 type fastscan struct {
 	s       *session
 	window  time.Duration
+	base    time.Duration // window before any restart widened it
 	retries int
 	known   map[Part]uint32
 }
@@ -41,6 +42,7 @@ func (m *Master) newFastscan(s *session, o FastscanOptions) *fastscan {
 	if fs.window <= 0 {
 		fs.window = m.cfg.fsTimeout
 	}
+	fs.base = fs.window
 	switch {
 	case fs.retries == 0:
 		fs.retries = m.cfg.fsRetries
@@ -48,6 +50,25 @@ func (m *Master) newFastscan(s *session, o FastscanOptions) *fastscan {
 		fs.retries = 0
 	}
 	return fs
+}
+
+// maxWiden bounds how far a repeated step widens the listening window.
+const maxWiden = 8
+
+// restart counts a restart of the identification.
+func (fs *fastscan) restart() {
+	fs.s.m.count(func(st *MasterStats) { st.Restarts++ })
+}
+
+// widened sets the listening window for the n-th repetition of a step:
+// the configured window doubled n times, up to maxWiden times. A step is
+// repeated when silence contradicts an earlier answer: the answer
+// usually came after its window (a busy slave or a loaded host) and the
+// same window would miss it again. Callers return to widened(0) once
+// the step is done, so later silences, the normal "no" of Fastscan, cost
+// the configured window.
+func (fs *fastscan) widened(n int) {
+	fs.window = min(fs.base<<min(n, 3), maxWiden*fs.base)
 }
 
 // query sends one Fastscan request and reports whether at least one
@@ -95,10 +116,12 @@ func (fs *fastscan) verify(v uint32, p, next Part) (bool, error) {
 // whose address starts with prefix wait for part len(prefix). ok is
 // false when no slave answers.
 func (fs *fastscan) position(prefix []uint32) (bool, error) {
+	defer fs.widened(0)
 	for attempt := 0; attempt <= fs.retries+1; attempt++ {
 		if attempt > 0 {
-			fs.s.m.count(func(st *MasterStats) { st.Restarts++ })
+			fs.restart()
 		}
+		fs.widened(attempt)
 		ok, err := fs.reset()
 		if err != nil || !ok {
 			return false, err
@@ -121,15 +144,20 @@ func (fs *fastscan) position(prefix []uint32) (bool, error) {
 	return false, nil
 }
 
+// maxDevices is the most unconfigured devices a Fastscan lists: a
+// network has at most 127 nodes, so more answers come from a slave that
+// acknowledges every query.
+const maxDevices = 127
+
 // scanPart finds the values of part p among the slaves waiting for it:
-// all of them, or one (usually the lowest) with first.
+// the lowest limit of them, or one (usually the lowest) with first.
 //
 // Listing decides each bit by explicit acknowledgements (both values are
 // queried, silence is repeated), and confirms each value with a second
 // full-match query, so that a lost frame can hide a slave but never
 // invent one. With first it queries 0, then 1, and takes the first value
 // acknowledged: whichever it takes, a slave has that prefix.
-func (fs *fastscan) scanPart(p Part, first bool) ([]uint32, error) {
+func (fs *fastscan) scanPart(p Part, first bool, limit int) ([]uint32, error) {
 	if v, ok := fs.known[p]; ok {
 		ack, err := fs.query(v, 0, p, p, fs.retries)
 		if err != nil || !ack {
@@ -141,29 +169,52 @@ func (fs *fastscan) scanPart(p Part, first bool) ([]uint32, error) {
 		return fs.scanOne(p)
 	}
 	var out []uint32
+	// walk runs only below an acknowledged prefix: a slave matched it, so
+	// it must match the confirmation or one of the two next bits. When
+	// none answers, an answer was lost or came after its window; the step
+	// is repeated (up to retries+1 times) with a wider window. Silence
+	// after that hides the branch, as a lost frame may.
 	var walk func(value uint32, k uint8) error
 	walk = func(value uint32, k uint8) error {
-		if k == 0 {
-			ack, err := fs.query(value, 0, p, p, fs.retries)
-			if ack {
-				out = append(out, value)
+		for again := 0; ; again++ {
+			if len(out) >= limit {
+				return nil
 			}
-			return err
-		}
-		b := k - 1
-		for _, bit := range [2]uint32{0, 1} {
-			v := value | bit<<b
-			ack, err := fs.query(v, b, p, p, fs.retries)
-			if err != nil {
-				return err
-			}
-			if ack {
-				if err := walk(v, b); err != nil {
+			fs.widened(again)
+			acked := false
+			if k == 0 {
+				ack, err := fs.query(value, 0, p, p, fs.retries)
+				fs.widened(0)
+				if err != nil {
 					return err
 				}
+				if ack {
+					out = append(out, value)
+					return nil
+				}
+			} else {
+				b := k - 1
+				for _, bit := range [2]uint32{0, 1} {
+					v := value | bit<<b
+					fs.widened(again)
+					ack, err := fs.query(v, b, p, p, fs.retries)
+					fs.widened(0)
+					if err != nil {
+						return err
+					}
+					if ack {
+						acked = true
+						if err := walk(v, b); err != nil {
+							return err
+						}
+					}
+				}
 			}
+			if acked || again > fs.retries {
+				return nil
+			}
+			fs.s.m.count(func(st *MasterStats) { st.Retries++ })
 		}
-		return nil
 	}
 	err := walk(0, 32)
 	return out, err
@@ -205,6 +256,9 @@ func (fs *fastscan) scanOne(p Part) ([]uint32, error) {
 // device costs about 260 windows (6.5 s with the default 25 ms). A lost
 // frame can hide a device (the next Fastscan finds it); it cannot invent
 // one. To give unconfigured devices node-IDs, use [Master.AssignAll].
+// Answers for more than 127 devices (a slave that acknowledges every
+// query) end the listing with [ErrFastscan]; with Max the walk stops once
+// Max devices are found.
 func (m *Master) Fastscan(ctx context.Context, o FastscanOptions) ([]Address, error) {
 	s, err := m.begin(ctx)
 	if err != nil {
@@ -214,16 +268,28 @@ func (m *Master) Fastscan(ctx context.Context, o FastscanOptions) ([]Address, er
 	fs := m.newFastscan(s, o)
 	var out []Address
 	full := func() bool { return o.Max > 0 && len(out) >= o.Max }
-	var walk func(prefix []uint32) error
-	walk = func(prefix []uint32) error {
-		p := Part(len(prefix))
+	// budget is how many more values a part may yield: a value stands for
+	// at least one device, so the walk of a part stops at the devices
+	// still wanted (Max), or one beyond maxDevices.
+	budget := func() int {
+		if o.Max > 0 {
+			return min(o.Max-len(out), maxDevices+1)
+		}
+		return maxDevices + 1 - len(out)
+	}
+	// walk scans part p below prefix, which holds the parts before p.
+	var walk func(p Part, prefix []uint32) error
+	walk = func(p Part, prefix []uint32) error {
 		ok, err := fs.position(prefix)
 		if err != nil || !ok {
 			return err
 		}
-		vals, err := fs.scanPart(p, false)
+		vals, err := fs.scanPart(p, false, budget())
 		if err != nil {
 			return err
+		}
+		if len(vals) > maxDevices {
+			return tooMany()
 		}
 		for _, v := range vals {
 			if full() {
@@ -232,16 +298,28 @@ func (m *Master) Fastscan(ctx context.Context, o FastscanOptions) ([]Address, er
 			next := append(append([]uint32(nil), prefix...), v)
 			if p == PartSerial {
 				out = append(out, Address{Vendor: next[0], Product: next[1], Revision: next[2], Serial: next[3]})
+				if len(out) > maxDevices {
+					return tooMany()
+				}
 				continue
 			}
-			if err := walk(next); err != nil {
+			if err := walk(p+1, next); err != nil {
 				return err
 			}
 		}
 		return nil
 	}
-	err = walk(nil)
+	err = walk(PartVendor, nil)
+	if err != nil && len(out) > maxDevices {
+		out = out[:maxDevices]
+	}
 	return out, err
+}
+
+// tooMany reports a Fastscan answered for more devices than a network
+// holds.
+func tooMany() error {
+	return fmt.Errorf("%w: more than %d devices answer (a slave acknowledges every query)", ErrFastscan, maxDevices)
 }
 
 // FastscanSelect identifies one unconfigured slave (the lowest address,
@@ -261,10 +339,12 @@ func (m *Master) FastscanSelect(ctx context.Context, o FastscanOptions) (a Addre
 
 func (fs *fastscan) selectOne() (Address, bool, error) {
 	attempts := fs.retries + fs.s.m.cfg.fsAttempts
-	for attempt := 0; attempt < attempts; attempt++ {
+	defer fs.widened(0)
+	for attempt := range attempts {
 		if attempt > 0 {
-			fs.s.m.count(func(st *MasterStats) { st.Restarts++ })
+			fs.restart()
 		}
+		fs.widened(attempt)
 		ok, err := fs.reset()
 		if err != nil || !ok {
 			return Address{}, false, err
@@ -272,7 +352,7 @@ func (fs *fastscan) selectOne() (Address, bool, error) {
 		var a Address
 		done := true
 		for p := PartVendor; p <= PartSerial; p++ {
-			vals, err := fs.scanPart(p, true)
+			vals, err := fs.scanPart(p, true, 1)
 			if err != nil {
 				return Address{}, false, err
 			}

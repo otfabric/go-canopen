@@ -125,20 +125,54 @@ func (e Event) String() string {
 	return fmt.Sprintf("node %d %s", e.Node, e.Kind)
 }
 
-// dispatcher delivers events to the handler in order on its own
-// goroutine, through an unbounded queue, so that services never wait for
-// the handler and the handler may call the master (SDO transfers, NMT).
-type dispatcher struct {
-	h    func(Event)
-	mu   sync.Mutex
-	cond *sync.Cond
-	q    []Event
-	stop bool
-	done chan struct{}
+// DefaultEventQueue is the number of bus-driven events ([lossy]) the
+// master holds for a handler that does not keep up, without
+// [WithEventQueue].
+const DefaultEventQueue = 4096
+
+// lossy reports whether events of kind k come straight from frames on the
+// bus, at a rate a device (or a flood) sets: boot-up, state change and
+// EMCY. They are the ones [WithEventQueue] bounds. The others report the
+// master's own processes or supervision timeouts and are never dropped.
+func lossy(k EventKind) bool {
+	switch k {
+	case EventBootUp, EventStateChange, EventEMCY:
+		return true
+	default: // results of the master's processes and timeouts
+	}
+	return false
 }
 
-func newDispatcher(h func(Event)) *dispatcher {
-	d := &dispatcher{h: h, done: make(chan struct{})}
+// queued is an event with its place in the order of all events.
+type queued struct {
+	seq uint64
+	ev  Event
+}
+
+// dispatcher delivers events to the handler in order on its own
+// goroutine, so that services never wait for the handler and the handler
+// may call the master (SDO transfers, NMT). Bus-driven events ([lossy])
+// wait in a queue of at most max, which drops its oldest when full; the
+// others wait in a queue of their own, never dropped. The two are merged
+// back into the order the events occurred in.
+type dispatcher struct {
+	h       func(Event)
+	max     int
+	mu      sync.Mutex
+	cond    *sync.Cond
+	q       []queued // not lossy
+	lq      []queued // lossy, at most max
+	seq     uint64
+	dropped uint64
+	stop    bool
+	done    chan struct{}
+}
+
+func newDispatcher(h func(Event), maxLossy int) *dispatcher {
+	if maxLossy <= 0 {
+		maxLossy = DefaultEventQueue
+	}
+	d := &dispatcher{h: h, max: maxLossy, done: make(chan struct{})}
 	d.cond = sync.NewCond(&d.mu)
 	return d
 }
@@ -147,21 +181,36 @@ func (d *dispatcher) run() {
 	defer close(d.done)
 	for {
 		d.mu.Lock()
-		for len(d.q) == 0 && !d.stop {
+		for len(d.q) == 0 && len(d.lq) == 0 && !d.stop {
 			d.cond.Wait()
 		}
-		if len(d.q) == 0 {
-			d.mu.Unlock()
+		ev, ok := d.nextLocked()
+		d.mu.Unlock()
+		if !ok {
 			return
 		}
-		ev := d.q[0]
-		d.q[0] = Event{}
-		d.q = d.q[1:]
-		d.mu.Unlock()
 		if d.h != nil {
 			d.h(ev)
 		}
 	}
+}
+
+// nextLocked removes the earliest queued event; ok is false when both
+// queues are empty.
+func (d *dispatcher) nextLocked() (ev Event, ok bool) {
+	switch {
+	case len(d.q) == 0 && len(d.lq) == 0:
+		return Event{}, false
+	case len(d.lq) == 0 || len(d.q) > 0 && d.q[0].seq < d.lq[0].seq:
+		ev = d.q[0].ev
+		d.q[0] = queued{}
+		d.q = d.q[1:]
+	default:
+		ev = d.lq[0].ev
+		d.lq[0] = queued{}
+		d.lq = d.lq[1:]
+	}
+	return ev, true
 }
 
 func (d *dispatcher) push(ev Event) {
@@ -170,10 +219,28 @@ func (d *dispatcher) push(ev Event) {
 	}
 	d.mu.Lock()
 	if !d.stop {
-		d.q = append(d.q, ev)
+		d.seq++
+		e := queued{seq: d.seq, ev: ev}
+		if lossy(ev.Kind) {
+			if len(d.lq) >= d.max {
+				d.lq[0] = queued{}
+				d.lq = d.lq[1:]
+				d.dropped++
+			}
+			d.lq = append(d.lq, e)
+		} else {
+			d.q = append(d.q, e)
+		}
 	}
 	d.mu.Unlock()
 	d.cond.Signal()
+}
+
+// droppedEvents returns the number of events dropped from a full queue.
+func (d *dispatcher) droppedEvents() uint64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.dropped
 }
 
 // close delivers the queued events and stops.

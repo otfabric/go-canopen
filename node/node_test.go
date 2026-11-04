@@ -354,7 +354,7 @@ func TestSYNCDrivenPDOs(t *testing.T) {
 		t.Fatal("synchronous TPDO without SYNC")
 	}
 	_ = d.SetValue(nettest.IdxIn8, 0, uint8(3))
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if err := r.m.SYNC().Send(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -577,7 +577,7 @@ func TestTIME(t *testing.T) {
 	dD := nettest.Dict(t, 8, nil)
 	_ = dD.SetUint(od.IndexCOBIDTime, 0, uint64(canopen.COBGenerate|0x100))
 	startNode(t, r.buses[0], dD, node.WithTimePeriod(10*time.Millisecond))
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		select {
 		case <-got:
 		case <-time.After(2 * time.Second):

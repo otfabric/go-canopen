@@ -16,14 +16,14 @@ jobs:
   # version. Coverage is measured and uploaded by the vcan job, which also
   # runs the SocketCAN tests (run-codecov: false here).
   ci:
-    uses: otfabric/.github/.github/workflows/go-ci.yml@v3.3.0
+    uses: otfabric/.github/.github/workflows/go-ci.yml@v3.3.1
     with:
       run-govulncheck: true
       codecov-name: go-canopen
       run-codecov: false
       coverpkg: >-
         github.com/otfabric/go-canopen,github.com/otfabric/go-canopen/cdcf,github.com/otfabric/go-canopen/cia402,github.com/otfabric/go-canopen/codegen,github.com/otfabric/go-canopen/dissect,github.com/otfabric/go-canopen/eds,github.com/otfabric/go-canopen/emcy,github.com/otfabric/go-canopen/lss,github.com/otfabric/go-canopen/master,github.com/otfabric/go-canopen/mpdo,github.com/otfabric/go-canopen/nmt,github.com/otfabric/go-canopen/node,github.com/otfabric/go-canopen/od,github.com/otfabric/go-canopen/pdo,github.com/otfabric/go-canopen/program,github.com/otfabric/go-canopen/sdo,github.com/otfabric/go-canopen/store,github.com/otfabric/go-canopen/sync,github.com/otfabric/go-canopen/timestamp,github.com/otfabric/go-canopen/usdo
-      go-versions: '["1.23", "1.24", "1.25", "1.26"]'
+      go-versions: '["1.26", "1.27"]'
     secrets: inherit
 
   # Every test on real vcan interfaces (the e2e suite runs CANopen over
@@ -84,7 +84,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.23.x"
+          go-version: "1.26.x"
       - run: make generate-check coverpkg-check
 
   examples:
@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.23.x"
+          go-version: "1.26.x"
       - run: make build examples
 
   # Every package builds for the release platforms, including 32-bit ARM.
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.23.x"
+          go-version: "1.26.x"
       - run: make fuzz FUZZTIME=10s
       - name: Upload the failing inputs
         if: failure()

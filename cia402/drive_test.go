@@ -871,12 +871,9 @@ func TestDriveConcurrent(t *testing.T) {
 	defer cancel()
 	ctx, stop := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() { defer wg.Done(); _ = td.drive.Run(ctx, 100*time.Microsecond) }()
+	wg.Go(func() { ; _ = td.drive.Run(ctx, 100*time.Microsecond) })
 	for g := range 4 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range 300 {
 				switch (i + g) % 5 {
 				case 0:
@@ -894,7 +891,7 @@ func TestDriveConcurrent(t *testing.T) {
 					_, _ = td.dict.Read(IndexStatusword, 0)
 				}
 			}
-		}()
+		})
 	}
 	time.Sleep(20 * time.Millisecond)
 	stop()

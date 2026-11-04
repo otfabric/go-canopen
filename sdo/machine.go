@@ -255,7 +255,12 @@ func (m *machine) initiate(f frame) bool {
 		m.buf, m.blk, m.blockStart = data, blk, 0
 		m.crc = m.crcOK && b0&4 != 0
 		m.state = stBlockUploadInit
-		m.send(muxFrame(scsBlockUpload<<5|m.crcBit()|2, m.index, m.sub, uint32(len(data))))
+		size, ok := sizeField(len(data))
+		if !ok {
+			m.abortCurrent(canopen.AbortOutOfMemory)
+			return false
+		}
+		m.send(muxFrame(scsBlockUpload<<5|m.crcBit()|2, m.index, m.sub, size))
 		return true
 	default: // ccsBlockDownload
 		if m.writable() == nil || !m.initDownloadSize(b0&2 != 0, f.u32()) {
@@ -293,7 +298,7 @@ func (m *machine) writable() *od.Variable {
 
 func (m *machine) initDownloadSize(sized bool, size uint32) bool {
 	m.sized, m.size = sized, int(size)
-	if sized && uint64(size) > uint64(m.maxSize) {
+	if sized && int64(size) > int64(m.maxSize) {
 		m.abortCurrent(canopen.AbortOutOfMemory)
 		return false
 	}
@@ -338,9 +343,14 @@ func (m *machine) startUpload(data []byte) {
 		m.reset()
 		return
 	}
+	size, ok := sizeField(len(data))
+	if !ok {
+		m.abortCurrent(canopen.AbortOutOfMemory)
+		return
+	}
 	m.buf, m.pos, m.toggle = data, 0, 0
 	m.state = stUploadSegment
-	m.send(muxFrame(scsInitiateUpload<<5|1, m.index, m.sub, uint32(len(data))))
+	m.send(muxFrame(scsInitiateUpload<<5|1, m.index, m.sub, size))
 }
 
 func (m *machine) uploadSegment(f frame) bool {
@@ -352,7 +362,7 @@ func (m *machine) uploadSegment(f frame) bool {
 	end := min(m.pos+segData, len(m.buf))
 	chunk := m.buf[m.pos:end]
 	var r frame
-	r[0] = scsUploadSegment<<5 | t<<4 | byte(segData-len(chunk))<<1
+	r[0] = scsUploadSegment<<5 | t<<4 | u8(segData-len(chunk))<<1
 	copy(r[1:], chunk)
 	m.pos = end
 	m.toggle ^= 1
@@ -536,7 +546,7 @@ func (m *machine) blockUploadAck(f frame) bool {
 		if m.crc {
 			crc = CRC16(m.buf)
 		}
-		e := frame{scsBlockUpload<<5 | byte(segData-m.lastLen)<<2 | blkEnd, byte(crc), byte(crc >> 8)}
+		e := frame{scsBlockUpload<<5 | u8(segData-m.lastLen)<<2 | blkEnd, byte(crc), byte(crc >> 8)}
 		m.state = stBlockUploadEnd
 		m.st.blocks.Add(1)
 		m.send(e)

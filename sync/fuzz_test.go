@@ -23,7 +23,7 @@ func FuzzReceive(f *testing.F) {
 			opts = append(opts, WithOverflow(overflow))
 		}
 		c, _ := NewConsumer(nil, opts...)
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			e, ok := c.receive(&fr, canopen.COBID(canopen.FuncSYNC))
 			if ok && fr.Len > 0 && e.Counter != fr.Data[0] {
 				t.Fatalf("counter %d from % X", e.Counter, fr.Data[:fr.Len])

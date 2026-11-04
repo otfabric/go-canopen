@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"sync"
 	"time"
 
@@ -174,8 +175,8 @@ func NewDrive(dict *od.Dictionary, cfg DriveConfig) (*Drive, error) {
 			}
 		}
 	}
-	d.cw = uint16(d.getUint(IndexControlword, 0))
-	if m := Mode(d.getInt(IndexModesOfOperation, 0)); d.modes[m] {
+	d.cw = uint16(d.getUint(IndexControlword, 0) & 0xFFFF)
+	if m := modeOf(d.getInt(IndexModesOfOperation, 0)); d.modes[m] {
 		d.mode = m
 	}
 	d.unhook = append(d.unhook,
@@ -273,10 +274,8 @@ func (d *Drive) checkControlword(_ *od.Variable, data []byte) error {
 	default: // automatic states and Fault accept every controlword
 		return nil
 	}
-	for _, h := range hold {
-		if h == cmd {
-			return nil
-		}
+	if slices.Contains(hold, cmd) {
+		return nil
 	}
 	return canopen.AbortDeviceState
 }
@@ -284,7 +283,7 @@ func (d *Drive) checkControlword(_ *od.Variable, data []byte) error {
 func (d *Drive) checkMode(_ *od.Variable, data []byte) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if m := Mode(int8(data[0])); !d.closed && m != ModeNone && !d.modes[m] {
+	if m := Mode(int8Of(data[0])); !d.closed && m != ModeNone && !d.modes[m] {
 		return canopen.AbortInvalidValue
 	}
 	return nil
@@ -305,14 +304,14 @@ func (d *Drive) checkTarget(_ *od.Variable, data []byte) error {
 }
 
 func (d *Drive) checkHomingMethod(_ *od.Variable, data []byte) error {
-	if m := int8(data[0]); m < 1 || m > 37 || m == 36 {
+	if m := int8Of(data[0]); m < 1 || m > 37 || m == 36 {
 		return canopen.AbortInvalidValue
 	}
 	return nil
 }
 
 func (d *Drive) checkOptionCode(v *od.Variable, data []byte) error {
-	x := int16(binary.LittleEndian.Uint16(data))
+	x := int16Of(binary.LittleEndian.Uint16(data))
 	lo, hi := int16(0), int16(4)
 	switch v.Index {
 	case IndexQuickStopOptionCode:
@@ -342,7 +341,7 @@ func (d *Drive) watch(v *od.Variable, data []byte) {
 	if v.Index == IndexControlword {
 		d.controlwordLocked(binary.LittleEndian.Uint16(data))
 	} else {
-		d.modeLocked(Mode(int8(data[0])))
+		d.modeLocked(Mode(int8Of(data[0])))
 	}
 	d.ver++
 	d.mu.Unlock()
@@ -926,11 +925,11 @@ func (d *Drive) flush() {
 			}
 		}
 		set(out.errCode != prev.errCode, IndexErrorCode, binary.LittleEndian.AppendUint16(nil, out.errCode))
-		set(out.mode != prev.mode, IndexModesOfOperationDisplay, []byte{byte(out.mode)})
-		set(out.demand != prev.demand, IndexPositionDemandValue, binary.LittleEndian.AppendUint32(nil, uint32(out.demand)))
-		set(out.pos != prev.pos, IndexPositionActualValue, binary.LittleEndian.AppendUint32(nil, uint32(out.pos)))
-		set(out.vel != prev.vel, IndexVelocityActualValue, binary.LittleEndian.AppendUint32(nil, uint32(out.vel)))
-		set(out.torque != prev.torque, IndexTorqueActualValue, binary.LittleEndian.AppendUint16(nil, uint16(out.torque)))
+		set(out.mode != prev.mode, IndexModesOfOperationDisplay, []byte{wire8(int8(out.mode))})
+		set(out.demand != prev.demand, IndexPositionDemandValue, binary.LittleEndian.AppendUint32(nil, wire32(out.demand)))
+		set(out.pos != prev.pos, IndexPositionActualValue, binary.LittleEndian.AppendUint32(nil, wire32(out.pos)))
+		set(out.vel != prev.vel, IndexVelocityActualValue, binary.LittleEndian.AppendUint32(nil, wire32(out.vel)))
+		set(out.torque != prev.torque, IndexTorqueActualValue, binary.LittleEndian.AppendUint16(nil, wire16(out.torque)))
 		set(out.sw != prev.sw, IndexStatusword, binary.LittleEndian.AppendUint16(nil, out.sw))
 		for _, e := range events {
 			e()

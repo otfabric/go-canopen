@@ -446,3 +446,78 @@ func TestAssignAllLelySlavesLimits(t *testing.T) {
 		t.Fatalf("%v %v", as, err)
 	}
 }
+
+// matcher answers Fastscan as an unconfigured slave with address a,
+// stateless: a query is acknowledged when its value matches a's part in
+// the bits it checks. With one slave on the bus the master's own
+// positioning keeps that equivalent to the slave's state machine.
+func matcher(a Address) func(f canbus.Frame) (canbus.Frame, bool) {
+	return func(f canbus.Frame) (canbus.Frame, bool) {
+		if Command(f.Data[0]) != CmdFastscan {
+			return canbus.Frame{}, false
+		}
+		ack := frame(SlaveID, CmdIdentifySlave)
+		bit, sub := f.Data[5], Part(f.Data[6])
+		if bit == fastscanConfirm {
+			return ack, true
+		}
+		if bit > 31 || sub > PartSerial {
+			return canbus.Frame{}, false
+		}
+		mask := ^uint32(0) << bit
+		return ack, (u32(&f)^a.Part(sub))&mask == 0
+	}
+}
+
+// TestFastscanListLostAnswer: an acknowledgement lost below an
+// acknowledged prefix (here with no re-send of silent queries) is a
+// contradiction the listing repeats the step for, so the device is still
+// listed. Before, the silence hid the device; on a loaded host the same
+// happened to answers that came after a 4 ms window.
+func TestFastscanListLostAnswer(t *testing.T) {
+	checkLeaks(t)
+	ctx := ctxT(t)
+	ports := testbus.Ports(t, 2)
+	m := startMaster(t, ports[0], WithFastscanRetries(-1))
+	match := matcher(testAddr)
+	var mu sync.Mutex
+	dropped := 0
+	responder(t, ports[1], func(f canbus.Frame) (canbus.Frame, bool) {
+		r, ok := match(f)
+		mu.Lock()
+		defer mu.Unlock()
+		// Drop the first two acknowledgements of serial-number bit 20 and
+		// of the serial number's final confirmation.
+		if ok && Part(f.Data[6]) == PartSerial && (f.Data[5] == 20 || f.Data[5] == 0) && dropped < 4 {
+			dropped++
+			if dropped%2 == 1 {
+				return canbus.Frame{}, false
+			}
+		}
+		return r, ok
+	})
+	known := map[Part]uint32{PartVendor: testAddr.Vendor, PartProduct: testAddr.Product, PartRevision: testAddr.Revision}
+	got, err := m.Fastscan(ctx, FastscanOptions{Known: known})
+	if err != nil || len(got) != 1 || got[0] != testAddr {
+		t.Fatalf("%v %v, want [%v]", got, err, testAddr)
+	}
+	if st := m.Stats(); st.Retries < 2 {
+		t.Fatalf("no repeated step: %+v", st)
+	}
+}
+
+// TestFastscanWidened: a repeated step doubles the window up to
+// maxWiden times the configured one, and widened(0) restores it.
+func TestFastscanWidened(t *testing.T) {
+	fs := &fastscan{base: 10 * time.Millisecond}
+	for n, want := range []time.Duration{10, 20, 40, 80, 80, 80} {
+		fs.widened(n)
+		if fs.window != want*time.Millisecond {
+			t.Errorf("widened(%d): %v, want %v", n, fs.window, want*time.Millisecond)
+		}
+	}
+	fs.widened(0)
+	if fs.window != fs.base {
+		t.Errorf("widened(0): %v", fs.window)
+	}
+}

@@ -21,7 +21,7 @@ func FuzzParseFrame(f *testing.F) {
 		if m, err := ParseFrame(&fr); err == nil {
 			b := m.Bytes()
 			n := min(int(fr.Len), 8)
-			for i := 0; i < n; i++ {
+			for i := range n {
 				if b[i] != fr.Data[i] {
 					t.Fatalf("round trip % X -> % X", fr.Data[:n], b)
 				}

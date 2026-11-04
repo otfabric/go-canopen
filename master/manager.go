@@ -125,7 +125,11 @@ func (g *manager) u32(index uint16, sub uint8) uint32 {
 	if err != nil {
 		return 0
 	}
-	return uint32(v)
+	x, ok := u32Of(v)
+	if !ok {
+		return 0
+	}
+	return x
 }
 
 func (g *manager) startup() uint32 { return g.u32(IndexNMTStartup, 0) }
@@ -561,7 +565,7 @@ identity:
 	if err != nil {
 		return canopen.StateUnknown, BootNoResponse, err
 	}
-	if want := g.u32(IndexExpectedDeviceType, uint8(id)); want != 0 && uint32(canopen.DecodeUint(b)) != want {
+	if want := g.u32(IndexExpectedDeviceType, uint8(id)); want != 0 && canopen.DecodeUint(b) != uint64(want) {
 		return canopen.StateUnknown, BootDeviceType, fmt.Errorf("%w: 0x1000 is 0x%08X, want 0x%08X", ErrIdentity, canopen.DecodeUint(b), want)
 	}
 	checks := []struct {
@@ -582,7 +586,7 @@ identity:
 		if err != nil {
 			return canopen.StateUnknown, ck.status, err
 		}
-		if uint32(got) != want {
+		if got != uint64(want) {
 			return canopen.StateUnknown, ck.status, fmt.Errorf("%w: 0x1018:%02X is 0x%08X, want 0x%08X", ErrIdentity, i+1, got, want)
 		}
 	}
@@ -657,8 +661,8 @@ func (g *manager) checkSoftware(ctx context.Context, id canopen.NodeID, a Assign
 	if err != nil {
 		return false, BootProgramObjects, err
 	}
-	got := uint32(canopen.DecodeUint(b))
-	if got == want {
+	got := canopen.DecodeUint(b)
+	if got == uint64(want) {
 		return true, BootOK, nil
 	}
 	mismatch := fmt.Errorf("%w: 0x1F56:01 is 0x%08X, want 0x%08X", ErrProgram, got, want)
@@ -698,14 +702,14 @@ func (g *manager) configure(ctx context.Context, id canopen.NodeID, a Assignment
 	date, tod := g.u32(cdcf.IndexExpectedConfigDate, uint8(id)), g.u32(cdcf.IndexExpectedConfigTime, uint8(id))
 	if date != 0 && tod != 0 {
 		d, err := uploadRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 1)
-		if err == nil && uint32(canopen.DecodeUint(d)) == date {
-			if tm, err := readUintRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 2); err == nil && uint32(tm) == tod {
+		if err == nil && canopen.DecodeUint(d) == uint64(date) {
+			if tm, err := readUintRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 2); err == nil && tm == uint64(tod) {
 				g.m.log.Debug("master: configuration up to date", "node", int(id))
 				return BootOK, nil
 			}
 		}
 	}
-	if sub := uint8(g.u32(IndexRestoreConfiguration, uint8(id))); a.Has(AssignRestore) && sub != 0 {
+	if sub := uint8(g.u32(IndexRestoreConfiguration, uint8(id)) & 0xFF); a.Has(AssignRestore) && sub != 0 {
 		if err := g.restore(ctx, id, sub); err != nil {
 			return BootConfiguration, err
 		}

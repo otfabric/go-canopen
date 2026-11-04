@@ -60,7 +60,7 @@ func NewHeartbeatProducer(bus canopen.Bus, node canopen.NodeID, state func() can
 		if err != nil {
 			return nil, fmt.Errorf("nmt: producer heartbeat time 0x1017: %w", err)
 		}
-		p.period = time.Duration(ms) * time.Millisecond
+		p.period = millis(ms)
 	}
 	if p.cfg.periodSet {
 		p.period = p.cfg.period
@@ -79,7 +79,7 @@ func (p *HeartbeatProducer) Start() error {
 		if d := p.cfg.dict; d != nil {
 			unwatch = d.Watch(func(v *od.Variable, data []byte) {
 				if v.Index == od.IndexProducerHeartbeat && v.SubIndex == 0 {
-					p.SetPeriod(time.Duration(canopen.DecodeUint(data)) * time.Millisecond)
+					p.SetPeriod(millis(canopen.DecodeUint(data)))
 				}
 			})
 		}

@@ -380,7 +380,7 @@ func TestFormatLiteral(t *testing.T) {
 		canopen.Unsigned24, canopen.Unsigned32, canopen.Unsigned40, canopen.Unsigned48, canopen.Unsigned56, canopen.Unsigned64,
 		canopen.Real32, canopen.Real64, canopen.OctetString, canopen.Domain, canopen.TimeOfDay, canopen.TimeDifference, canopen.VisibleString}
 	for _, typ := range types {
-		for i := 0; i < 500; i++ {
+		for range 500 {
 			n := typ.Size()
 			if n == 0 {
 				n = r.Intn(10)

@@ -265,9 +265,7 @@ func TestConcurrentSessions(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 40)
 	for i := range 20 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			node := canopen.NodeID(5 + i%2)
 			data := pattern(300+i, byte(i))
 			if _, err := c.Upload(tctx(t), node, idxStr, 0); err != nil {
@@ -281,7 +279,7 @@ func TestConcurrentSessions(t *testing.T) {
 			if err != nil && (!errors.As(err, &ae) || ae.Code != AbortParallel) {
 				errs <- err
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

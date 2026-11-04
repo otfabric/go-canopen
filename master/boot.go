@@ -82,9 +82,7 @@ func (m *Master) bootUp(node canopen.NodeID, at time.Time) {
 	}
 	ctx, cancel := context.WithCancel(m.bootCtx)
 	m.running[node] = cancel
-	m.wg.Add(1)
-	go func() {
-		defer m.wg.Done()
+	m.wg.Go(func() {
 		err := m.Boot(ctx, node, *cfg)
 		m.mu.Lock()
 		superseded := ctx.Err() != nil && m.bootCtx.Err() == nil
@@ -101,7 +99,7 @@ func (m *Master) bootUp(node canopen.NodeID, at time.Time) {
 		default:
 			m.disp.push(Event{Kind: EventBootDone, Node: node, State: m.State(node)})
 		}
-	}()
+	})
 }
 
 // Boot runs a boot procedure now: device type and identity check,
@@ -123,7 +121,7 @@ func (m *Master) Boot(ctx context.Context, node canopen.NodeID, cfg BootConfig) 
 		if err != nil {
 			return fmt.Errorf("master: node %d: device type: %w", node, err)
 		}
-		if uint32(dt) != cfg.DeviceType {
+		if dt != uint64(cfg.DeviceType) {
 			return fmt.Errorf("%w: node %d device type 0x%08X, want 0x%08X", ErrIdentity, node, dt, cfg.DeviceType)
 		}
 	}

@@ -116,8 +116,7 @@ func canFrame(cob canopen.COBID, f frame) canbus.Frame {
 // sent for it: an [canopen.AbortCode] unchanged, anything else
 // [canopen.AbortGeneral].
 func abortCodeOf(err error) canopen.AbortCode {
-	var c canopen.AbortCode
-	if errors.As(err, &c) {
+	if c, ok := errors.AsType[canopen.AbortCode](err); ok {
 		return c
 	}
 	return canopen.AbortGeneral

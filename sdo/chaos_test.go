@@ -37,7 +37,7 @@ func runChaos(t *testing.T, cfg chaos.Config, n, maxLen int, opts ...ClientOptio
 	ctx := ctxT(t)
 	rng := rand.New(rand.NewSource(cfg.Seed))
 	var res chaosResult
-	for i := 0; i < n; i++ {
+	for i := range n {
 		want := make([]byte, rng.Intn(maxLen+1))
 		rng.Read(want)
 		err := c.Download(ctx, idxDomain, 0, want)

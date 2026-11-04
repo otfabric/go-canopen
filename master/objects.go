@@ -109,13 +109,7 @@ type Assignment uint32
 // NewAssignment returns an assignment with the Assign* bits of flags, a
 // guard time (truncated to ms, at most 65535 ms) and a retry factor.
 func NewAssignment(flags uint32, guardTime time.Duration, retryFactor uint8) Assignment {
-	ms := guardTime.Milliseconds()
-	if ms > 0xFFFF {
-		ms = 0xFFFF
-	}
-	if ms < 0 {
-		ms = 0
-	}
+	ms := max(min(guardTime.Milliseconds(), 0xFFFF), 0)
 	return Assignment(flags&0xFF | uint32(retryFactor)<<8 | uint32(ms)<<16)
 }
 
@@ -123,7 +117,7 @@ func NewAssignment(flags uint32, guardTime time.Duration, retryFactor uint8) Ass
 func (a Assignment) Has(flags uint32) bool { return uint32(a)&flags == flags }
 
 // RetryFactor returns bits 8..15.
-func (a Assignment) RetryFactor() uint8 { return uint8(a >> 8) }
+func (a Assignment) RetryFactor() uint8 { return uint8(a >> 8 & 0xFF) }
 
 // GuardTime returns bits 16..31 as a duration.
 func (a Assignment) GuardTime() time.Duration { return time.Duration(a>>16) * time.Millisecond }

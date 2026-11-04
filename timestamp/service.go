@@ -85,7 +85,7 @@ func installHook(d *od.Dictionary) (remove func()) {
 			return nil //nolint:nilerr // no current value: nothing to compare with
 		}
 		const use = canopen.COBGenerate | canopen.COBConsume
-		cur, nw := canopen.COBID(x), canopen.COBID(canopen.DecodeUint(data))
+		cur, nw := cobID(x), cobID(canopen.DecodeUint(data))
 		if cur&use != 0 && nw&use != 0 && (cur.ID() != nw.ID() || cur.Extended() != nw.Extended()) {
 			return canopen.AbortInvalidValue
 		}
@@ -166,7 +166,7 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("timestamp: COB-ID TIME 0x1012: %w", err)
 		}
-		p.cob = canopen.COBID(x)
+		p.cob = cobID(x)
 		if p.cfg.cobSet {
 			p.cob = p.cfg.cob
 		}
@@ -221,7 +221,7 @@ func (p *Producer) Start() error {
 			unwatch = d.Watch(func(v *od.Variable, data []byte) {
 				if v.Index == od.IndexCOBIDTime && v.SubIndex == 0 {
 					p.mu.Lock()
-					p.cob = canopen.COBID(canopen.DecodeUint(data))
+					p.cob = cobID(canopen.DecodeUint(data))
 					p.mu.Unlock()
 				}
 			})
@@ -307,7 +307,7 @@ func NewConsumer(bus canopen.Bus, opts ...Option) (*Consumer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("timestamp: COB-ID TIME 0x1012: %w", err)
 		}
-		c.cob = canopen.COBID(x)
+		c.cob = cobID(x)
 		c.hooks.set(installHook(d))
 		if c.cfg.cobSet {
 			c.cob = c.cfg.cob
@@ -347,7 +347,7 @@ func (c *Consumer) Start() error {
 					return
 				}
 				c.mu.Lock()
-				c.cob = canopen.COBID(canopen.DecodeUint(data))
+				c.cob = cobID(canopen.DecodeUint(data))
 				c.mu.Unlock()
 				select {
 				case c.wake <- struct{}{}:
@@ -443,3 +443,7 @@ func (c *Consumer) Stats() ConsumerStats {
 	defer c.mu.Unlock()
 	return c.stats
 }
+
+// cobID returns the COB-ID stored in the UNSIGNED32 0x1012; the dictionary
+// type-checks it, so the mask only drops bits that cannot be set.
+func cobID(x uint64) canopen.COBID { return canopen.COBID(x & 0xFFFFFFFF) }

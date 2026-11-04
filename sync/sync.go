@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"time"
 
@@ -61,7 +62,12 @@ func WithLogger(l *slog.Logger) Option { return func(c *config) { c.log = l } }
 // requires: 0x1019 cannot change while the period is not 0
 // ([canopen.AbortDeviceState]) and accepts 0 and 2..240 only
 // ([canopen.AbortInvalidValue]); the CAN-ID of 0x1005 cannot change while
-// the node generates SYNC ([canopen.AbortDeviceState]).
+// the node generates SYNC ([canopen.AbortDeviceState]). Values wider than
+// their object (possible only with a dictionary that declares them wider)
+// are refused: a COB-ID write with [canopen.AbortInvalidValue], at
+// construction an error (unless an option overrides the value), and a
+// later local change is ignored, as is a local change of 0x1019 to a value
+// other than 0 and 2..240.
 func WithDictionary(d *od.Dictionary) Option { return func(c *config) { c.dict = d } }
 
 // WithCOBID sets the SYNC COB-ID (both services; default 0x080). Flag bits
@@ -102,6 +108,41 @@ func checkOverflow(n uint64) error {
 	return nil
 }
 
+// overflowValue converts a counter overflow value read as an unsigned
+// integer; ok is false for a value other than 0 and 2..240.
+func overflowValue(x uint64) (uint8, bool) {
+	if x > MaxOverflow {
+		return 0, false
+	}
+	if x == 1 {
+		return 0, false
+	}
+	return uint8(x), true
+}
+
+// cobID converts a COB-ID read as an unsigned integer; ok is false for a
+// value wider than the UNSIGNED32 of a COB-ID.
+func cobID(x uint64) (canopen.COBID, bool) {
+	if x > math.MaxUint32 {
+		return 0, false
+	}
+	return canopen.COBID(x), true
+}
+
+// micros converts a UNSIGNED32 µs value (0x1006, 0x1007) read as an
+// unsigned integer; ok is false for a value wider than 32 bits.
+func micros(x uint64) (time.Duration, bool) {
+	if x > math.MaxUint32 {
+		return 0, false
+	}
+	return time.Duration(x) * time.Microsecond, true
+}
+
+// errRange reports a dictionary value that does not fit its object.
+func errRange(what string, x uint64) error {
+	return fmt.Errorf("syncobj: %s value %d out of range: %w", what, x, canopen.AbortInvalidValue)
+}
+
 // installHooks registers the CiA 301 write checks of 0x1005 and 0x1019;
 // the returned function removes them.
 func installHooks(d *od.Dictionary) (remove func()) {
@@ -115,11 +156,18 @@ func installHooks(d *od.Dictionary) (remove func()) {
 		return nil
 	})
 	rm2 := d.OnWrite(od.IndexCOBIDSync, 0, func(_ *od.Variable, data []byte) error {
+		nw, ok := cobID(canopen.DecodeUint(data))
+		if !ok {
+			return canopen.AbortInvalidValue
+		}
 		x, err := d.GetUint(od.IndexCOBIDSync, 0)
 		if err != nil {
 			return nil //nolint:nilerr // no current value: nothing to compare with
 		}
-		cur, nw := canopen.COBID(x), canopen.COBID(canopen.DecodeUint(data))
+		cur, ok := cobID(x)
+		if !ok {
+			return nil // no usable current value: nothing to compare with
+		}
 		if cur&canopen.COBGenerate != 0 && nw&canopen.COBGenerate != 0 && (cur.ID() != nw.ID() || cur.Extended() != nw.Extended()) {
 			return canopen.AbortDeviceState
 		}
@@ -215,8 +263,17 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("syncobj: counter overflow 0x1019: %w", err)
 		}
-		p.cob, p.generate = canopen.COBID(cob), canopen.COBID(cob)&canopen.COBGenerate != 0
-		p.period, p.overflow = time.Duration(period)*time.Microsecond, uint8(ovf)
+		c, ok := cobID(cob)
+		if !ok {
+			return nil, errRange("COB-ID SYNC 0x1005", cob)
+		}
+		if p.period, ok = micros(period); !ok && !p.cfg.periodSet {
+			return nil, errRange("cycle period 0x1006", period)
+		}
+		if p.overflow, ok = overflowValue(ovf); !ok && !p.cfg.overflowSet {
+			return nil, checkOverflow(ovf)
+		}
+		p.cob, p.generate = c, c&canopen.COBGenerate != 0
 	}
 	if p.cfg.cobSet {
 		p.cob = p.cfg.cob
@@ -251,16 +308,26 @@ func (p *Producer) Start() error {
 				switch {
 				case v.SubIndex != 0:
 				case v.Index == od.IndexCOBIDSync:
+					c, ok := cobID(x)
+					if !ok {
+						return
+					}
 					p.mu.Lock()
-					p.cob, p.generate = canopen.COBID(x), canopen.COBID(x)&canopen.COBGenerate != 0
+					p.cob, p.generate = c, c&canopen.COBGenerate != 0
 					p.counter = 1
 					p.mu.Unlock()
 					p.poke()
 				case v.Index == od.IndexCyclePeriod:
-					p.SetPeriod(time.Duration(x) * time.Microsecond)
+					if d, ok := micros(x); ok {
+						p.SetPeriod(d)
+					}
 				case v.Index == od.IndexSyncOverflow:
+					n, ok := overflowValue(x)
+					if !ok {
+						return
+					}
 					p.mu.Lock()
-					p.overflow, p.counter = uint8(x), 1
+					p.overflow, p.counter = n, 1
 					p.mu.Unlock()
 				}
 			})

@@ -1,6 +1,6 @@
 # go-canopen - CANopen (CiA 301) for Go
 
-[![Go Version](https://img.shields.io/badge/Go-1.23%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat&logo=go)](https://go.dev/)
 [![Go Reference](https://pkg.go.dev/badge/github.com/otfabric/go-canopen.svg)](https://pkg.go.dev/github.com/otfabric/go-canopen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![CI Status](https://github.com/otfabric/go-canopen/actions/workflows/ci.yml/badge.svg)](https://github.com/otfabric/go-canopen/actions/workflows/ci.yml)
@@ -73,7 +73,7 @@ Details and every limitation: [LIMITATIONS.md](LIMITATIONS.md).
 go get github.com/otfabric/go-canopen
 ```
 
-Go 1.23 or later. The one dependency is go-canbus (pure Go).
+Go 1.26 or later. The one dependency is go-canbus (pure Go).
 
 ## Quick start
 

@@ -48,17 +48,17 @@ func main() {
 		}
 		path := filepath.Join(*root, "internal/golden", g.pkg, g.pkg+".go")
 		if *check {
-			have, _ := os.ReadFile(path)
+			have, _ := os.ReadFile(filepath.Clean(path))
 			if !bytes.Equal(have, code) {
 				fmt.Fprintf(os.Stderr, "%s is out of date: run go generate ./codegen\n", path)
 				stale = true
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			fail(err)
 		}
-		if err := os.WriteFile(path, code, 0o644); err != nil {
+		if err := os.WriteFile(path, code, 0o600); err != nil {
 			fail(err)
 		}
 	}

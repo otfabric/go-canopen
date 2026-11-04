@@ -24,7 +24,7 @@ design input, not a test against them.
 ## The canopen-interop suite
 
 `interop/` (build tag `interop`) runs go-canopen against the three stacks
-of [canopen-interop](https://github.com/otfabric/canopen-interop) v0.2.0
+of [canopen-interop](https://github.com/otfabric/canopen-interop) v0.3.1
 (container contract 1.1), through their command-line contract only: no
 code of those stacks is linked or vendored. The images are pulled by
 release and multi-arch index digest (`interop/harness_test.go`); every
@@ -188,6 +188,13 @@ workflow has run.
 | pythoncanopen | go-canopen-master | 189 / 3 / 171 / 0 | 192 / 3 / 194 / 0 |
 | pythoncanopen | go-canopen-device | 103 / 0 / 0 / 0 | 113 / 0 / 7 / 0 |
 | pythoncanopen | eds | 11 / 7 / 6 / 0 | 15 / 7 / 9 / 0 |
+
+**canopen-interop v0.3.1** (same adapters and contract 1.1; pinned since
+go-canopen v0.4.0), local in `canvm`, 2026-11-04, against the v0.4.0
+branch: the same counts as the v0.2.0 column, except that one lely device
+upload (0x1001) and the lely master `bootup` scenario timed out in the
+whole run; both lely suites then passed twice in a row on the branch and
+on v0.3.3, so they are timing under load, not differences.
 
 The contract 1.0 scenarios are unchanged and give the same results; the
 v0.2.0 device adds 0x1007 (two more uploads per device, normal and

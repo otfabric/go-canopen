@@ -70,12 +70,15 @@ func NewConsumer(bus canopen.Bus, opts ...Option) (*Consumer, error) {
 		if err != nil {
 			return nil, fmt.Errorf("syncobj: COB-ID SYNC 0x1005: %w", err)
 		}
-		c.cob = canopen.COBID(cob)
+		var ok bool
+		if c.cob, ok = cobID(cob); !ok {
+			return nil, errRange("COB-ID SYNC 0x1005", cob)
+		}
 		if w, err := d.GetUint(od.IndexSyncWindow, 0); err == nil {
-			c.window = time.Duration(w) * time.Microsecond
+			c.window, _ = micros(w)
 		}
 		if o, err := d.GetUint(od.IndexSyncOverflow, 0); err == nil {
-			c.overflow, c.overflowSet = uint8(o), true
+			c.overflow, c.overflowSet = overflowValue(o)
 		}
 		c.hooks.set(installHooks(d))
 	}
@@ -121,11 +124,17 @@ func (c *Consumer) Start() error {
 				switch {
 				case v.SubIndex != 0:
 				case v.Index == od.IndexCOBIDSync:
-					c.cob = canopen.COBID(x)
+					if cob, ok := cobID(x); ok {
+						c.cob = cob
+					}
 				case v.Index == od.IndexSyncWindow:
-					c.window = time.Duration(x) * time.Microsecond
+					if w, ok := micros(x); ok {
+						c.window = w
+					}
 				case v.Index == od.IndexSyncOverflow:
-					c.overflow, c.overflowSet = uint8(x), true
+					if n, ok := overflowValue(x); ok {
+						c.overflow, c.overflowSet = n, true
+					}
 				}
 				c.mu.Unlock()
 				select {

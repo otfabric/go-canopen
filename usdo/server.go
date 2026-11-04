@@ -114,7 +114,7 @@ func NewServer(bus canopen.Bus, d *od.Dictionary, opts ...Option) (*Server, erro
 // NodeID returns the server's node-ID (0 before Start without
 // [WithNodeID]).
 func (s *Server) NodeID() canopen.NodeID {
-	if id := canopen.NodeID(s.node.Load()); id != 0 {
+	if id := canopen.NodeID(s.node.Load() & 0xFF); id != 0 {
 		return id
 	}
 	return s.cfg.node
@@ -364,8 +364,12 @@ func (s *Server) initiate(k sessKey, m Message) []reply {
 			s.st.busy.Add(1)
 			return refuse(AbortBusy)
 		}
+		size, ok := sizeField(len(data))
+		if !ok {
+			return refuse(AbortOutOfMemory)
+		}
 		s.open(k, &session{kind: kindUpload, index: m.Index, sub: m.SubIndex, size: len(data), buf: data})
-		obj.Cmd, obj.Size = CmdUploadInit, uint32(len(data))
+		obj.Cmd, obj.Size = CmdUploadInit, size
 		return s.respond(k.client, obj)
 	case CmdDownloadExpedited:
 		if code := s.checkDownload(k, m, len(m.Data)); code != 0 {
@@ -380,21 +384,25 @@ func (s *Server) initiate(k sessKey, m Message) []reply {
 		return s.respond(k.client, obj)
 	default: // segmented or bulk download
 	}
-	if s.cfg.maxSize > 0 && m.Size > uint32(s.cfg.maxSize) {
+	if s.cfg.maxSize > 0 && int64(m.Size) > int64(s.cfg.maxSize) {
 		return refuse(AbortOutOfMemory)
 	}
-	if code := s.checkDownload(k, m, int(m.Size)); code != 0 {
+	size, ok := sizeInt(m.Size)
+	if !ok {
+		return refuse(AbortOutOfMemory)
+	}
+	if code := s.checkDownload(k, m, size); code != 0 {
 		return refuse(code)
 	}
 	if len(s.sessions) >= s.cfg.sessions {
 		s.st.busy.Add(1)
 		return refuse(AbortBusy)
 	}
-	ss := &session{kind: kindDownload, index: m.Index, sub: m.SubIndex, size: int(m.Size), buf: make([]byte, 0, min(int(m.Size), 1<<16))}
+	ss := &session{kind: kindDownload, index: m.Index, sub: m.SubIndex, size: size, buf: make([]byte, 0, min(size, 1<<16))}
 	obj.Cmd = CmdDownloadInitOK
 	if m.Cmd == CmdBulkInit {
 		ss.kind, obj.Cmd = kindBulk, CmdBulkInitOK
-		obj.TProc = uint16(min(s.cfg.tproc/s.cfg.tunit, 0xFFFF))
+		obj.TProc = uint16(max(min(s.cfg.tproc/s.cfg.tunit, 0xFFFF), 0))
 	}
 	s.open(k, ss)
 	return s.respond(k.client, obj)
@@ -497,7 +505,7 @@ func (s *Server) segment(k sessKey, m Message) []reply {
 }
 
 // counter returns the counter byte of segment n (1-based): n modulo 256.
-func counter(n int) uint8 { return uint8(n) }
+func counter(n int) uint8 { return uint8(n & 0xFF) }
 
 // uploadSegment answers a request for an upload segment: the next one, or
 // the last one sent again when the request repeats.
@@ -527,7 +535,7 @@ func (s *Server) uploadSegment(k sessKey, m Message) []reply {
 		s.drop(k)
 		s.st.uploads.Add(1)
 		s.st.segmented.Add(1)
-		s.st.bytesUp.Add(uint64(ss.size))
+		s.st.bytesUp.Add(u64(ss.size))
 	}
 	return s.respond(k.client, out)
 }
