@@ -5,6 +5,28 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.4.1
+
+**Date:** 2026-11-04
+**Previous release:** v0.4.0
+
+### Fixed
+
+- `sdo`: a segmented upload could return wrong data of the right length
+  after a retry (`WithRetries`) on a bus that delays or reorders frames.
+  A segment request of the timed-out attempt, delivered after the new
+  attempt's initiate, made the server send a segment the client had not
+  asked for yet; the client took it as the answer to its next request,
+  and the one-bit toggle let a shift by two segments through
+  (canopenctl's chaos test read `OTF IO-401 8DIOTF IO-I/2AO`). The
+  client now discards responses received before it sends a segment
+  request or a download segment; the transfer then ends with a toggle
+  abort, which a retry repeats, instead of wrong data. An abort among
+  the discarded responses still ends the transfer. `Stats.Ignored`
+  counts the discarded responses.
+
+---
+
 ## v0.4.0
 
 **Date:** 2026-11-04

@@ -2,6 +2,13 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.4.1 (2026-11-04)
+
+`sdo`: a segmented transfer retried on a bus that delays or reorders
+frames could take a response to a stale request as its own and return
+wrong data; the client discards responses received before each segment
+request.
+
 ## v0.4.0 (2026-11-04)
 
 Go 1.26 floor, go-canbus v0.8.0. SAST hardening: a malformed NMT frame no longer fences the

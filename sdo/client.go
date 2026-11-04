@@ -268,6 +268,8 @@ type link interface {
 	recv(ctx context.Context, d time.Duration) (frame, error)
 	// drain discards the messages already received.
 	drain()
+	// stale returns a message already received, without waiting.
+	stale() (frame, bool)
 }
 
 var errNoResponse = errors.New("sdo: no response")
@@ -299,6 +301,20 @@ func (l *busLink) recv(ctx context.Context, d time.Duration) (frame, error) {
 		}
 		if f, ok := payload(&cf); ok {
 			return f, nil
+		}
+	}
+}
+
+func (l *busLink) stale() (frame, bool) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for {
+		cf, err := l.sub.Receive(ctx)
+		if err != nil {
+			return frame{}, false
+		}
+		if f, ok := payload(&cf); ok {
+			return f, true
 		}
 	}
 }
@@ -398,6 +414,27 @@ func (x *xfer) recv() (frame, error) {
 	return f, nil
 }
 
+// sendSegment sends a segment request or segment after discarding what
+// was received before it: no response to it can have arrived yet, so
+// those are answers to stale requests (a request of an earlier attempt
+// delayed past this transfer's initiate). Taking one as the answer
+// shifts the transfer by a segment, and the toggle bit, one bit, lets
+// every second such shift through as data. A discarded abort is kept:
+// the server ended the transfer.
+func (x *xfer) sendSegment(f frame) error {
+	for {
+		g, ok := x.l.stale()
+		if !ok {
+			break
+		}
+		if g.cs() == csAbort {
+			return x.remoteAbort(g)
+		}
+		x.c.st.ignored.Add(1)
+	}
+	return x.send(f)
+}
+
 func (x *xfer) remoteAbort(f frame) error {
 	return &canopen.AbortError{Code: canopen.AbortCode(f.u32()), Index: x.index, SubIndex: x.sub, Remote: true}
 }
@@ -459,7 +496,7 @@ func (x *xfer) uploadFrom(f frame) ([]byte, error) {
 		data = make([]byte, 0, min(size, 64<<10))
 	}
 	for t := byte(0); ; t ^= 1 {
-		if err := x.send(frame{ccsUploadSegment<<5 | t<<4}); err != nil {
+		if err := x.sendSegment(frame{ccsUploadSegment<<5 | t<<4}); err != nil {
 			return nil, err
 		}
 		f, err := x.recv()
@@ -518,7 +555,7 @@ func (x *xfer) download(data []byte) error {
 		if last {
 			f[0] |= 1
 		}
-		if err := x.send(f); err != nil {
+		if err := x.sendSegment(f); err != nil {
 			return err
 		}
 		r, err := x.recv()

@@ -83,6 +83,9 @@ func (l *fakeLink) recv(ctx context.Context, _ time.Duration) (frame, error) {
 
 func (l *fakeLink) drain() {}
 
+// stale reports nothing: the fake's messages are the answers in order.
+func (l *fakeLink) stale() (frame, bool) { return frame{}, false }
+
 // fuzzClient runs one client transfer against the messages in data. The
 // first byte selects the transfer, the second the download size.
 func fuzzClient(t testing.TB, data []byte) ([]byte, error) {

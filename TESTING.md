@@ -36,7 +36,7 @@ and Windows, and on Linux amd64 and arm64 with vcan.
 
 ## Test inventory
 
-477 `Test` functions, 27 fuzz targets, 13 `Example` functions and 4
+478 `Test` functions, 27 fuzz targets, 13 `Example` functions and 4
 benchmarks (SDO), in every library package and `e2e` (including the
 hostile-peer suite `e2e/hostile_test.go` and the chaos test
 `TestMonkeyNodeSDO`); and the interop
