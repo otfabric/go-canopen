@@ -545,3 +545,111 @@ func TestClientBusClosed(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// queueLink is a link whose server answers each request at once from
+// respond: answers queue up in order, and a frame queued before the
+// client's next request is "already received" (stale) at that send.
+type queueLink struct {
+	respond func(req frame) []frame
+	queue   []frame
+}
+
+func (l *queueLink) send(_ context.Context, f frame) error {
+	l.queue = append(l.queue, l.respond(f)...)
+	return nil
+}
+
+func (l *queueLink) recv(context.Context, time.Duration) (frame, error) {
+	if len(l.queue) == 0 {
+		return frame{}, errNoResponse
+	}
+	f := l.queue[0]
+	l.queue = l.queue[1:]
+	return f, nil
+}
+
+func (l *queueLink) drain() { l.queue = nil }
+
+func (l *queueLink) stale() (frame, bool) {
+	if len(l.queue) == 0 {
+		return frame{}, false
+	}
+	f := l.queue[0]
+	l.queue = l.queue[1:]
+	return f, true
+}
+
+// queueXfer returns a transfer of idxDomain over a queueLink.
+func queueXfer(t *testing.T, respond func(req frame) []frame) (*xfer, *Client) {
+	t.Helper()
+	cfg := defaultConfig()
+	if err := cfg.check(); err != nil {
+		t.Fatal(err)
+	}
+	c := &Client{cfg: cfg, log: cfg.log}
+	l := &queueLink{respond: respond}
+	return &xfer{c: c, l: l, ctx: context.Background(), index: idxDomain, deadline: time.Now().Add(time.Second)}, c
+}
+
+// TestClientStaleSegment: a segment response that arrives before the
+// client sent the request is the answer to a stale request (one of an
+// earlier attempt, delayed past this transfer's initiate). The client
+// took it as the answer to its next request: the transfer was shifted by
+// one segment and, with the one-bit toggle, every second shift passed as
+// data (canopenctl's chaos test read "OTF IO-401 8DIOTF IO-I/2AO"). It is
+// discarded now, and an abort that came the same way still ends the
+// transfer.
+func TestClientStaleSegment(t *testing.T) {
+	t.Run("upload", func(t *testing.T) {
+		x, c := queueXfer(t, func(r frame) []frame {
+			switch r[0] {
+			case 0x40: // the initiate response and a stale segment behind it
+				return []frame{muxFrame(0x41, idxDomain, 0, 10), seg(0x00, 'X', 'X', 'X', 'X', 'X', 'X', 'X')}
+			case 0x60:
+				return []frame{seg(0x00, 'A', 'B', 'C', 'D', 'E', 'F', 'G')}
+			case 0x70:
+				return []frame{seg(0x10|4<<1|1, 'H', 'I', 'J')}
+			}
+			return nil
+		})
+		b, err := x.upload()
+		if err != nil || string(b) != "ABCDEFGHIJ" {
+			t.Fatalf("%q %v", b, err)
+		}
+		if c.Stats().Ignored != 1 {
+			t.Fatalf("stale segment not counted: %+v", c.Stats())
+		}
+	})
+	t.Run("abort", func(t *testing.T) {
+		x, _ := queueXfer(t, func(r frame) []frame {
+			if r[0] == 0x40 {
+				return []frame{muxFrame(0x41, idxDomain, 0, 10), muxFrame(0x80, idxDomain, 0, uint32(canopen.AbortHardware))}
+			}
+			return nil
+		})
+		_, err := x.upload()
+		var ae *canopen.AbortError
+		if !errors.As(err, &ae) || !ae.Remote || ae.Code != canopen.AbortHardware {
+			t.Fatalf("%v", err)
+		}
+	})
+	t.Run("download", func(t *testing.T) {
+		var got []byte
+		x, _ := queueXfer(t, func(r frame) []frame {
+			switch r[0] & 0xE0 {
+			case 0x20: // initiate download, and a stale acknowledgement
+				return []frame{muxFrame(0x60, idxDomain, 0, 0), seg(0x20)}
+			case 0x00:
+				got = append(got, r[1:8-int(r[0]>>1&7)]...)
+				return []frame{seg(0x20 | r[0]&0x10)}
+			}
+			return nil
+		})
+		if err := x.download([]byte("ABCDEFGHIJ")); err != nil {
+			t.Fatal(err)
+		}
+		if string(got) != "ABCDEFGHIJ" {
+			t.Fatalf("server got %q", got)
+		}
+	})
+}

@@ -62,6 +62,10 @@
 //     aborted with [canopen.AbortLengthHigh] or [canopen.AbortLengthLow].
 //   - The client ignores initiate responses for another object (stale
 //     responses of earlier transfers) and waits on.
+//   - Before each segment request (upload) or segment (download) the
+//     client discards the responses already received: they answer stale
+//     requests, such as a request of an earlier attempt delayed past this
+//     transfer's initiate. An abort among them ends the transfer.
 //   - Block segments out of sequence (lost, repeated, reordered) are
 //     ignored; the receiver acknowledges the last segment received in
 //     sequence when the block ends, or after a quarter of the timeout
