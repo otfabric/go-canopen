@@ -4,6 +4,7 @@ package dissect
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/otfabric/go-canopen"
@@ -249,7 +250,9 @@ func decodeBlockSegment(d []byte, client bool) (*SDO, string) {
 	}
 	s.Seq, s.Last = d[0]&0x7F, d[0]&blockSegmentLastFlag != 0
 	s.Data = Bytes(append([]byte{}, d[1:]...))
-	s.Size = uint32(len(s.Data))
+	if n := int64(len(s.Data)); n <= math.MaxUint32 {
+		s.Size = uint32(n)
+	}
 	if len(d) != 8 {
 		return s, fmt.Sprintf("SDO needs 8 bytes, got %d", len(d))
 	}

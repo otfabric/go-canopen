@@ -286,7 +286,7 @@ func (d *Dictionary) defaultLocked(v *Variable) []byte {
 	if v.NodeIDRelative {
 		x := canopen.DecodeUint(b) + uint64(d.nodeID)
 		for i := range b {
-			b[i] = byte(x >> (8 * i))
+			b[i] = byte(x >> (8 * i) & 0xFF)
 		}
 	}
 	return b

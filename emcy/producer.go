@@ -177,17 +177,24 @@ func NewProducer(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Produce
 		if err != nil {
 			return nil, fmt.Errorf("emcy: COB-ID EMCY 0x1014: %w", err)
 		}
-		p.cob = canopen.COBID(cob)
+		c, ok := cobidOf(cob)
+		if !ok {
+			return nil, fmt.Errorf("emcy: COB-ID EMCY 0x1014 0x%X: %w", cob, canopen.AbortInvalidValue)
+		}
+		p.cob = c
 		if v, err := d.GetUint(od.IndexInhibitEmcy, 0); err == nil {
-			p.inh = time.Duration(v) * 100 * time.Microsecond
+			p.inh = inhibitDuration(v)
 		}
 		if o := d.Object(od.IndexErrorField); o != nil {
 			p.dictH, p.histN = true, len(o.Subs)-1
 		}
 		p.unhook = append(p.unhook, d.OnWrite(od.IndexCOBIDEmcy, 0, func(_ *od.Variable, data []byte) error {
 			x, _ := d.GetUint(od.IndexCOBIDEmcy, 0)
-			cur := canopen.COBID(x)
-			nw := canopen.COBID(canopen.DecodeUint(data))
+			cur, _ := cobidOf(x)
+			nw, ok := cobidOf(canopen.DecodeUint(data))
+			if !ok {
+				return canopen.AbortInvalidValue
+			}
 			if cur.Valid() && nw.Valid() && (cur.ID() != nw.ID() || cur.Extended() != nw.Extended()) {
 				return canopen.AbortInvalidValue
 			}
@@ -229,9 +236,11 @@ func (p *Producer) Start() error {
 			unwatch = d.Watch(func(v *od.Variable, data []byte) {
 				switch {
 				case v.Index == od.IndexCOBIDEmcy && v.SubIndex == 0:
-					p.SetCOBID(canopen.COBID(canopen.DecodeUint(data)))
+					if cob, ok := cobidOf(canopen.DecodeUint(data)); ok {
+						p.SetCOBID(cob)
+					}
 				case v.Index == od.IndexInhibitEmcy && v.SubIndex == 0:
-					p.SetInhibit(time.Duration(canopen.DecodeUint(data)) * 100 * time.Microsecond)
+					p.SetInhibit(inhibitDuration(canopen.DecodeUint(data)))
 				}
 			})
 		}

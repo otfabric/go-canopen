@@ -54,12 +54,14 @@ func NewRecord(index uint16, name string, subs ...*Variable) *Object {
 
 // NewArray returns an ARRAY object with n elements of one type, named
 // "<name> <i>", and sub-index 0 (number of elements, UNSIGNED8) with the
-// access sub0Access.
+// access sub0Access. A negative n gives no elements; above 255 elements
+// the sub-indices repeat and [Dictionary.Add] rejects the object.
 func NewArray(index uint16, name string, dt canopen.DataType, access Access, n int, def any, sub0Access Access) *Object {
 	o := &Object{Index: index, Name: name, Type: ObjectArray}
-	o.Subs = append(o.Subs, Sub(0, "Highest sub-index supported", canopen.Unsigned8, sub0Access, uint8(n)))
+	o.Subs = append(o.Subs, Sub(0, "Highest sub-index supported", canopen.Unsigned8, sub0Access, uint8(max(min(n, 255), 0))))
 	for i := 1; i <= n; i++ {
-		o.Subs = append(o.Subs, Sub(uint8(i), fmt.Sprintf("%s %d", name, i), dt, access, def))
+		// Above 255 the sub-index repeats, which [Dictionary.Add] rejects.
+		o.Subs = append(o.Subs, Sub(uint8(max(min(i, 255), 0)), fmt.Sprintf("%s %d", name, i), dt, access, def))
 	}
 	for _, v := range o.Subs {
 		v.Index = index
@@ -210,7 +212,8 @@ func Standard(cfg Config) (*Dictionary, error) {
 }
 
 // PDOObjects returns the communication and mapping parameter objects of
-// TPDO (transmit) or RPDO n (1..512) in their default configuration.
+// TPDO (transmit) or RPDO n (1..512) in their default configuration. An
+// n outside 1..512 gets the indices of PDO 1.
 func PDOObjects(transmit bool, n, entries int) (comm, mapping *Object) {
 	u8, u16, u32 := canopen.Unsigned8, canopen.Unsigned16, canopen.Unsigned32
 	commIdx, mapIdx, kind := IndexRPDOComm, IndexRPDOMapping, "RPDO"
@@ -235,8 +238,12 @@ func PDOObjects(transmit bool, n, entries int) (comm, mapping *Object) {
 	if transmit {
 		subs = append(subs, Sub(6, "SYNC start value", u8, AccessRW, nil))
 	}
-	comm = NewRecord(commIdx+uint16(n-1), fmt.Sprintf("%s communication parameter %d", kind, n), subs...)
-	mapping = NewArray(mapIdx+uint16(n-1), fmt.Sprintf("%s mapping parameter %d", kind, n), u32, AccessRW, entries, nil, AccessRW)
+	off := n - 1
+	if off < 0 || off >= MaxPDOs {
+		off = 0
+	}
+	comm = NewRecord(commIdx+uint16(off), fmt.Sprintf("%s communication parameter %d", kind, n), subs...)
+	mapping = NewArray(mapIdx+uint16(off), fmt.Sprintf("%s mapping parameter %d", kind, n), u32, AccessRW, entries, nil, AccessRW)
 	mapping.Type = ObjectRecord
 	mapping.Subs[0].Default = []byte{0}
 	mapping.Subs[0].Name = "Number of mapped objects"

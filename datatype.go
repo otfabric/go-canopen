@@ -110,8 +110,11 @@ func ParseDataType(s string) (DataType, error) {
 			return t, nil
 		}
 	}
-	v, err := ParseUint(s, 16)
+	v, err := ParseUint(s, 64)
 	if err != nil {
+		return 0, fmt.Errorf("canopen: unknown data type %q", s)
+	}
+	if v > math.MaxUint16 {
 		return 0, fmt.Errorf("canopen: unknown data type %q", s)
 	}
 	return DataType(v), nil
@@ -217,27 +220,54 @@ func Encode(t DataType, v any) ([]byte, error) {
 func toInt(v any) (i int64, u uint64, neg, ok bool) {
 	switch x := v.(type) {
 	case int:
-		return int64(x), uint64(x), x < 0, true
+		i, u, neg = splitInt(int64(x))
 	case int8:
-		return int64(x), uint64(x), x < 0, true
+		i, u, neg = splitInt(int64(x))
 	case int16:
-		return int64(x), uint64(x), x < 0, true
+		i, u, neg = splitInt(int64(x))
 	case int32:
-		return int64(x), uint64(x), x < 0, true
+		i, u, neg = splitInt(int64(x))
 	case int64:
-		return x, uint64(x), x < 0, true
+		i, u, neg = splitInt(x)
 	case uint:
-		return int64(x), uint64(x), false, true
+		u = uint64(x)
 	case uint8:
-		return int64(x), uint64(x), false, true
+		u = uint64(x)
 	case uint16:
-		return int64(x), uint64(x), false, true
+		u = uint64(x)
 	case uint32:
-		return int64(x), uint64(x), false, true
+		u = uint64(x)
 	case uint64:
-		return int64(x), x, false, true
+		u = x
+	default:
+		return 0, 0, false, false
 	}
-	return 0, 0, false, false
+	return i, u, neg, true
+}
+
+// splitInt returns the [EncodeInt] arguments of a signed value: the value
+// itself when it is negative, its unsigned reading otherwise.
+func splitInt(x int64) (i int64, u uint64, neg bool) {
+	if x < 0 {
+		return x, 0, true
+	}
+	return x, uint64(x), false
+}
+
+// asUint64 returns the two's complement bit pattern of x.
+func asUint64(x int64) uint64 {
+	if x >= 0 {
+		return uint64(x)
+	}
+	return uint64(x&math.MaxInt64) | 1<<63
+}
+
+// asInt64 reads the bit pattern u as a two's complement integer.
+func asInt64(u uint64) int64 {
+	if u <= math.MaxInt64 {
+		return int64(u)
+	}
+	return int64(u&math.MaxInt64) | math.MinInt64
 }
 
 // EncodeInt encodes an integer of type t, with a range check. neg tells
@@ -257,7 +287,7 @@ func EncodeInt(t DataType, i int64, u uint64, neg bool) ([]byte, error) {
 			if i < lo {
 				return nil, fmt.Errorf("%w: %d out of range of %s", ErrDataType, i, t)
 			}
-			u = uint64(i)
+			u = asUint64(i)
 		} else if u > uint64(hi) {
 			return nil, fmt.Errorf("%w: %d out of range of %s", ErrDataType, u, t)
 		}
@@ -322,7 +352,7 @@ func DecodeInt(b []byte) int64 {
 	}
 	u := DecodeUint(b)
 	shift := uint(64 - 8*min(len(b), 8))
-	return int64(u<<shift) >> shift
+	return asInt64(u<<shift) >> shift
 }
 
 // ParseUint parses an unsigned integer literal as EDS files write them:
@@ -355,7 +385,7 @@ func ParseInt(s string, bits int) (int64, error) {
 			return 0, err
 		}
 		shift := uint(64 - bits)
-		return int64(u<<shift) >> shift, nil
+		return asInt64(u<<shift) >> shift, nil
 	}
 	u, err := ParseUint(s, 64)
 	if err != nil {
@@ -366,12 +396,12 @@ func ParseInt(s string, bits int) (int64, error) {
 		if u > limit {
 			return 0, &strconv.NumError{Func: "ParseInt", Num: s, Err: strconv.ErrRange}
 		}
-		return -int64(u), nil
+		return -asInt64(u), nil
 	}
 	if u >= limit {
 		return 0, &strconv.NumError{Func: "ParseInt", Num: s, Err: strconv.ErrRange}
 	}
-	return int64(u), nil
+	return asInt64(u), nil
 }
 
 // ParseValue parses a value literal of type t as EDS and DCF files write
@@ -420,6 +450,9 @@ func ParseValue(t DataType, s string, node NodeID) ([]byte, error) {
 			u, err = strconv.ParseUint(s[2:], 16, 64)
 			if err == nil {
 				if t == Real32 {
+					if u > math.MaxUint32 {
+						return nil, fmt.Errorf("%w: %s literal %q: more than 32 bits", ErrDataType, t, s)
+					}
 					return binary.LittleEndian.AppendUint32(nil, uint32(u)), nil
 				}
 				return binary.LittleEndian.AppendUint64(nil, u), nil
@@ -451,20 +484,26 @@ func ParseValue(t DataType, s string, node NodeID) ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: %s literal %q: %v", ErrDataType, t, s, err)
 		}
-		v += int64(plus)
-		return EncodeInt(t, v, uint64(v), v < 0)
+		if v > math.MaxInt64-int64(plus) {
+			return nil, fmt.Errorf("%w: %s literal %q: out of range with node-ID %d", ErrDataType, t, s, plus)
+		}
+		i, u, neg := splitInt(v + int64(plus))
+		return EncodeInt(t, i, u, neg)
 	}
 	v, err := ParseUint(expr, 64)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s literal %q: %v", ErrDataType, t, s, err)
 	}
-	return EncodeInt(t, 0, v+plus, false)
+	if v > math.MaxUint64-uint64(plus) {
+		return nil, fmt.Errorf("%w: %s literal %q: out of range with node-ID %d", ErrDataType, t, s, plus)
+	}
+	return EncodeInt(t, 0, v+uint64(plus), false)
 }
 
 // splitNodeID separates "$NODEID" from an integer literal: "$NODEID",
 // "$NODEID+n" and "n+$NODEID" (case-insensitive, spaces allowed). It
 // returns the number part ("" when absent) and the node-ID to add.
-func splitNodeID(s string, node NodeID) (expr string, plus uint64, err error) {
+func splitNodeID(s string, node NodeID) (expr string, plus NodeID, err error) {
 	s = strings.TrimSpace(s)
 	const tok = "$NODEID"
 	i := -1
@@ -490,7 +529,7 @@ func splitNodeID(s string, node NodeID) (expr string, plus uint64, err error) {
 	if expr == "" && (before != "" || after != "") {
 		return "", 0, fmt.Errorf("malformed $NODEID expression")
 	}
-	return expr, uint64(node), nil
+	return expr, node, nil
 }
 
 // FormatValue formats an encoded value of type t for display: decimal for

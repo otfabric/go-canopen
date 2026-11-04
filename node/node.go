@@ -573,7 +573,7 @@ func (n *Node) onReset(kind nmt.ResetKind) {
 		}
 		if !n.has(od.IndexCOBIDEmcy) {
 			n.emcy.SetCOBID(canopen.NewCOBID(canopen.FuncEMCY + canbus.ID(id)))
-		} else if x, err := n.d.GetUint(od.IndexCOBIDEmcy, 0); err == nil {
+		} else if x, err := n.d.GetUint(od.IndexCOBIDEmcy, 0); err == nil && x <= 0xFFFFFFFF {
 			// Services started now have not watched the restore.
 			n.emcy.SetCOBID(canopen.COBID(x))
 		}
@@ -704,6 +704,9 @@ func (n *Node) errorBehaviour() {
 	if err != nil {
 		return
 	}
+	if v > 0xFF { // not an UNSIGNED8 behaviour code: no change
+		return
+	}
 	switch uint8(v) {
 	case ErrorBehaviourPreOperational:
 		if n.slave.State() == canopen.StateOperational {
@@ -740,7 +743,7 @@ func (n *Node) onPDOError(ev pdo.ErrorEvent) {
 	defer cancel()
 	switch {
 	case raise:
-		_ = n.emcy.Raise(ctx, ev.Code, emcy.RegCommunication, [5]byte{byte(ev.PDO), byte(ev.PDO >> 8)})
+		_ = n.emcy.Raise(ctx, ev.Code, emcy.RegCommunication, [5]byte{byte(ev.PDO & 0xFF), byte(ev.PDO >> 8 & 0xFF)})
 	case clr:
 		_ = n.emcy.Clear(ctx, ev.Code)
 	}

@@ -125,7 +125,11 @@ func (m *Master) scanNode(ctx context.Context, n canopen.NodeID) (NodeInfo, bool
 		}
 		return NodeInfo{}, false, nil
 	}
-	info := NodeInfo{Node: n, DeviceType: uint32(dt)}
+	devType, err := toU32(dt, nil)
+	if err != nil {
+		return NodeInfo{}, false, fmt.Errorf("node %d: device type: %w", n, err)
+	}
+	info := NodeInfo{Node: n, DeviceType: devType}
 	id, err := readIdentity(ctx, c, scanRetries)
 	info.Identity = id
 	if err != nil {
@@ -140,14 +144,14 @@ func readIdentity(ctx context.Context, c remote, retries int) (Identity, error) 
 	var id Identity
 	dst := []*uint32{&id.VendorID, &id.ProductCode, &id.Revision, &id.SerialNumber}
 	for i, p := range dst {
-		v, err := readUintRetry(ctx, c, retries, od.IndexIdentity, uint8(i+1))
+		v, err := toU32(readUintRetry(ctx, c, retries, od.IndexIdentity, uint8(i+1)))
 		if err != nil {
 			if i > 0 && optionalMissing(err) {
 				continue
 			}
 			return id, fmt.Errorf("identity 0x1018 sub %d: %w", i+1, err)
 		}
-		*p = uint32(v)
+		*p = v
 	}
 	return id, nil
 }

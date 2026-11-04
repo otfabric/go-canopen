@@ -5,6 +5,7 @@ package pdo
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
@@ -135,21 +136,57 @@ func checkNumber(n int) error {
 }
 
 // CommIndex returns the index of the communication parameter of TPDO
-// (transmit) or RPDO n (1..512).
+// (transmit) or RPDO n (1..512); 0, which is no PDO parameter, for n out
+// of range.
 func CommIndex(transmit bool, n int) uint16 {
-	if transmit {
-		return od.IndexTPDOComm + uint16(n-1)
+	off, ok := pdoOffset(n)
+	switch {
+	case !ok:
+		return 0
+	case transmit:
+		return od.IndexTPDOComm + off
 	}
-	return od.IndexRPDOComm + uint16(n-1)
+	return od.IndexRPDOComm + off
 }
 
 // MappingIndex returns the index of the mapping parameter of TPDO
-// (transmit) or RPDO n (1..512).
+// (transmit) or RPDO n (1..512); 0, which is no PDO parameter, for n out
+// of range.
 func MappingIndex(transmit bool, n int) uint16 {
-	if transmit {
-		return od.IndexTPDOMapping + uint16(n-1)
+	off, ok := pdoOffset(n)
+	switch {
+	case !ok:
+		return 0
+	case transmit:
+		return od.IndexTPDOMapping + off
 	}
-	return od.IndexRPDOMapping + uint16(n-1)
+	return od.IndexRPDOMapping + off
+}
+
+// pdoOffset returns n-1 for a PDO number n in 1..512.
+func pdoOffset(n int) (uint16, bool) {
+	off := n - 1
+	if off < 0 {
+		return 0, false
+	}
+	if off >= od.MaxPDOs {
+		return 0, false
+	}
+	return uint16(off), true
+}
+
+// cobID converts a COB-ID read as an unsigned integer; ok is false for a
+// value that does not fit the UNSIGNED32 of a COB-ID.
+func cobID(x uint64) (canopen.COBID, bool) {
+	if x > math.MaxUint32 {
+		return 0, false
+	}
+	return canopen.COBID(x), true
+}
+
+// errRange reports a parameter value that does not fit its data type.
+func errRange(transmit bool, n int, index uint16, sub uint8, x uint64) error {
+	return fmt.Errorf("pdo: %s: 0x%04X:%02X value 0x%X out of range: %w", kind(transmit, n), index, sub, x, canopen.AbortInvalidValue)
 }
 
 // kind names a PDO for messages.
@@ -189,7 +226,10 @@ func checkCOBID(c canopen.COBID) error {
 // Load reads the configuration of TPDO (transmit) or RPDO n from a
 // dictionary with local reads (no access checks or hooks). Optional
 // sub-indices (inhibit time, event timer, SYNC start value) that the
-// dictionary lacks read as 0. It does not validate the mapping.
+// dictionary lacks read as 0. A value wider than its data type (a COB-ID
+// or mapping entry above 32 bits, a transmission type or SYNC start value
+// above 8, inhibit time or event timer above 16) is an error wrapping
+// [canopen.AbortInvalidValue]. It does not validate the mapping.
 func Load(d *od.Dictionary, transmit bool, n int) (Config, error) {
 	if err := checkNumber(n); err != nil {
 		return Config{}, err
@@ -215,22 +255,37 @@ func readConfig(read func(index uint16, sub uint8) ([]byte, error), transmit boo
 	if err != nil {
 		return c, err
 	}
+	if x > math.MaxUint32 {
+		return c, errRange(transmit, n, ci, 1, x)
+	}
 	c.COBID = canopen.COBID(x)
 	if x, err = get(ci, 2, false); err != nil {
 		return c, err
+	}
+	if x > math.MaxUint8 {
+		return c, errRange(transmit, n, ci, 2, x)
 	}
 	c.TransmissionType = TransmissionType(x)
 	if x, err = get(ci, 3, true); err != nil {
 		return c, err
 	}
+	if x > math.MaxUint16 {
+		return c, errRange(transmit, n, ci, 3, x)
+	}
 	c.InhibitTime = uint16(x)
 	if x, err = get(ci, 5, true); err != nil {
 		return c, err
+	}
+	if x > math.MaxUint16 {
+		return c, errRange(transmit, n, ci, 5, x)
 	}
 	c.EventTimer = uint16(x)
 	if transmit {
 		if x, err = get(ci, 6, true); err != nil {
 			return c, err
+		}
+		if x > math.MaxUint8 {
+			return c, errRange(transmit, n, ci, 6, x)
 		}
 		c.SyncStart = uint8(x)
 	}
@@ -238,7 +293,7 @@ func readConfig(read func(index uint16, sub uint8) ([]byte, error), transmit boo
 		return c, err
 	}
 	if isMPDO(x) {
-		c.MPDO = uint8(x)
+		c.MPDO = byte(x & 0xFF) // isMPDO: x is FEh or FFh
 		return c, nil
 	}
 	if x > MaxEntries {
@@ -249,6 +304,9 @@ func readConfig(read func(index uint16, sub uint8) ([]byte, error), transmit boo
 		e, err := get(mi, uint8(i), false)
 		if err != nil {
 			return c, err
+		}
+		if e > math.MaxUint32 {
+			return c, errRange(transmit, n, mi, uint8(i), e)
 		}
 		c.Mapping = append(c.Mapping, ParseEntry(uint32(e)))
 	}

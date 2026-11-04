@@ -229,7 +229,7 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 		if err := sleep(ctx, t.PollInterval); err != nil {
 			return fail("flash status", err)
 		}
-		v, err := readUint(ctx, c, program.IndexFlashStatus, n)
+		v, err := toU32(readUint(ctx, c, program.IndexFlashStatus, n))
 		if err != nil {
 			continue
 		}
@@ -248,7 +248,7 @@ func (m *Master) DownloadProgram(ctx context.Context, node canopen.NodeID, data 
 		if err != nil {
 			return fail("identification", err)
 		}
-		if uint32(got) != want {
+		if got != uint64(want) {
 			return fail("identification", fmt.Errorf("%w: 0x1F56 is 0x%08X, want 0x%08X", ErrProgram, got, want))
 		}
 	}

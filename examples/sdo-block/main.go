@@ -10,7 +10,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"time"
 
 	"github.com/otfabric/go-canbus"
@@ -74,7 +73,9 @@ func run() error {
 	defer func() { _ = n.Close() }()
 
 	image := make([]byte, imageSize)
-	rand.New(rand.NewSource(1)).Read(image)
+	for i := range image {
+		image[i] = byte((i*7 + i>>8) & 0xFF) // deterministic test pattern
+	}
 	for _, mode := range []sdo.BlockMode{sdo.BlockAlways, sdo.BlockNever} {
 		c, err := sdo.NewClient(clientBus, nodeID, sdo.WithBlockMode(mode), sdo.WithBlockSize(127))
 		if err != nil {

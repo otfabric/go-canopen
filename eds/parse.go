@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -33,7 +34,7 @@ func (e *SyntaxError) Unwrap() error { return ErrSyntax }
 
 // ParseFile parses an EDS or DCF file.
 func ParseFile(path string) (*File, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}

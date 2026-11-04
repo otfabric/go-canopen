@@ -5,6 +5,7 @@ package mpdo
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/otfabric/go-canopen"
@@ -41,7 +42,7 @@ type ScannerEntry struct {
 
 // ParseScannerEntry decodes the UNSIGNED32 of a scanner entry.
 func ParseScannerEntry(u uint32) ScannerEntry {
-	return ScannerEntry{Index: uint16(u >> 8), SubIndex: uint8(u), BlockSize: uint8(u >> 24)}
+	return ScannerEntry{Index: uint16(u >> 8 & 0xFFFF), SubIndex: byte(u & 0xFF), BlockSize: byte(u >> 24 & 0xFF)}
 }
 
 // Uint32 encodes the entry.
@@ -90,12 +91,12 @@ type DispatcherEntry struct {
 // ParseDispatcherEntry decodes the UNSIGNED64 of a dispatcher entry.
 func ParseDispatcherEntry(u uint64) DispatcherEntry {
 	return DispatcherEntry{
-		Producer:         canopen.NodeID(u),
-		ProducerSubIndex: uint8(u >> 8),
-		ProducerIndex:    uint16(u >> 16),
-		SubIndex:         uint8(u >> 32),
-		Index:            uint16(u >> 40),
-		BlockSize:        uint8(u >> 56),
+		Producer:         canopen.NodeID(u & 0xFF),
+		ProducerSubIndex: byte(u >> 8 & 0xFF),
+		ProducerIndex:    uint16(u >> 16 & 0xFFFF),
+		SubIndex:         byte(u >> 32 & 0xFF),
+		Index:            uint16(u >> 40 & 0xFFFF),
+		BlockSize:        byte(u >> 56 & 0xFF),
 	}
 }
 
@@ -115,7 +116,7 @@ func (e DispatcherEntry) Map(producer canopen.NodeID, index uint16, sub uint8) (
 	if local > 0xFF {
 		return 0, 0, false
 	}
-	return e.Index, uint8(local), true
+	return e.Index, byte(local & 0xFF), true
 }
 
 // Validate checks the entry as the write hooks do: 0 (unused) is valid;
@@ -161,7 +162,7 @@ func NewScannerList(list, size int, entries ...ScannerEntry) (*od.Object, error)
 			return nil, fmt.Errorf("mpdo: scanner entry %v: %w", e, err)
 		}
 	}
-	o := od.NewArray(IndexScanner+uint16(list-1), fmt.Sprintf("Object scanner list %d", list),
+	o := od.NewArray(IndexScanner+listOffset(list), fmt.Sprintf("Object scanner list %d", list),
 		canopen.Unsigned32, od.AccessRW, size, uint32(0), od.AccessRW)
 	for i, e := range entries {
 		o.Subs[i+1].Default = binary.LittleEndian.AppendUint32(nil, e.Uint32())
@@ -183,7 +184,7 @@ func NewDispatcherList(list, size int, entries ...DispatcherEntry) (*od.Object, 
 			return nil, fmt.Errorf("mpdo: dispatcher entry %v: %w", e, err)
 		}
 	}
-	o := od.NewArray(IndexDispatcher+uint16(list-1), fmt.Sprintf("Object dispatcher list %d", list),
+	o := od.NewArray(IndexDispatcher+listOffset(list), fmt.Sprintf("Object dispatcher list %d", list),
 		canopen.Unsigned64, od.AccessRW, size, uint64(0), od.AccessRW)
 	for i, e := range entries {
 		o.Subs[i+1].Default = binary.LittleEndian.AppendUint64(nil, e.Uint64())
@@ -204,43 +205,72 @@ func checkList(list, size, n int) error {
 	return nil
 }
 
+// listOffset returns list-1 for a list number checkList accepted.
+func listOffset(list int) uint16 { return uint16(max(min(list-1, MaxLists-1), 0)) }
+
+// limitCount sets sub-index 00h of a list checkList accepted: n and size
+// are 0..MaxListEntries.
 func limitCount(o *od.Object, size, n int) {
 	s0 := o.Subs[0]
 	s0.Name = "Number of entries"
-	s0.Default = []byte{uint8(n)}
-	s0.High = []byte{uint8(size)}
+	s0.Default = []byte{uint8(max(min(n, MaxListEntries), 0))}
+	s0.High = []byte{uint8(max(min(size, MaxListEntries), 0))}
 }
 
 // listEntries calls f with the value of each entry in use (sub-index 1 up
 // to sub-index 00h) of the lists from..to present in d, in ascending
 // order, until f returns true.
 func listEntries(d *od.Dictionary, from, to uint16, f func(u uint64) bool) {
-	for idx := uint32(from); idx <= uint32(to); idx++ {
-		if d.Object(uint16(idx)) == nil {
-			continue
-		}
-		n, err := d.GetUint(uint16(idx), 0)
-		if err != nil {
-			continue
-		}
-		for s := uint64(1); s <= n && s <= MaxListEntries; s++ {
-			u, err := d.GetUint(uint16(idx), uint8(s))
-			if err != nil || u == 0 {
-				continue
-			}
-			if f(u) {
-				return
-			}
+	for idx := from; ; idx++ {
+		if listObjectEntries(d, idx, f) || idx == to {
+			return
 		}
 	}
 }
 
+// listObjectEntries calls f as listEntries does for the list at idx, and
+// reports whether f returned true.
+func listObjectEntries(d *od.Dictionary, idx uint16, f func(u uint64) bool) bool {
+	if d.Object(idx) == nil {
+		return false
+	}
+	n, err := d.GetUint(idx, 0)
+	if err != nil {
+		return false
+	}
+	last := uint8(MaxListEntries)
+	if n < MaxListEntries {
+		last = byte(n & 0xFF)
+	}
+	for s := uint8(1); s <= last; s++ { // last ≤ FEh: s does not wrap
+		u, err := d.GetUint(idx, s)
+		if err != nil || u == 0 {
+			continue
+		}
+		if f(u) {
+			return true
+		}
+	}
+	return false
+}
+
+// scannerEntry decodes a scanner entry read as an unsigned integer; ok
+// is false for a value wider than the UNSIGNED32 of an entry.
+func scannerEntry(u uint64) (ScannerEntry, bool) {
+	if u > math.MaxUint32 {
+		return ScannerEntry{}, false
+	}
+	return ParseScannerEntry(uint32(u)), true
+}
+
 // ScannerEntries returns the entries in use of every object scanner list
-// of d (zero entries skipped).
+// of d (zero entries, and values wider than 32 bits, skipped).
 func ScannerEntries(d *od.Dictionary) []ScannerEntry {
 	var out []ScannerEntry
 	listEntries(d, IndexScanner, IndexScannerLast, func(u uint64) bool {
-		out = append(out, ParseScannerEntry(uint32(u)))
+		if e, ok := scannerEntry(u); ok {
+			out = append(out, e)
+		}
 		return false
 	})
 	return out
@@ -258,11 +288,13 @@ func DispatcherEntries(d *od.Dictionary) []DispatcherEntry {
 }
 
 // Scanned reports whether the object scanner lists of d allow a SAM-MPDO
-// of index:sub (Lely co_dev_chk_sam_mpdo).
+// of index:sub (Lely co_dev_chk_sam_mpdo). An entry value wider than 32
+// bits allows nothing.
 func Scanned(d *od.Dictionary, index uint16, sub uint8) bool {
 	found := false
 	listEntries(d, IndexScanner, IndexScannerLast, func(u uint64) bool {
-		found = ParseScannerEntry(uint32(u)).Contains(index, sub)
+		e, ok := scannerEntry(u)
+		found = ok && e.Contains(index, sub)
 		return found
 	})
 	return found
@@ -284,27 +316,21 @@ func Dispatch(d *od.Dictionary, producer canopen.NodeID, index uint16, sub uint8
 
 // ProtectLists installs write hooks on every object scanner and dispatcher
 // list of d that validate remote writes of entries ([ScannerEntry.Validate],
-// [DispatcherEntry.Validate]); the number of entries (sub-index 00h) is
+// [DispatcherEntry.Validate]; a scanner entry wider than 32 bits, possible
+// only in a list not built by [NewScannerList], is refused with
+// [canopen.AbortInvalidValue]); the number of entries (sub-index 00h) is
 // bounded by the object's limits. Local writes are not checked. The
 // returned function removes the hooks (later calls do nothing). Lists
 // added to d afterwards are not covered.
 func ProtectLists(d *od.Dictionary) (unprotect func()) {
 	var rms []func()
-	for idx := uint32(IndexScanner); idx <= uint32(IndexDispatcherLast); idx++ {
-		if d.Object(uint16(idx)) == nil {
-			continue
+	for idx := IndexScanner; ; idx++ {
+		if d.Object(idx) != nil {
+			rms = append(rms, d.OnWrite(idx, -1, checkListWrite(idx <= IndexScannerLast)))
 		}
-		scanner := uint16(idx) <= IndexScannerLast
-		rms = append(rms, d.OnWrite(uint16(idx), -1, func(v *od.Variable, data []byte) error {
-			if v.SubIndex == 0 {
-				return nil
-			}
-			u := canopen.DecodeUint(data)
-			if scanner {
-				return ParseScannerEntry(uint32(u)).Validate()
-			}
-			return ParseDispatcherEntry(u).Validate()
-		}))
+		if idx == IndexDispatcherLast {
+			break
+		}
 	}
 	var once sync.Once
 	return func() {
@@ -313,5 +339,23 @@ func ProtectLists(d *od.Dictionary) (unprotect func()) {
 				rm()
 			}
 		})
+	}
+}
+
+// checkListWrite returns the write hook of a scanner or dispatcher list.
+func checkListWrite(scanner bool) func(v *od.Variable, data []byte) error {
+	return func(v *od.Variable, data []byte) error {
+		if v.SubIndex == 0 {
+			return nil
+		}
+		u := canopen.DecodeUint(data)
+		if !scanner {
+			return ParseDispatcherEntry(u).Validate()
+		}
+		e, ok := scannerEntry(u)
+		if !ok {
+			return canopen.AbortInvalidValue
+		}
+		return e.Validate()
 	}
 }

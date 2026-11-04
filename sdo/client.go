@@ -162,10 +162,10 @@ func (c *Client) Upload(ctx context.Context, index uint16, sub uint8, opts ...Ca
 // pst returns the protocol switch threshold offered in block uploads.
 func (c *Client) pst(m BlockMode) uint8 {
 	if c.cfg.pst >= 0 {
-		return uint8(c.cfg.pst)
+		return u8(c.cfg.pst)
 	}
 	if m == BlockAuto {
-		return uint8(min(max(c.cfg.threshold-1, 0), 255))
+		return u8(c.cfg.threshold - 1)
 	}
 	return 0
 }
@@ -177,8 +177,8 @@ func (c *Client) Download(ctx context.Context, index uint16, sub uint8, data []b
 		o(&cc)
 	}
 	block := cc.mode == BlockAlways || cc.mode == BlockAuto && len(data) >= c.cfg.threshold
-	if uint64(len(data)) > 0xFFFFFFFF {
-		return fmt.Errorf("sdo: %d bytes do not fit an SDO transfer", len(data))
+	if _, ok := sizeField(len(data)); !ok {
+		return errTooLarge(len(data))
 	}
 	err := c.run(ctx, index, sub, func(x *xfer) error {
 		if block {
@@ -498,7 +498,11 @@ func (x *xfer) download(data []byte) error {
 		_, err := x.recvInitiate(scsInitiateDownload)
 		return err
 	}
-	if err := x.send(muxFrame(ccsInitiateDownload<<5|1, x.index, x.sub, uint32(len(data)))); err != nil {
+	size, ok := sizeField(len(data))
+	if !ok {
+		return errTooLarge(len(data))
+	}
+	if err := x.send(muxFrame(ccsInitiateDownload<<5|1, x.index, x.sub, size)); err != nil {
 		return err
 	}
 	if _, err := x.recvInitiate(scsInitiateDownload); err != nil {
@@ -508,7 +512,7 @@ func (x *xfer) download(data []byte) error {
 	for t := byte(0); ; t ^= 1 {
 		end := min(pos+segData, len(data))
 		var f frame
-		f[0] = ccsDownloadSegment<<5 | t<<4 | byte(segData-(end-pos))<<1
+		f[0] = ccsDownloadSegment<<5 | t<<4 | u8(segData-(end-pos))<<1
 		copy(f[1:], data[pos:end])
 		last := end >= len(data)
 		if last {
@@ -540,7 +544,11 @@ func (x *xfer) blockDownload(data []byte) error {
 	if x.c.cfg.crc {
 		b0 |= 4
 	}
-	if err := x.send(muxFrame(b0, x.index, x.sub, uint32(len(data)))); err != nil {
+	size, ok := sizeField(len(data))
+	if !ok {
+		return errTooLarge(len(data))
+	}
+	if err := x.send(muxFrame(b0, x.index, x.sub, size)); err != nil {
 		return err
 	}
 	f, err := x.recvInitiate(scsBlockDownload)
@@ -641,7 +649,7 @@ func (x *xfer) blockUpload(pst uint8) ([]byte, error) {
 	if x.c.cfg.crc {
 		b0 |= 4
 	}
-	blk := uint8(x.c.cfg.blkSize)
+	blk := u8(x.c.cfg.blkSize)
 	req := muxFrame(b0, x.index, x.sub, 0)
 	req[4], req[5] = blk, pst
 	if err := x.send(req); err != nil {

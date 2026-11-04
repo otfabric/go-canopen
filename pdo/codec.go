@@ -265,7 +265,9 @@ func (l *Listener) Request(ctx context.Context) error {
 	if l.dec.c.opt.fd {
 		return ErrNoRTR
 	}
-	f, err := canbus.NewRemote(l.cob.ID(), l.cob.Extended(), uint8(l.dec.c.m.Len()))
+	// newCodec bounds the mapping to MaxBitsFD bits: Len is 0..64.
+	dlc := uint8(max(min(l.dec.c.m.Len(), MaxBitsFD/8), 0))
+	f, err := canbus.NewRemote(l.cob.ID(), l.cob.Extended(), dlc)
 	if err != nil {
 		return err
 	}

@@ -209,7 +209,7 @@ func (m Message) Encode() ([]byte, error) {
 	}
 	l := layoutOf(m.Cmd)
 	b := []byte{byte(m.Dest), byte(m.Cmd), m.Session}
-	object := func() { b = append(b, m.SubIndex, byte(m.Index), byte(m.Index>>8)) }
+	object := func() { b = append(b, m.SubIndex, byte(m.Index&0xFF), byte(m.Index>>8)) }
 	switch l {
 	case layoutUnknown:
 		return nil, fmt.Errorf("%w: 0x%02X", ErrCommand, uint8(m.Cmd))
@@ -229,7 +229,7 @@ func (m Message) Encode() ([]byte, error) {
 			return nil, fmt.Errorf("usdo: %d bytes do not fit an expedited message", len(m.Data))
 		}
 		object()
-		b = append(b, m.DataType, byte(len(m.Data)))
+		b = append(b, m.DataType, u8(len(m.Data)))
 		b = append(b, m.Data...)
 	case layoutInit:
 		object()
@@ -245,7 +245,7 @@ func (m Message) Encode() ([]byte, error) {
 		if len(m.Data) > SegmentSize {
 			return nil, fmt.Errorf("usdo: last segment of %d bytes exceeds %d", len(m.Data), SegmentSize)
 		}
-		b = append(b, byte(len(m.Data)))
+		b = append(b, u8(len(m.Data)))
 		b = append(b, m.Data...)
 	}
 	return b, nil

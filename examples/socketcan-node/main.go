@@ -38,9 +38,28 @@ func main() {
 	id := flag.Uint("node", 5, "node-ID (1..127)")
 	hb := flag.Uint("heartbeat", 1000, "producer heartbeat time in ms")
 	flag.Parse()
-	if err := run(*iface, canopen.NodeID(*id), uint16(*hb)); err != nil {
+	n, period, err := parseFlags(*id, *hb)
+	if err != nil {
 		log.Fatal(err)
 	}
+	if err := run(*iface, n, period); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// parseFlags checks the node-ID and heartbeat flags, which would otherwise
+// wrap silently (-node 261 is node 5).
+func parseFlags(id, hb uint) (canopen.NodeID, uint16, error) {
+	if id < 1 {
+		return 0, 0, fmt.Errorf("node-ID %d outside 1..127", id)
+	}
+	if id > 127 {
+		return 0, 0, fmt.Errorf("node-ID %d outside 1..127", id)
+	}
+	if hb > 0xFFFF {
+		return 0, 0, fmt.Errorf("heartbeat %d ms outside 0..65535", hb)
+	}
+	return canopen.NodeID(id), uint16(hb), nil
 }
 
 func run(iface string, id canopen.NodeID, hb uint16) error {

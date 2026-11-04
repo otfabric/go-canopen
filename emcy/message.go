@@ -22,7 +22,7 @@ type Message struct {
 // MSEF.
 func (m Message) Bytes() [8]byte {
 	var b [8]byte
-	b[0], b[1], b[2] = byte(m.Code), byte(m.Code>>8), byte(m.Register)
+	b[0], b[1], b[2] = byte(m.Code&0xFF), byte(m.Code>>8), byte(m.Register)
 	copy(b[3:], m.MSEF[:])
 	return b
 }

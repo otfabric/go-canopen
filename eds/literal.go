@@ -4,6 +4,7 @@ package eds
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/otfabric/go-canopen"
@@ -65,10 +66,21 @@ func parseLiteral(t canopen.DataType, lit string, node canopen.NodeID) (b []byte
 		return b, true, nil
 	}
 	if t.IsSigned() {
-		x := canopen.DecodeInt(b) + int64(node)
-		b, err = canopen.EncodeInt(t, x, uint64(x), x < 0)
+		x := canopen.DecodeInt(b)
+		if x > math.MaxInt64-int64(node) {
+			err = canopen.ErrDataType
+		} else if x += int64(node); x < 0 {
+			b, err = canopen.EncodeInt(t, x, 0, true)
+		} else {
+			b, err = canopen.EncodeInt(t, x, uint64(x), false)
+		}
 	} else {
-		b, err = canopen.EncodeInt(t, 0, canopen.DecodeUint(b)+uint64(node), false)
+		u := canopen.DecodeUint(b)
+		if u > math.MaxUint64-uint64(node) {
+			err = canopen.ErrDataType
+		} else {
+			b, err = canopen.EncodeInt(t, 0, u+uint64(node), false)
+		}
 	}
 	if err != nil {
 		return nil, true, fmt.Errorf("%q for node-ID %d is out of range of %s", lit, node, t)

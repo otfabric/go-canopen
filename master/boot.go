@@ -121,7 +121,7 @@ func (m *Master) Boot(ctx context.Context, node canopen.NodeID, cfg BootConfig) 
 		if err != nil {
 			return fmt.Errorf("master: node %d: device type: %w", node, err)
 		}
-		if uint32(dt) != cfg.DeviceType {
+		if dt != uint64(cfg.DeviceType) {
 			return fmt.Errorf("%w: node %d device type 0x%08X, want 0x%08X", ErrIdentity, node, dt, cfg.DeviceType)
 		}
 	}

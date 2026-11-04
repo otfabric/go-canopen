@@ -4,6 +4,7 @@ package eds
 
 import (
 	"fmt"
+	"math"
 	mbits "math/bits"
 	"strconv"
 	"strings"
@@ -138,8 +139,8 @@ func (e *Entry) fields() []field {
 		strField("ParameterName", &e.ParameterName, true),
 		{"ObjectType",
 			func(v string) bool {
-				x, err := canopen.ParseUint(v, 8)
-				if err != nil {
+				x, err := canopen.ParseUint(v, 64)
+				if err != nil || x > math.MaxUint8 {
 					return false
 				}
 				e.ObjectType = od.ObjectType(x)

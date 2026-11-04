@@ -85,12 +85,12 @@ func (c *Client) WriteUint8(ctx context.Context, index uint16, sub uint8, x uint
 
 // WriteUint16 downloads an UNSIGNED16.
 func (c *Client) WriteUint16(ctx context.Context, index uint16, sub uint8, x uint16) error {
-	return c.Download(ctx, index, sub, []byte{byte(x), byte(x >> 8)})
+	return c.Download(ctx, index, sub, []byte{byte(x & 0xFF), byte(x >> 8 & 0xFF)})
 }
 
 // WriteUint32 downloads an UNSIGNED32.
 func (c *Client) WriteUint32(ctx context.Context, index uint16, sub uint8, x uint32) error {
-	return c.Download(ctx, index, sub, []byte{byte(x), byte(x >> 8), byte(x >> 16), byte(x >> 24)})
+	return c.Download(ctx, index, sub, []byte{byte(x & 0xFF), byte(x >> 8 & 0xFF), byte(x >> 16 & 0xFF), byte(x >> 24 & 0xFF)})
 }
 
 var uintTypes = map[int]canopen.DataType{

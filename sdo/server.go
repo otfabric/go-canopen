@@ -14,6 +14,7 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -108,8 +109,10 @@ func (s *Server) resolveCOBIDs() (canopen.COBID, canopen.COBID, error) {
 	}
 	rx, err1 := s.d.GetUint(od.IndexSDOServer, 1)
 	tx, err2 := s.d.GetUint(od.IndexSDOServer, 2)
-	if err1 == nil && err2 == nil {
-		return canopen.COBID(rx), canopen.COBID(tx), nil
+	if err1 == nil && err2 == nil && rx <= 0xFFFFFFFF {
+		if tx <= 0xFFFFFFFF {
+			return canopen.COBID(rx), canopen.COBID(tx), nil
+		}
 	}
 	node := s.d.NodeID()
 	if err := node.Check(); err != nil {
@@ -207,7 +210,7 @@ func (s *Server) Stats() ServerStats {
 
 func (s *Server) newMachine(send func(frame)) *machine {
 	return &machine{
-		d: s.d, out: send, maxSize: s.cfg.maxSize, blkSize: uint8(s.cfg.blkSize),
+		d: s.d, out: send, maxSize: s.cfg.maxSize, blkSize: u8(s.cfg.blkSize),
 		crcOK: s.cfg.crc, st: &s.st,
 	}
 }
@@ -299,11 +302,15 @@ func (s *Server) run(ctx context.Context) {
 }
 
 // resetCommand reports whether an NMT frame is a reset node or reset
-// communication for the server's node (WithResetFence).
+// communication for the server's node (WithResetFence). It accepts
+// exactly the frames the node's NMT slave executes (nmt.ParseCommand: a
+// classical 2-byte data frame; the SDO server runs on classical nodes
+// only): a frame the slave ignores must not fence the server, as no reset
+// and no boot-up would follow to open it again.
 func (s *Server) resetCommand(f *canbus.Frame) bool {
-	if f.Len < 2 {
+	cmd, node, err := nmt.ParseCommand(f)
+	if err != nil {
 		return false
 	}
-	cmd, node := canopen.NMTCommand(f.Data[0]), canopen.NodeID(f.Data[1])
 	return (cmd == canopen.NMTResetNode || cmd == canopen.NMTResetCommunication) && (node == 0 || node == s.cfg.resetNode)
 }

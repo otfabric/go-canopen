@@ -21,7 +21,8 @@ type SDO interface {
 
 // ReadConfig reads the configuration of TPDO (transmit) or RPDO n of a
 // remote node. Inhibit time, event timer and SYNC start value read as 0
-// when the node does not have them.
+// when the node does not have them. A value wider than its data type is
+// an error wrapping [canopen.AbortInvalidValue], as for [Load].
 func ReadConfig(ctx context.Context, sdo SDO, transmit bool, n int) (Config, error) {
 	if err := checkNumber(n); err != nil {
 		return Config{}, err
@@ -79,7 +80,8 @@ func Configure(ctx context.Context, sdo SDO, transmit bool, n int, cfg Config) e
 	}
 	switch {
 	case len(cfg.Mapping) > 0:
-		if err := w(mi, 0, u8(uint8(len(cfg.Mapping))), false); err != nil {
+		cnt := len(cfg.Mapping) // 1..MaxEntries, checked above
+		if err := w(mi, 0, u8(byte(cnt&0xFF)), false); err != nil {
 			return err
 		}
 	case cfg.MPDO != 0:

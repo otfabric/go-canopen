@@ -10,10 +10,11 @@ import (
 	"github.com/otfabric/go-canopen/od"
 )
 
-// pdo identifies a PDO: transmit or receive, number 1..512.
+// pdo identifies a PDO: transmit or receive, and its offset 0..511 from
+// the first PDO (number 1..512).
 type pdo struct {
 	transmit bool
-	n        int
+	off      uint16
 }
 
 // pdoOf returns the PDO whose communication or mapping parameter an index
@@ -21,22 +22,22 @@ type pdo struct {
 func pdoOf(index uint16) (k pdo, mapping, ok bool) {
 	switch {
 	case index >= od.IndexRPDOComm && index < od.IndexRPDOMapping:
-		return pdo{false, int(index-od.IndexRPDOComm) + 1}, false, true
+		return pdo{false, index - od.IndexRPDOComm}, false, true
 	case index >= od.IndexRPDOMapping && index < od.IndexTPDOComm:
-		return pdo{false, int(index-od.IndexRPDOMapping) + 1}, true, true
+		return pdo{false, index - od.IndexRPDOMapping}, true, true
 	case index >= od.IndexTPDOComm && index < od.IndexTPDOMapping:
-		return pdo{true, int(index-od.IndexTPDOComm) + 1}, false, true
+		return pdo{true, index - od.IndexTPDOComm}, false, true
 	case index >= od.IndexTPDOMapping && index < od.IndexTPDOMapping+od.MaxPDOs:
-		return pdo{true, int(index-od.IndexTPDOMapping) + 1}, true, true
+		return pdo{true, index - od.IndexTPDOMapping}, true, true
 	}
 	return pdo{}, false, false
 }
 
 func (k pdo) indices() (comm, mapping uint16) {
 	if k.transmit {
-		return od.IndexTPDOComm + uint16(k.n-1), od.IndexTPDOMapping + uint16(k.n-1)
+		return od.IndexTPDOComm + k.off, od.IndexTPDOMapping + k.off
 	}
-	return od.IndexRPDOComm + uint16(k.n-1), od.IndexRPDOMapping + uint16(k.n-1)
+	return od.IndexRPDOComm + k.off, od.IndexRPDOMapping + k.off
 }
 
 type item struct {

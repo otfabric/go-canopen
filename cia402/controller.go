@@ -315,7 +315,7 @@ func (c *Controller) Mode(ctx context.Context) (Mode, error) {
 	if err != nil {
 		return 0, err
 	}
-	return Mode(int8(b[0])), nil
+	return Mode(int8Of(b[0])), nil
 }
 
 // Position reads the position actual value (0x6064).
@@ -324,7 +324,7 @@ func (c *Controller) Position(ctx context.Context) (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	return int32(binary.LittleEndian.Uint32(b)), nil
+	return int32Of(binary.LittleEndian.Uint32(b)), nil
 }
 
 // Controlword returns the controlword the controller wrote last.
@@ -522,7 +522,7 @@ func (c *Controller) Halt(ctx context.Context, on bool) error {
 // of operation display (0x6061) shows it.
 func (c *Controller) SetMode(ctx context.Context, m Mode) error {
 	o := &op{c: c, name: "set mode"}
-	if err := c.download(ctx, IndexModesOfOperation, 0, []byte{byte(m)}); err != nil {
+	if err := c.download(ctx, IndexModesOfOperation, 0, []byte{wire8(int8(m))}); err != nil {
 		return o.fail(ctx, err)
 	}
 	sctx, cancel := context.WithTimeout(ctx, c.opts.Timeout)
@@ -619,7 +619,7 @@ func (c *Controller) MoveTo(ctx context.Context, target int32, opts *MoveOptions
 	if err := o.wait(ctx, 0, true, func(sw uint16) bool { return sw&StatusSetPointAcknowledge == 0 }); err != nil {
 		return err
 	}
-	if err := c.download(ctx, IndexTargetPosition, 0, binary.LittleEndian.AppendUint32(nil, uint32(target))); err != nil {
+	if err := c.download(ctx, IndexTargetPosition, 0, binary.LittleEndian.AppendUint32(nil, wire32(target))); err != nil {
 		return o.fail(ctx, err)
 	}
 	flags := CtrlNewSetPoint
@@ -661,7 +661,7 @@ func (c *Controller) SetVelocity(ctx context.Context, v int32) error {
 	if err := c.ensureMode(ctx, o, ModePV); err != nil {
 		return err
 	}
-	if err := c.download(ctx, IndexTargetVelocity, 0, binary.LittleEndian.AppendUint32(nil, uint32(v))); err != nil {
+	if err := c.download(ctx, IndexTargetVelocity, 0, binary.LittleEndian.AppendUint32(nil, wire32(v))); err != nil {
 		return o.fail(ctx, err)
 	}
 	return nil
@@ -674,7 +674,7 @@ func (c *Controller) SetTorque(ctx context.Context, t int16) error {
 	if err := c.ensureMode(ctx, o, ModePT); err != nil {
 		return err
 	}
-	if err := c.download(ctx, IndexTargetTorque, 0, binary.LittleEndian.AppendUint16(nil, uint16(t))); err != nil {
+	if err := c.download(ctx, IndexTargetTorque, 0, binary.LittleEndian.AppendUint16(nil, wire16(t))); err != nil {
 		return o.fail(ctx, err)
 	}
 	return nil
@@ -690,7 +690,7 @@ func (c *Controller) Home(ctx context.Context, method int8, timeout time.Duratio
 	if err := c.requireEnabled(ctx, o); err != nil {
 		return err
 	}
-	if err := c.download(ctx, IndexHomingMethod, 0, []byte{byte(method)}); err != nil {
+	if err := c.download(ctx, IndexHomingMethod, 0, []byte{wire8(method)}); err != nil {
 		return o.fail(ctx, err)
 	}
 	if err := c.ensureMode(ctx, o, ModeHM); err != nil {

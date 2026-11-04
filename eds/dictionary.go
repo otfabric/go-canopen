@@ -216,7 +216,11 @@ func (b *builder) variable(sec string, index uint16, sub uint8, name string, e *
 	if t.IsVariable() {
 		for _, kv := range e.Extra {
 			if strings.EqualFold(kv.Key, StringLengthMinKey) {
-				if n, err := canopen.ParseUint(kv.Value, 31); err == nil {
+				n, err := canopen.ParseUint(kv.Value, 31)
+				if err != nil {
+					continue
+				}
+				if n <= math.MaxInt32 {
 					v.MaxSize = max(int(n), len(v.Default))
 				}
 			}
@@ -293,7 +297,10 @@ func FromDictionary(d *od.Dictionary, opts ExportOptions) *File {
 		if o.Type == od.ObjectVar || o.Type == od.ObjectDomain {
 			entry(&eo.Entry, o.Subs[0])
 		} else {
-			eo.SubNumber = uint8(len(o.Subs))
+			// A full 0..255 object has 256 sub-objects, more than
+			// SubNumber (UNSIGNED8) holds: it saturates at 255.
+			n := len(o.Subs)
+			eo.SubNumber = uint8(max(min(n, math.MaxUint8), 0))
 			for _, v := range o.Subs {
 				s := &SubObject{SubIndex: v.SubIndex}
 				s.ParameterName, s.ObjectType = v.Name, od.ObjectVar
@@ -331,7 +338,7 @@ func FormatLiteral(t canopen.DataType, b []byte, nodeRelative bool) string {
 		}
 		return "0"
 	case t == canopen.Real32:
-		x := math.Float32frombits(uint32(canopen.DecodeUint(b)))
+		x := math.Float32frombits(uint32(canopen.DecodeUint(b) & math.MaxUint32))
 		if x != x {
 			return fmt.Sprintf("0x%08X", canopen.DecodeUint(b))
 		}
