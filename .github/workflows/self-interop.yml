@@ -12,8 +12,6 @@ run-name: "Self-interop against canopen-interop-otfabric:latest, by @${{ github.
 # a release. A pass is not independent verification (INTEROPERABILITY.md).
 on:
   workflow_dispatch:
-  push: # TEMPORARY: run once from the PR branch; removed before merging
-    branches: [ci/self-interop]
 
 permissions:
   contents: read
