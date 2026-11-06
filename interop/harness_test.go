@@ -33,8 +33,36 @@ import (
 // image with CANOPEN_INTEROP_<ADAPTER>_IMAGE (upper case).
 const InteropRelease = "v0.3.1"
 
-// adapters are the canopen-interop images.
-var adapters = []string{"canopennode", "lely", "pythoncanopen"}
+// references are the canopen-interop images of independent stacks.
+var references = []string{"canopennode", "lely", "pythoncanopen"}
+
+// adapters are the images the suite runs: the references and, only when
+// CANOPEN_INTEROP_OTFABRIC_IMAGE names an image, "otfabric", go-canopen
+// itself behind the contract (canopen-interop-otfabric, published by hand
+// from canopen-interop; not independent, never pinned here, see
+// INTEROPERABILITY.md). CANOPEN_INTEROP_ADAPTERS (comma- or space-separated)
+// keeps a subset, e.g. "otfabric" for the Self-interop workflow.
+var adapters = selectAdapters()
+
+func selectAdapters() []string {
+	all := append([]string(nil), references...)
+	if os.Getenv("CANOPEN_INTEROP_OTFABRIC_IMAGE") != "" {
+		all = append(all, "otfabric")
+	}
+	only := strings.FieldsFunc(os.Getenv("CANOPEN_INTEROP_ADAPTERS"), func(r rune) bool { return r == ',' || r == ' ' })
+	if len(only) == 0 {
+		return all
+	}
+	var out []string
+	for _, a := range all {
+		for _, o := range only {
+			if a == o {
+				out = append(out, a)
+			}
+		}
+	}
+	return out
+}
 
 // digests pin the InteropRelease images by multi-arch index digest, so a
 // re-pushed tag cannot change what the suite tests.
