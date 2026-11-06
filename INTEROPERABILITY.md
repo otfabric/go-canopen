@@ -53,6 +53,21 @@ reason, listed below). A skip or a known difference is never counted as
 a pass. The Interop workflow runs the suite on GitHub's amd64 and arm64
 runners and uploads the report.
 
+### Against go-canopen itself (Self-interop)
+
+canopen-interop also publishes `ghcr.io/otfabric/canopen-interop-otfabric`:
+the latest go-canopen release behind the same contract (adapter `otfabric`,
+built by hand by canopen-interop's **Own stack (go-canopen)** workflow). The
+suite runs it only when `CANOPEN_INTEROP_OTFABRIC_IMAGE` names an image, never
+by default, and never pins it. The **Self-interop** workflow (manual, never a
+required check) runs this commit against `:latest`, logging the digest, to
+find a change on the wire that breaks an earlier release. It is not
+independent evidence: the image declares `upstream.independentEngine: false`.
+
+```sh
+CANOPEN_INTEROP_ADAPTERS=otfabric CANOPEN_INTEROP_OTFABRIC_IMAGE=ghcr.io/otfabric/canopen-interop-otfabric:latest make interop
+```
+
 ### Scenarios
 
 **go-canopen as master and client** (`go-canopen-master`) of each stack's

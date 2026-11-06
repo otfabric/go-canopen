@@ -28,6 +28,10 @@ make check          # generated code, format, lint, vet, vuln, race tests, cover
 make test-vcan      # Linux: SocketCAN tests must run, not skip
 make fuzz           # every fuzz target, FUZZTIME=30s each
 make chaos          # the chaos monkey, CHAOS_ITERATIONS=200
+make interop        # Linux, Docker, vcan0: against canopen-interop's references
+
+# Against the latest published go-canopen (the Self-interop workflow, run by hand)
+CANOPEN_INTEROP_ADAPTERS=otfabric CANOPEN_INTEROP_OTFABRIC_IMAGE=ghcr.io/otfabric/canopen-interop-otfabric:latest make interop
 ```
 
 ## Rules
