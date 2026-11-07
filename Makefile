@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-vcan coverage coverage-check cover bench fuzz chaos e2e check clean generate generate-check coverpkg-check cross interop interop-images vcan-setup coverage-pkg-check
+.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-vcan coverage coverage-check cover bench fuzz chaos e2e check clean generate generate-check coverpkg-check cross interop interop-images vcan-setup coverage-pkg-check docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -15,6 +15,9 @@ export GOWORK := off
 # Format with the gofmt of the Go version in go.mod, as CI does.
 GO_MOD_VERSION := $(shell sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p' go.mod | head -n1)
 GOFMT_CI = $(shell GOTOOLCHAIN=go$(GO_MOD_VERSION).0 go env GOROOT)/bin/gofmt
+
+# docsync release of docs-check (DOC-008).
+DOCSYNC_VERSION := v0.2.0
 
 BIN_DIR := bin
 TEST_PKGS := $(shell go list ./... | grep -v '/examples')
@@ -148,7 +151,11 @@ interop: ## Run the interop suite against the canopen-interop images (Linux, Doc
 	@CANOPEN_REQUIRE_VCAN=1 CANOPEN_REQUIRE_INTEROP=1 CANOPEN_INTEROP_REPORT=$(CURDIR)/$(BIN_DIR)/interop-report.json \
 		go test -tags=interop -count=1 -timeout=60m -v ./interop/...
 
-check: generate-check fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples cross ## Everything CI checks except the vcan and interop jobs
+# The documents against the code (DOC-008): docsync, as docs.yml runs it.
+docs-check: ## Check that the documents agree with the code (docsync)
+	@go run github.com/otfabric/docsync@$(DOCSYNC_VERSION) check .
+
+check: generate-check fmt-check lint lint-ci vet vuln test coverage-check coverage-pkg-check examples cross docs-check ## Everything CI checks except the vcan and interop jobs
 
 clean: ## Remove binaries and coverage files
 	@rm -rf $(BIN_DIR) coverage.out coverage.html
