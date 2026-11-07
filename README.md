@@ -78,7 +78,7 @@ Go 1.26 or later. The one dependency is go-canbus (pure Go).
 ## Quick start
 
 A device and a network manager on two ports of a virtual bus (the
-package example [`node.Example`](node/example_test.go), run by `go test`):
+package example in [`node/example_test.go`](node/example_test.go), run by `go test`):
 
 ```go
 vb := virtual.New(virtual.Config{Name: "quickstart"})
