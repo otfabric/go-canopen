@@ -46,7 +46,7 @@ const (
 	KindHeartbeat     Kind = "heartbeat"
 	KindBootUp        Kind = "boot-up"
 	KindGuardRequest  Kind = "guard-request"  // node guarding RTR
-	KindGuardResponse Kind = "guard-response" // node guarding reply (toggle bit set)
+	KindGuardResponse Kind = "guard-response" // node guarding reply (toggle bit set, or after a request: Tracker)
 	KindLSSMaster     Kind = "lss-master"
 	KindLSSSlave      Kind = "lss-slave"
 	KindUnknown       Kind = "unknown"
@@ -153,10 +153,14 @@ type EMCY struct {
 
 // PDO is a process data object.
 type PDO struct {
-	// Number is the PDO number 1..4 of the predefined connection set.
+	// Number is the PDO number: 1..4 of the predefined connection set, or
+	// 1..512 when Configured.
 	Number int `json:"number"`
 	// Transmit is true for a TPDO (sent by the node), false for an RPDO.
 	Transmit bool `json:"transmit"`
+	// Configured marks a PDO a [Tracker] identified by the COB-ID it saw
+	// set or read over SDO, not by the predefined connection set.
+	Configured bool `json:"configured,omitempty"`
 }
 
 // ErrorControl is an NMT error control message of a node: heartbeat,

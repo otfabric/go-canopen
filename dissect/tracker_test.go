@@ -4,6 +4,8 @@ package dissect
 
 import (
 	"testing"
+
+	"github.com/otfabric/go-canbus"
 )
 
 type step struct {
@@ -104,5 +106,111 @@ func TestTrackerBlockUpload(t *testing.T) {
 	}
 	if m := tr.Decode(frame(t, 0x80)); m.Kind != KindSYNC {
 		t.Errorf("%s", m)
+	}
+}
+
+// TestTrackerGuardResponse: after a node guarding request, the node's
+// error control frame is a guard response whatever its toggle bit; without
+// a request one with the toggle bit clear is a heartbeat, and a boot-up
+// stays a boot-up.
+func TestTrackerGuardResponse(t *testing.T) {
+	tr := NewTracker()
+	rtr, err := canbus.NewRemote(0x701, false, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		req  bool
+		b    byte
+		want Kind
+	}{
+		{true, 0x05, KindGuardResponse},
+		{true, 0x85, KindGuardResponse},
+		{false, 0x05, KindHeartbeat},
+		{false, 0x85, KindGuardResponse},
+		{true, 0x00, KindBootUp},
+	} {
+		if c.req {
+			if m := tr.Decode(&rtr); m.Kind != KindGuardRequest {
+				t.Fatal(m)
+			}
+		}
+		if m := tr.Decode(frame(t, 0x701, c.b)); m.Kind != c.want {
+			t.Errorf("request %v, 0x%02X: %s", c.req, c.b, m.Kind)
+		}
+	}
+	// A malformed error control frame does not consume the request.
+	tr.Decode(&rtr)
+	if m := tr.Decode(frame(t, 0x701, 0x05, 0x00)); m.Error == "" {
+		t.Error("two bytes accepted")
+	}
+	if m := tr.Decode(frame(t, 0x701, 0x05)); m.Kind != KindGuardResponse {
+		t.Error(m.Kind)
+	}
+}
+
+// sdoPair feeds a request and its answer on node n.
+func sdoPair(t *testing.T, tr *Tracker, n uint16, req, resp []byte) {
+	t.Helper()
+	tr.Decode(frame(t, canbusID(0x600+n), req...))
+	if resp != nil {
+		tr.Decode(frame(t, canbusID(0x580+n), resp...))
+	}
+}
+
+// TestTrackerConfiguredPDO: PDO COB-IDs set or read over SDO name the PDO
+// of frames on them (a Copley drive's TPDO5 on 0x180).
+func TestTrackerConfiguredPDO(t *testing.T) {
+	tr := NewTracker()
+	pdoOf := func(id uint16) Message { return tr.Decode(frame(t, canbusID(id), 1, 2, 3, 4)) }
+	if m := pdoOf(0x180); m.Kind != KindUnknown {
+		t.Fatal(m)
+	}
+	// Download of 0x1804:01 = 0x180, confirmed: TPDO5 of node 1.
+	sdoPair(t, tr, 1, []byte{0x23, 0x04, 0x18, 0x01, 0x80, 0x01, 0, 0}, []byte{0x60, 0x04, 0x18, 0x01, 0, 0, 0, 0})
+	if m := pdoOf(0x180); m.Kind != KindTPDO || m.Node != 1 || m.PDO.Number != 5 || !m.PDO.Configured || m.String() != "TPDO5 node 1: 01 02 03 04" {
+		t.Fatalf("%s %+v", m, m.PDO)
+	}
+	rtr, _ := canbus.NewRemote(0x180, false, 0)
+	if m := tr.Decode(&rtr); m.Kind != KindTPDO || m.PDO.Number != 5 {
+		t.Error(m)
+	}
+	// A consumer's RPDO on the same identifier does not take it over.
+	sdoPair(t, tr, 3, []byte{0x23, 0x04, 0x14, 0x01, 0x80, 0x01, 0, 0}, []byte{0x60, 0x04, 0x14, 0x01, 0, 0, 0, 0})
+	if m := pdoOf(0x180); m.Node != 1 || !m.PDO.Transmit {
+		t.Error(m)
+	}
+	// Disabling the producer (bit 31) forgets it; the consumer remains
+	// unknown until it is learned again.
+	sdoPair(t, tr, 1, []byte{0x23, 0x04, 0x18, 0x01, 0x80, 0x01, 0, 0x80}, []byte{0x60, 0x04, 0x18, 0x01, 0, 0, 0, 0})
+	if m := pdoOf(0x180); m.Kind != KindUnknown {
+		t.Error(m)
+	}
+	// An upload answer teaches the same; an RPDO alone names the frame.
+	sdoPair(t, tr, 3, []byte{0x40, 0x04, 0x14, 0x01, 0, 0, 0, 0}, []byte{0x43, 0x04, 0x14, 0x01, 0x80, 0x01, 0, 0})
+	if m := pdoOf(0x180); m.Kind != KindRPDO || m.Node != 3 || m.PDO.Number != 5 {
+		t.Error(m)
+	}
+	// Moving node 2's TPDO1 to 0x1F2 overrides the predefined set there.
+	sdoPair(t, tr, 2, []byte{0x23, 0x00, 0x18, 0x01, 0xF2, 0x01, 0, 0}, []byte{0x60, 0x00, 0x18, 0x01, 0, 0, 0, 0})
+	if m := pdoOf(0x1F2); m.Node != 2 || m.PDO.Number != 1 || !m.PDO.Configured {
+		t.Error(m)
+	}
+	// Ignored: an unconfirmed download, an abort, a 29-bit COB-ID, another
+	// sub-index or object, a mapping object.
+	sdoPair(t, tr, 4, []byte{0x23, 0x00, 0x18, 0x01, 0x01, 0x05, 0, 0}, nil)
+	sdoPair(t, tr, 4, []byte{0x23, 0x00, 0x18, 0x01, 0x02, 0x05, 0, 0}, []byte{0x80, 0x00, 0x18, 0x01, 0, 0, 2, 6})
+	sdoPair(t, tr, 4, []byte{0x23, 0x00, 0x18, 0x01, 0x03, 0x05, 0, 0x20}, []byte{0x60, 0x00, 0x18, 0x01, 0, 0, 0, 0})
+	sdoPair(t, tr, 4, []byte{0x23, 0x00, 0x18, 0x02, 0x04, 0x05, 0, 0}, []byte{0x60, 0x00, 0x18, 0x02, 0, 0, 0, 0})
+	sdoPair(t, tr, 4, []byte{0x23, 0x00, 0x1A, 0x01, 0x05, 0x05, 0, 0}, []byte{0x60, 0x00, 0x1A, 0x01, 0, 0, 0, 0})
+	sdoPair(t, tr, 4, []byte{0x2B, 0x00, 0x18, 0x01, 0x06, 0x05, 0, 0}, []byte{0x60, 0x00, 0x18, 0x01, 0, 0, 0, 0})
+	for id := uint16(0x501); id <= 0x506; id++ {
+		if m := pdoOf(id); m.PDO != nil && m.PDO.Configured {
+			t.Errorf("0x%03X: %s", id, m)
+		}
+	}
+	tr.Reset()
+	if m := pdoOf(0x180); m.Kind != KindUnknown {
+		t.Error(m)
 	}
 }
