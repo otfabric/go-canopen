@@ -21,7 +21,7 @@ import (
 // command, or "none" when the CiA 402 diagram has none.
 func recordedTransitions(t *testing.T, rel string) []string {
 	t.Helper()
-	_, recs, err := rec.LoadExcerpt(rel)
+	recs, err := rec.LoadCopley(rel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestCaptureCopleyStateMachine(t *testing.T) {
 		rel  string
 		want []string
 	}{
-		{"copley/absolute-move.excerpt.json", []string{
+		{"unknown_copley-1100_absolute-move", []string{
 			"node 1: Fault",
 			"node 1: Fault -[Fault reset]-> Switch on disabled (transition 15)",
 			"node 1: Switch on disabled -[Enable operation]-> Operation enabled (none)",
@@ -131,10 +131,32 @@ func TestCaptureCopleyStateMachine(t *testing.T) {
 			"node 1: Operation enabled -[Disable voltage]-> Switch on disabled (transition 9)",
 			"node 1: Switch on disabled -> Fault (error: transitions 13, 14)",
 		}},
-		{"copley/pvt-move.excerpt.json", []string{
+		{"unknown_copley-1100_relative-move", []string{
 			"node 1: Fault",
 			"node 1: Fault -[Fault reset]-> Switch on disabled (transition 15)",
 			"node 1: Switch on disabled -[Enable operation]-> Operation enabled (none)",
+			"node 1: Operation enabled -[Disable voltage]-> Switch on disabled (transition 9)",
+			"node 1: Switch on disabled -> Fault (error: transitions 13, 14)",
+		}},
+		{"unknown_copley-11e0_linkage-home-and-move", []string{
+			"node 2: Switch on disabled",
+			"node 2: Switch on disabled -[Enable operation]-> Operation enabled (none)",
+			"node 3: Switch on disabled",
+			"node 3: Switch on disabled -[Enable operation]-> Operation enabled (none)",
+			"node 3: Operation enabled -[Disable voltage]-> Switch on disabled (transition 9)",
+			"node 2: Operation enabled -[Disable voltage]-> Switch on disabled (transition 9)",
+			"node 2: Switch on disabled -> Fault (error: transitions 13, 14)",
+			"node 3: Switch on disabled -> Fault (error: transitions 13, 14)",
+		}},
+		{"unknown_copley-1060_pvt-move", []string{
+			"node 1: Fault",
+			"node 1: Fault -[Fault reset]-> Switch on disabled (transition 15)",
+			"node 1: Switch on disabled -[Enable operation]-> Operation enabled (none)",
+			"node 2: Fault",
+			"node 2: Fault -[Fault reset]-> Switch on disabled (transition 15)",
+			"node 2: Switch on disabled -[Enable operation]-> Operation enabled (none)",
+			"node 2: Operation enabled -[Disable voltage]-> Switch on disabled (transition 9)",
+			"node 1: Operation enabled -[Disable voltage]-> Switch on disabled (transition 9)",
 		}},
 	} {
 		got := recordedTransitions(t, c.rel)

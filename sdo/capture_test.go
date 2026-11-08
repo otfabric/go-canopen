@@ -55,22 +55,22 @@ func exchanges(src string, recs []rec.Record) []exchange {
 	return out
 }
 
-func excerptExchanges(t *testing.T) []exchange {
+// logExchanges returns the SDO exchanges of each Copley log: 1,101 in
+// all.
+func logExchanges(t *testing.T) map[string][]exchange {
 	t.Helper()
-	var out []exchange
-	for _, rel := range []string{
-		"copley/absolute-move.excerpt.json",
-		"copley/linkage-home-and-move.excerpt.json",
-		"copley/pvt-move.excerpt.json",
-	} {
-		_, recs, err := rec.LoadExcerpt(rel)
+	out := map[string][]exchange{}
+	total := 0
+	for _, name := range rec.CopleyLogs {
+		recs, err := rec.LoadCopley(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		out = append(out, exchanges(rel, recs)...)
+		out[name] = exchanges(name, recs)
+		total += len(out[name])
 	}
-	if len(out) < 200 {
-		t.Fatalf("%d exchanges", len(out))
+	if total != 1101 {
+		t.Fatalf("%d exchanges, want 1101", total)
 	}
 	return out
 }
@@ -134,7 +134,11 @@ func replayClient(t *testing.T, xs []exchange) {
 // those that leave stale bytes after the indicated size
 // (0x4F 0x00 0x18 0x02 0xFF 0x01 0x00 0x80: one byte, 0xFF).
 func TestCaptureReplayClient(t *testing.T) {
-	xs := excerptExchanges(t)
+	var xs []exchange
+	byLog := logExchanges(t)
+	for _, name := range rec.CopleyLogs {
+		xs = append(xs, byLog[name]...)
+	}
 	stale := 0
 	for _, x := range xs {
 		d := expeditedData(x.resp)
@@ -143,7 +147,7 @@ func TestCaptureReplayClient(t *testing.T) {
 		}
 	}
 	if stale == 0 {
-		t.Fatal("no answer with stale bytes in the excerpts")
+		t.Fatal("no answer with stale bytes in the logs")
 	}
 	replayClient(t, xs)
 }
@@ -271,24 +275,12 @@ func replayServer(t *testing.T, node canopen.NodeID, xs []exchange, typed *od.Di
 	}
 }
 
-// TestCaptureReplayServer: a server holding the drives' values answers
-// every recorded request of the excerpts as the Copley drive did.
+// TestCaptureReplayServer: a server answers every recorded request of
+// the four logs as the Copley drive did. Its data types come from the
+// drives' EDS (copley/copley_accelnet.eds); objects the EDS lacks take the
+// type the answer's size implies.
 func TestCaptureReplayServer(t *testing.T) {
-	xs := excerptExchanges(t)
-	for _, n := range []canopen.NodeID{1, 2, 3} {
-		replayServer(t, n, xs, nil)
-	}
-}
-
-// TestCaptureReplayExtended replays all 1,101 SDO exchanges of the four
-// whole logs (make captures-extended) to the client and to a server whose
-// data types come from the drives' EDS (CANopen.eds of the same source).
-func TestCaptureReplayExtended(t *testing.T) {
-	dir, ok := rec.ExtendedDir()
-	if !ok {
-		t.Skip("extended corpus not fetched: make captures-extended")
-	}
-	f, err := eds.ParseFile(filepath.Join(dir, "copley", "CANopen.eds"))
+	f, err := eds.ParseFile(filepath.Join(rec.Dir(), "copley", "copley_accelnet.eds"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,20 +288,9 @@ func TestCaptureReplayExtended(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	total := 0
-	for _, name := range []string{"Absolute Move", "Relative Move", "Linkage Home and Move", "PVT Move"} {
-		recs, err := rec.ReadCopleyFile(filepath.Join(dir, "copley", name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		xs := exchanges(name, recs)
-		total += len(xs)
-		replayClient(t, xs)
+	for name, xs := range logExchanges(t) {
 		for _, n := range []canopen.NodeID{1, 2, 3} {
-			replayServer(t, n, xs, typed)
+			t.Run(fmt.Sprintf("%s/node%d", name, n), func(t *testing.T) { replayServer(t, n, xs, typed) })
 		}
-	}
-	if total != 1101 {
-		t.Errorf("%d exchanges, want 1101", total)
 	}
 }

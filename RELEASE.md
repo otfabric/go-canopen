@@ -47,20 +47,21 @@ and an EDS validator that called the vendor's EDS invalid.
   predefined connection set leaves unknown; when a TPDO and another
   node's RPDO share a COB-ID, the frame is the TPDO. A COB-ID with bit 31
   set forgets the PDO's identifier.
-- `testdata/captures`: excerpts of the Copley logs (the logs carry no
-  licence and are not redistributed), the Wireshark sample capture,
-  `manifest.json` (sources, evidence classes, devices, golden cases),
-  `scripts/fetch-captures.sh` and `make captures-extended` for the whole
-  logs and the EDS (hash-pinned, into `.cache/captures`).
+- `testdata/captures`: the four Copley logs and their EDS and the
+  Wireshark sample capture, byte-identical under clean names
+  (`<client-or-peer>_<device>_<operation>.<ext>`), with SHA256SUMS and
+  `manifest.json` (original names and URLs, evidence classes, devices,
+  golden cases). Every capture test runs on all 16,527 frames in every
+  test run.
 
 ### Tests
 
 - `dissect`: every recorded frame decodes without error; SDO answers
   belong to their requests; guard answers to guard requests; configured
-  PDOs; identity; emergencies; every committed frame (all 16,527 with
-  the extended corpus) equals Wireshark 4.6's CANopen dissector.
-- `sdo`: client and server replay of the recorded exchanges (all 1,101
-  extended, the server's types from the Copley EDS).
+  PDOs; identity; emergencies; all 16,527 frames equal Wireshark 4.6's
+  CANopen dissector.
+- `sdo`: client and server replay of all 1,101 recorded exchanges (the
+  server's types from the Copley EDS).
 - `nmt`: guard master against the recorded answers (first toggle bit 1);
   the responder's life time against the drive's life guarding error
   (600 ms).
@@ -69,7 +70,7 @@ and an EDS validator that called the vendor's EDS invalid.
   Operation enabled, which `Next` and `Drive` do not take, is pinned as
   vendor behaviour.
 - `eds`: the Copley EDS validates and matches every recorded transfer's
-  object, access and size (extended).
+  object, access and size.
 - Fuzz seeds from recorded frames for `dissect`, `sdo`, `nmt` and `emcy`.
 
 ### Interoperability

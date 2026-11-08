@@ -22,9 +22,8 @@ Logs that Copley Controls publishes of its own drives (CANview format,
 four logs, 16,527 frames; [testdata/captures](testdata/captures/README.md))
 are the only evidence from physical CANopen devices: three drives (five
 axes) identify themselves in 0x1018 (vendor 0x000000AB, product codes
-0x1100, 0x11E0, 0x1060, revision 0x00010004). Excerpts are committed and
-tested in every run; `make captures-extended` fetches the whole logs
-(hash-pinned) and runs the same tests on them. The master that recorded
+0x1100, 0x11E0, 0x1060, revision 0x00010004). The logs are committed and
+every test run checks all their frames. The master that recorded
 them is not identified. This is recorded evidence, not a test against a
 live drive.
 

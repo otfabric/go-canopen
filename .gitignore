@@ -24,5 +24,3 @@ coverage.out
 /examples/socketcan-node/socketcan-node
 /internal/cmd/gengolden/gengolden
 
-# Extended capture corpus, fetched by scripts/fetch-captures.sh
-/.cache/

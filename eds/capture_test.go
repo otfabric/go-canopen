@@ -10,17 +10,13 @@ import (
 	rec "github.com/otfabric/go-canopen/internal/capture"
 )
 
-// TestCopleyEDS reads the Copley Controls Accelnet EDS (CANopen.eds of the
-// Copley message logs, make captures-extended) and checks it against what
+// TestCopleyEDS reads the Copley Controls Accelnet EDS (copley/copley_accelnet.eds, CANopen.eds of the
+// Copley message logs) and checks it against what
 // the drives did in the four logs: it validates without errors, builds a
 // dictionary, and every object the master read or wrote is in it,
 // readable or writable as used, with the size the drive transferred.
 func TestCopleyEDS(t *testing.T) {
-	dir, ok := rec.ExtendedDir()
-	if !ok {
-		t.Skip("extended corpus not fetched: make captures-extended")
-	}
-	f, err := ParseFile(filepath.Join(dir, "copley", "CANopen.eds"))
+	f, err := ParseFile(filepath.Join(rec.Dir(), "copley", "copley_accelnet.eds"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,8 +37,8 @@ func TestCopleyEDS(t *testing.T) {
 	}
 	t.Logf("%d objects, %d warnings", len(d.Objects()), warnings)
 	checked := 0
-	for _, name := range []string{"Absolute Move", "Relative Move", "Linkage Home and Move", "PVT Move"} {
-		recs, err := rec.ReadCopleyFile(filepath.Join(dir, "copley", name))
+	for _, name := range rec.CopleyLogs {
+		recs, err := rec.LoadCopley(name)
 		if err != nil {
 			t.Fatal(err)
 		}

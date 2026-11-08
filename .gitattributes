@@ -1,0 +1,2 @@
+# Recorded captures stay byte-identical to their sources (CRLF line ends included).
+testdata/captures/** -text -diff

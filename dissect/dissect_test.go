@@ -233,8 +233,8 @@ func FuzzDecode(f *testing.F) {
 	// Frames recorded from Copley drives (testdata/captures): one of each
 	// identifier and first byte.
 	seen := map[[2]uint16]bool{}
-	for _, rel := range copleyExcerpts {
-		_, recs, err := rec.LoadExcerpt(rel)
+	for _, name := range rec.CopleyLogs {
+		recs, err := rec.LoadCopley(name)
 		if err != nil {
 			f.Fatal(err)
 		}

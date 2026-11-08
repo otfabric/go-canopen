@@ -6,8 +6,7 @@
 |-------|-------|---------|
 | Unit and property tests, race detector | any OS | `make test` |
 | Tests on SocketCAN (vcan): the e2e plant and scenarios over `vcan0` (CAN FD sockets for the CANopen FD scenario) | Linux with `vcan0` (MTU 72) | `make vcan-setup test-vcan` (`CANOPEN_REQUIRE_VCAN=1`: a missing interface fails instead of skipping) |
-| Recorded traffic of real drives (excerpts of the Copley Controls logs, the Wireshark sample capture; [testdata/captures](testdata/captures/README.md)) | any OS (the Wireshark comparison with tshark) | `make test` |
-| The same on the whole recorded logs and the Copley EDS (fetched, hash-pinned) | any OS with network for the fetch | `make captures-extended` |
+| Recorded traffic of real drives (the four Copley Controls logs, 16,527 frames, their EDS, the Wireshark sample capture; [testdata/captures](testdata/captures/README.md)) | any OS (the Wireshark comparison with tshark) | `make test` |
 | Wireshark CANopen dissector oracle (`dissect`) | any OS with tshark | `make test`; CI's vcan jobs install tshark and set `CANOPEN_REQUIRE_TSHARK=1` |
 | python canopen EDS cross-check (`eds`) | any OS with python canopen | `EDS_PYCANOPEN=/path/to/python make test`; skipped (with a message) without it; not run in CI |
 | End-to-end plant | any OS (virtual bus); Linux with vcan0 also SocketCAN | `make e2e` |

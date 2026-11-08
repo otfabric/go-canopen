@@ -20,7 +20,7 @@ type guardLog struct {
 
 func readGuardLog(t *testing.T, rel string) guardLog {
 	t.Helper()
-	_, recs, err := rec.LoadExcerpt(rel)
+	recs, err := rec.LoadCopley(rel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func readGuardLog(t *testing.T, rel string) guardLog {
 // toggle bit set (0x85, the drive had been guarded before the recording),
 // which the master accepts: it learns the toggle bit from the first one.
 func TestCaptureGuardMaster(t *testing.T) {
-	for _, rel := range []string{"copley/absolute-move.excerpt.json", "copley/linkage-home-and-move.excerpt.json", "copley/pvt-move.excerpt.json"} {
+	for _, rel := range rec.CopleyLogs {
 		lg := readGuardLog(t, rel)
 		g := NewGuardMaster(nopBus{})
 		requests := 0
@@ -91,7 +91,7 @@ func TestCaptureGuardMaster(t *testing.T) {
 // same configuration has the same life time and reports the loss once it
 // has passed, not before.
 func TestCaptureLifeGuarding(t *testing.T) {
-	lg := readGuardLog(t, "copley/absolute-move.excerpt.json")
+	lg := readGuardLog(t, "unknown_copley-1100_absolute-move")
 	var lastReq, emcy uint64
 	for _, r := range lg.recs {
 		switch {

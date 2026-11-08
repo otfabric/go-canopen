@@ -50,46 +50,32 @@ func TestReadCopley(t *testing.T) {
 	}
 }
 
-// TestExcerpts loads every committed excerpt and checks its declared
-// source hash against the manifest.
-func TestExcerpts(t *testing.T) {
-	for _, rel := range []string{"copley/absolute-move.excerpt.json", "copley/linkage-home-and-move.excerpt.json", "copley/pvt-move.excerpt.json"} {
-		ex, recs, err := LoadExcerpt(rel)
+// TestCopleyLogs reads the four committed logs and checks them against
+// manifest.json: the sizes and the frame counts.
+func TestCopleyLogs(t *testing.T) {
+	manifest, err := os.ReadFile(filepath.Join(Dir(), "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]int{
+		"unknown_copley-1100_absolute-move":         2274,
+		"unknown_copley-1100_relative-move":         2464,
+		"unknown_copley-11e0_linkage-home-and-move": 2928,
+		"unknown_copley-1060_pvt-move":              8861,
+	}
+	for _, name := range CopleyLogs {
+		recs, err := LoadCopley(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(recs) == 0 || len(recs) != len(ex.Raw) || len(ex.OriginalSHA256) != 64 || !strings.HasPrefix(ex.Note, "excerpt; raw file not redistributed") {
-			t.Errorf("%s: %d records, %+v", rel, len(recs), ex.Source)
+		if len(recs) != want[name] || recs[len(recs)-1].Line != want[name] {
+			t.Errorf("%s: %d frames", name, len(recs))
 		}
-		manifest, err := os.ReadFile(filepath.Join(Dir(), "manifest.json"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !strings.Contains(string(manifest), ex.OriginalSHA256) {
-			t.Errorf("%s: source hash %s not in manifest.json", rel, ex.OriginalSHA256)
+		if !strings.Contains(string(manifest), `"copley/`+name+`.log"`) {
+			t.Errorf("%s not in manifest.json", name)
 		}
 	}
-	dir := t.TempDir()
-	for name, body := range map[string]string{
-		"syntax.json": "{",
-		"entry.json":  `{"lines": [[1]]}`,
-		"order.json":  `{"lines": [[2, "1 CAN0: 0x00000080 -"], [2, "1 CAN0: 0x00000080 -"]]}`,
-		"frame.json":  `{"lines": [[1, "1 CAN0: 0x00000800 -"]]}`,
-		"types.json":  `{"lines": [["1", 2]]}`,
-	} {
-		p := filepath.Join(dir, name)
-		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		rel, _ := filepath.Rel(Dir(), p)
-		if _, _, err := LoadExcerpt(rel); err == nil {
-			t.Errorf("%s accepted", name)
-		}
-	}
-	if _, _, err := LoadExcerpt("missing.json"); err == nil {
-		t.Error("missing file")
-	}
-	if _, err := ReadCopleyFile(filepath.Join(dir, "missing")); err == nil {
+	if _, err := LoadCopley("missing"); err == nil {
 		t.Error("missing log")
 	}
 }

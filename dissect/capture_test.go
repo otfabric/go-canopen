@@ -4,8 +4,8 @@ package dissect
 
 import (
 	"fmt"
+	"maps"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -14,17 +14,9 @@ import (
 	rec "github.com/otfabric/go-canopen/internal/capture"
 )
 
-// copleyExcerpts are the committed excerpts of the Copley Controls logs
-// (testdata/captures/README.md).
-var copleyExcerpts = []string{
-	"copley/absolute-move.excerpt.json",
-	"copley/linkage-home-and-move.excerpt.json",
-	"copley/pvt-move.excerpt.json",
-}
-
-func loadExcerpt(t *testing.T, rel string) []rec.Record {
+func loadLog(t *testing.T, name string) []rec.Record {
 	t.Helper()
-	_, recs, err := rec.LoadExcerpt(rel)
+	recs, err := rec.LoadCopley(name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,14 +78,29 @@ func checkLog(t *testing.T, name string, recs []rec.Record) []Message {
 	return out
 }
 
-// TestCopleyExcerpts decodes the excerpts of the Copley Controls logs.
-func TestCopleyExcerpts(t *testing.T) {
-	for _, rel := range copleyExcerpts {
-		recs := loadExcerpt(t, rel)
-		if len(recs) < 100 {
-			t.Fatalf("%s: %d records", rel, len(recs))
+// TestCopleyLogs decodes the four Copley Controls logs (16,527 frames)
+// and checks the counts of each kind of message.
+func TestCopleyLogs(t *testing.T) {
+	want := map[string]map[Kind]int{
+		"unknown_copley-1100_absolute-move":         {KindEMCY: 3, KindGuardRequest: 38, KindGuardResponse: 38, KindNMT: 1, KindSDORequest: 194, KindSDOResponse: 194, KindSYNC: 1395, KindTPDO: 383, KindUnknown: 28},
+		"unknown_copley-1100_relative-move":         {KindEMCY: 3, KindGuardRequest: 40, KindGuardResponse: 40, KindNMT: 1, KindSDORequest: 200, KindSDOResponse: 200, KindSYNC: 1445, KindTPDO: 491, KindUnknown: 44},
+		"unknown_copley-11e0_linkage-home-and-move": {KindEMCY: 4, KindGuardRequest: 140, KindGuardResponse: 140, KindNMT: 2, KindRPDO: 18, KindSDORequest: 354, KindSDOResponse: 354, KindSYNC: 1676, KindTPDO: 240},
+		"unknown_copley-1060_pvt-move":              {KindEMCY: 2, KindGuardRequest: 242, KindGuardResponse: 242, KindNMT: 2, KindRPDO: 2167, KindSDORequest: 353, KindSDOResponse: 353, KindSYNC: 2810, KindTPDO: 2639, KindUnknown: 51},
+	}
+	total := 0
+	for _, name := range rec.CopleyLogs {
+		recs := loadLog(t, name)
+		total += len(recs)
+		kinds := map[Kind]int{}
+		for _, m := range checkLog(t, name, recs) {
+			kinds[m.Kind]++
 		}
-		checkLog(t, rel, recs)
+		if !maps.Equal(kinds, want[name]) {
+			t.Errorf("%s: %v, want %v", name, kinds, want[name])
+		}
+	}
+	if total != 16527 {
+		t.Errorf("%d frames, want 16527", total)
 	}
 }
 
@@ -105,7 +112,7 @@ func byLine(t *testing.T, recs []rec.Record, msgs []Message, line int) Message {
 			return msgs[i]
 		}
 	}
-	t.Fatalf("line %d not in the excerpt", line)
+	t.Fatalf("line %d not in the log", line)
 	return Message{}
 }
 
@@ -114,7 +121,7 @@ func byLine(t *testing.T, recs []rec.Record, msgs []Message, line int) Message {
 // both toggle values guard responses (Decode alone took the ones with the
 // toggle bit clear for heartbeats).
 func TestCopleyGuarding(t *testing.T) {
-	recs := loadExcerpt(t, "copley/absolute-move.excerpt.json")
+	recs := loadLog(t, "unknown_copley-1100_absolute-move")
 	msgs := checkLog(t, "absolute-move", recs)
 	for _, c := range []struct {
 		line   int
@@ -152,7 +159,7 @@ func TestCopleyGuarding(t *testing.T) {
 // the two-drive log, drive 2 produces it (TPDO5) and drive 3 consumes it
 // (RPDO5 on 0x180, lines 345..356): the frame is drive 2's TPDO5.
 func TestCopleyConfiguredPDOs(t *testing.T) {
-	recs := loadExcerpt(t, "copley/absolute-move.excerpt.json")
+	recs := loadLog(t, "unknown_copley-1100_absolute-move")
 	msgs := checkLog(t, "absolute-move", recs)
 	first, last := -1, -1
 	for i, r := range recs {
@@ -188,7 +195,7 @@ func TestCopleyConfiguredPDOs(t *testing.T) {
 		t.Errorf("0x1013 advanced %d µs, the log %d µs", dStamp, dLog)
 	}
 
-	recs = loadExcerpt(t, "copley/linkage-home-and-move.excerpt.json")
+	recs = loadLog(t, "unknown_copley-11e0_linkage-home-and-move")
 	msgs = checkLog(t, "linkage", recs)
 	n := 0
 	for i, r := range recs {
@@ -214,10 +221,10 @@ func TestCopleyIdentity(t *testing.T) {
 		rev     uint32
 		serial  uint32
 	}{
-		{"copley/absolute-move.excerpt.json", 1, 0x1100, 0x00010004, 0x00E735B9},
-		{"copley/pvt-move.excerpt.json", 2, 0x1060, 0x00010004, 0x002FBB62},
+		{"unknown_copley-1100_absolute-move", 1, 0x1100, 0x00010004, 0x00E735B9},
+		{"unknown_copley-1060_pvt-move", 2, 0x1060, 0x00010004, 0x002FBB62},
 	} {
-		recs := loadExcerpt(t, c.rel)
+		recs := loadLog(t, c.rel)
 		msgs := checkLog(t, c.rel, recs)
 		got := map[uint8]uint32{}
 		for _, m := range msgs {
@@ -240,7 +247,7 @@ func TestCopleyIdentity(t *testing.T) {
 // reports the life guarding error 0x8130 and the manufacturer-specific
 // 0x61FF with error register 0x81 (generic and manufacturer-specific bits).
 func TestCopleyEmergencies(t *testing.T) {
-	recs := loadExcerpt(t, "copley/absolute-move.excerpt.json")
+	recs := loadLog(t, "unknown_copley-1100_absolute-move")
 	msgs := checkLog(t, "absolute-move", recs)
 	for _, c := range []struct {
 		line int
@@ -255,17 +262,17 @@ func TestCopleyEmergencies(t *testing.T) {
 }
 
 // TestRecordedFramesMatchWireshark compares the decode of every recorded
-// frame of the committed corpus (the Copley excerpts and the Wireshark
-// sample capture) with Wireshark's CANopen dissector.
+// frame of the corpus (all 16,527 frames of the Copley logs and the
+// Wireshark sample capture) with Wireshark's CANopen dissector.
 func TestRecordedFramesMatchWireshark(t *testing.T) {
 	bin := tshark(t)
 	var frames []canbus.Frame
-	for _, rel := range copleyExcerpts {
-		for _, r := range loadExcerpt(t, rel) {
+	for _, name := range rec.CopleyLogs {
+		for _, r := range loadLog(t, name) {
 			frames = append(frames, r.Frame)
 		}
 	}
-	frames = append(frames, readPCAP(t, filepath.Join(rec.Dir(), "wireshark", "canopen-sample.pcap"))...)
+	frames = append(frames, readPCAP(t, filepath.Join(rec.Dir(), "wireshark", "unknown_unknown_boot-nmt-sdo-lss.pcap"))...)
 	compareWithWireshark(t, bin, frames)
 }
 
@@ -288,7 +295,7 @@ func readPCAP(t *testing.T, path string) []canbus.Frame {
 // upload segment exchange cut by aborts, LSS identify non-configured
 // slave, and a block upload aborted at once.
 func TestWiresharkSampleCapture(t *testing.T) {
-	frames := readPCAP(t, filepath.Join(rec.Dir(), "wireshark", "canopen-sample.pcap"))
+	frames := readPCAP(t, filepath.Join(rec.Dir(), "wireshark", "unknown_unknown_boot-nmt-sdo-lss.pcap"))
 	if len(frames) != 34 {
 		t.Fatalf("%d frames, want 34", len(frames))
 	}
@@ -313,59 +320,5 @@ func TestWiresharkSampleCapture(t *testing.T) {
 	}
 	if aborts != 10 {
 		t.Errorf("%d aborts, want 10", aborts)
-	}
-}
-
-// TestCopleyExtended runs the whole Copley logs (make captures-extended)
-// through the same checks, compares all 16,527 frames with Wireshark's
-// dissector (when tshark is installed) and requires the excerpts to be
-// verbatim lines of the logs.
-func TestCopleyExtended(t *testing.T) {
-	dir, ok := rec.ExtendedDir()
-	if !ok {
-		t.Skip("extended corpus not fetched: make captures-extended")
-	}
-	logs := map[string]string{
-		"absolute-move":         "copley/Absolute Move",
-		"relative-move":         "copley/Relative Move",
-		"linkage-home-and-move": "copley/Linkage Home and Move",
-		"pvt-move":              "copley/PVT Move",
-	}
-	var all []canbus.Frame
-	defer func() {
-		if bin, err := exec.LookPath("tshark"); err == nil && !t.Failed() {
-			compareWithWireshark(t, bin, all)
-		}
-	}()
-	for name, file := range logs {
-		recs, err := rec.ReadCopleyFile(filepath.Join(dir, file))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, r := range recs {
-			all = append(all, r.Frame)
-		}
-		msgs := checkLog(t, name, recs)
-		kinds := map[Kind]int{}
-		for _, m := range msgs {
-			kinds[m.Kind]++
-		}
-		t.Logf("%s: %d frames %v", name, len(recs), kinds)
-		if name == "relative-move" {
-			continue
-		}
-		ex, exRecs, err := rec.LoadExcerpt("copley/" + name + ".excerpt.json")
-		if err != nil {
-			t.Fatal(err)
-		}
-		at := map[int]rec.Record{}
-		for _, r := range recs {
-			at[r.Line] = r
-		}
-		for i, r := range exRecs {
-			if at[r.Line].Frame.String() != r.Frame.String() || at[r.Line].Micros != r.Micros {
-				t.Errorf("%s: excerpt line %d %q differs from the log", name, r.Line, ex.Raw[i].Text)
-			}
-		}
 	}
 }
