@@ -119,6 +119,11 @@ block transfer, a CiA 402 drive, a device built from an EDS and
 configured from a DCF, LSS node-ID assignment, a CANopen FD network, the
 CiA 302 network boot-up, and a node on SocketCAN.
 
+Recorded traffic of Copley Controls drives (expedited SDO, node
+guarding, PDOs, EMCY, CiA 402) tests the decoder, client, server and
+guarding against real devices' behaviour:
+[testdata/captures](testdata/captures/README.md).
+
 ## Documentation
 
 [API.md](API.md) · [ARCHITECTURE.md](ARCHITECTURE.md) ·

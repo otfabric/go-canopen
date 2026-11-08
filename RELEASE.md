@@ -5,6 +5,84 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.5.0
+
+**Date:** 2026-11-08
+**Previous release:** v0.4.1
+
+### Summary
+
+go-canopen is now tested against traffic recorded from real CANopen
+devices: the four message logs Copley Controls publishes of its drives
+(16,527 frames; three drives, five axes, identified in their 0x1018
+answers) and the drives' EDS, plus the Wireshark wiki's CANopen sample
+capture ([testdata/captures](testdata/captures/README.md)). The client
+sends every recorded SDO request byte for byte as the recorded master did
+and accepts every answer; the server answers every recorded request as
+the drive did; the guard master accepts every recorded node guarding
+answer. The recordings showed two decoder defects in `dissect.Tracker`
+and an EDS validator that called the vendor's EDS invalid.
+
+### Fixed
+
+- `dissect.Tracker`: a node guarding answer with the toggle bit clear was
+  decoded as a heartbeat, so half of the recorded drives' 460 answers
+  were heartbeats (`701 05` after `RTR 701`). The tracker now remembers
+  the request and decodes the answer as `KindGuardResponse` whatever its
+  toggle bit. `Decode`, which sees one frame, cannot tell them apart
+  (LIMITATIONS.md).
+- `eds.File.Validate`: a mappable VISIBLE_STRING, OCTET_STRING or
+  UNICODE_STRING was an error, so the Copley Accelnet EDS (15 such
+  objects) failed `HasErrors`. CiA 306 does not forbid it; it is now a
+  warning that this library cannot map the object. A mappable DOMAIN
+  stays an error.
+
+### Added
+
+- `dissect.Tracker` learns PDO COB-IDs from the SDO transfers it sees
+  (0x1400..0x15FF and 0x1800..0x19FF sub-index 1, expedited, downloads
+  once confirmed): frames on a learned COB-ID decode as that node's PDO,
+  with the new `dissect.PDO.Configured` set. The recorded drives send
+  their TPDO5 (the high-resolution time stamp 0x1013) on 0x180, which the
+  predefined connection set leaves unknown; when a TPDO and another
+  node's RPDO share a COB-ID, the frame is the TPDO. A COB-ID with bit 31
+  set forgets the PDO's identifier.
+- `testdata/captures`: excerpts of the Copley logs (the logs carry no
+  licence and are not redistributed), the Wireshark sample capture,
+  `manifest.json` (sources, evidence classes, devices, golden cases),
+  `scripts/fetch-captures.sh` and `make captures-extended` for the whole
+  logs and the EDS (hash-pinned, into `.cache/captures`).
+
+### Tests
+
+- `dissect`: every recorded frame decodes without error; SDO answers
+  belong to their requests; guard answers to guard requests; configured
+  PDOs; identity; emergencies; every committed frame (all 16,527 with
+  the extended corpus) equals Wireshark 4.6's CANopen dissector.
+- `sdo`: client and server replay of the recorded exchanges (all 1,101
+  extended, the server's types from the Copley EDS).
+- `nmt`: guard master against the recorded answers (first toggle bit 1);
+  the responder's life time against the drive's life guarding error
+  (600 ms).
+- `cia402`: the recorded state changes against the state diagram: fault
+  reset is transition 15; the drives' shortcut from Switch on disabled to
+  Operation enabled, which `Next` and `Drive` do not take, is pinned as
+  vendor behaviour.
+- `eds`: the Copley EDS validates and matches every recorded transfer's
+  object, access and size (extended).
+- Fuzz seeds from recorded frames for `dissect`, `sdo`, `nmt` and `emcy`.
+
+### Interoperability
+
+Recorded evidence covers expedited SDO, node guarding, PDOs, EMCY, SYNC
+and CiA 402 only; segmented and block SDO, aborts, heartbeat, LSS and
+MPDO remain verified against the software stacks of canopen-interop
+alone (INTEROPERABILITY.md). The go-canbus pcap reader reads the
+Wireshark sample's classical frames as CAN FD (0x7F in the FD flags byte
+of 16-byte records); the tests read it with their own reader.
+
+---
+
 ## v0.4.1
 
 **Date:** 2026-11-04

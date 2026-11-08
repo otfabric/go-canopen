@@ -46,6 +46,9 @@ func FuzzParseErrorControl(f *testing.F) {
 	f.Add(uint32(0x77F), uint8(0), []byte{0xFF})
 	f.Add(uint32(0x700), uint8(0), []byte{0x00})
 	f.Add(uint32(0x701), uint8(2), []byte{})
+	// Recorded Copley guard responses (testdata/captures).
+	f.Add(uint32(0x701), uint8(0), []byte{0x85})
+	f.Add(uint32(0x702), uint8(0), []byte{0x05})
 	f.Fuzz(func(t *testing.T, id uint32, flags uint8, data []byte) {
 		fr := fuzzFrame(id, flags, data)
 		node, st, toggle, err := ParseErrorControl(&fr)

@@ -31,6 +31,9 @@ func FuzzServer(f *testing.F) {
 	f.Add(serverSeed(blkInitUL(0x1000, 10, 20)))
 	f.Add(append(serverSeed(blkInitDL(idxDomain, 30, true), seg(1)), 6, 7))
 	f.Add([]byte{0, 0xE0, 0, 0, 0, 0, 0, 0, 0, 7})
+	// Requests a real master sent to Copley drives (testdata/captures).
+	f.Add(serverSeed(frame{0x40, 0x18, 0x10, 0x01}, frame{0x23, 0x00, 0x18, 0x01, 0x81, 0x01, 0x00, 0x80},
+		frame{0x2B, 0x40, 0x60, 0x00, 0x9F}, frame{0x2F, 0x60, 0x60, 0x00, 0x01}))
 	f.Fuzz(func(t *testing.T, in []byte) {
 		m, r := newMachine(testDict(t), 4096, 8)
 		for len(in) > 0 {
@@ -148,6 +151,9 @@ func FuzzClient(f *testing.F) {
 	f.Add(clientSeed(2, 1, muxFrame(0x60, idxDomain, 0, 0), seg(0x20), seg(0x30), seg(0x20)))
 	f.Add(clientSeed(3, 1, muxFrame(0xA4, idxDomain, 0, 2), frame{0xA2, 2, 2}, frame{0xA2, 1, 1}, frame{0xA1}))
 	f.Add(clientSeed(2, 0, abortFrame(idxDomain, 0, 0x06020000)))
+	// A Copley drive's answer with stale bytes after the one data byte
+	// (testdata/captures), addressed to the fuzzed object.
+	f.Add(clientSeed(0, 0, muxFrame(0x4F, idxDomain, 0, 0x800001FF)))
 	f.Fuzz(func(t *testing.T, data []byte) {
 		_, _ = fuzzClient(t, data)
 	})

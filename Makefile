@@ -4,7 +4,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help all build examples fmt fmt-check lint lint-ci vet vuln test test-vcan coverage coverage-check cover bench fuzz chaos e2e check clean generate generate-check coverpkg-check cross interop interop-images vcan-setup coverage-pkg-check docs-check
+.PHONY: captures-extended help all build examples fmt fmt-check lint lint-ci vet vuln test test-vcan coverage coverage-check cover bench fuzz chaos e2e check clean generate generate-check coverpkg-check cross interop interop-images vcan-setup coverage-pkg-check docs-check
 
 help: ## This help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -145,6 +145,10 @@ interop-images: ## Build the canopen-interop images from source as :dev (needs D
 	@rm -rf $(BIN_DIR)/canopen-interop && mkdir -p $(BIN_DIR)
 	@git clone -q --depth 1 --branch $(INTEROP_REF) https://github.com/otfabric/canopen-interop.git $(BIN_DIR)/canopen-interop
 	@$(MAKE) -C $(BIN_DIR)/canopen-interop images REGISTRY=ghcr.io/otfabric VERSION=dev
+
+captures-extended: ## Fetch the whole recorded logs (Copley Controls, hash-pinned, into .cache/captures) and run the capture tests on them
+	@./scripts/fetch-captures.sh
+	@CANOPEN_CAPTURES_DIR=$(CURDIR)/.cache/captures go test -count=1 -run 'Capture|Copley|Recorded|Wireshark' ./dissect ./sdo ./nmt ./cia402 ./eds ./internal/capture
 
 interop: ## Run the interop suite against the canopen-interop images (Linux, Docker, vcan0; writes bin/interop-report.json)
 	@mkdir -p $(BIN_DIR)

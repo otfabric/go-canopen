@@ -1,0 +1,61 @@
+{
+  "schema": "otfabric-capture-manifest-v1",
+  "acquired": "2026-11-08",
+  "sources": [
+    {
+      "id": "copley",
+      "class": "A",
+      "classReason": "Published by the drive vendor; every log holds the drives' own identity answers (0x1018: vendor 0x000000AB, Copley Controls' CiA vendor-ID, product codes 0x1100 and 0x1060, revision 0x00010004, serial numbers). The product name per code and the master software are not stated.",
+      "url": "https://github.com/CopleyControlsOfficial/CANopen-Message-Log-Examples",
+      "revision": "be9ed7055eb88a4b933788b3e05de62bcfe7b4b1",
+      "licence": "none stated (no licence file; the README invites customers to use the logs as a reference)",
+      "redistributed": false,
+      "committed": "excerpts only (copley/*.excerpt.json); the whole files are fetched by scripts/fetch-captures.sh",
+      "devices": [
+        {"logs": ["Absolute Move", "Relative Move"], "nodes": [1], "vendor": "0x000000AB", "product": "0x00001100", "revision": "0x00010004", "serial": "0x00E735B9"},
+        {"logs": ["Linkage Home and Move"], "nodes": [2, 3], "vendor": "0x000000AB", "product": "0x000011E0", "revision": "0x00010004", "serial": "0x003FCCA5", "note": "both nodes report the same serial number: most likely the two axes of one dual-axis drive"},
+        {"logs": ["PVT Move"], "nodes": [1, 2], "vendor": "0x000000AB", "product": "0x00001060", "revision": "0x00010004", "serial": "0x002FBB62", "note": "both nodes report the same serial number: most likely the two axes of one dual-axis drive"}
+      ],
+      "peer": "a CANopen master on CANview port 0 (software not stated)",
+      "files": [
+        {"name": "Absolute Move", "excerpt": "copley/absolute-move.excerpt.json", "size": 102131, "sha256": "48867c719f74f05c4025a2dc1c657d8a3b897851b4cb28a130a8b0751ade008c", "frames": 2274, "operations": "identity, PDO configuration and mapping, high-resolution time stamp TPDO on 0x180, SYNC producer configuration, node guarding and life guarding, fault reset, profile position move"},
+        {"name": "Relative Move", "excerpt": null, "size": 113555, "sha256": "272ee369bc8d2fb0f735e381446823ab64276b8406d91cb840bd4529d687eee6", "frames": 2464, "operations": "as Absolute Move, relative target"},
+        {"name": "Linkage Home and Move", "excerpt": "copley/linkage-home-and-move.excerpt.json", "size": 125466, "sha256": "f6b3ed19af2a38465c4ea4eaad8e481f9a4cf69c90eb2e7b980ffb7ccc9782ed", "frames": 2928, "operations": "two drives: TPDO/RPDO remapping over SDO, time stamp TPDO5 of drive 2 consumed by RPDO5 of drive 3, homing, coordinated move over RPDOs"},
+        {"name": "PVT Move", "excerpt": "copley/pvt-move.excerpt.json", "size": 443797, "sha256": "51af83d4d139cd9195aa68c27abe0d6066e9bdef3734de4e66f4232170cea357", "frames": 8861, "operations": "two drives: PVT segments over RPDO1 (manufacturer object 0x2010), position feedback over TPDO2"},
+        {"name": "CANopen.eds", "excerpt": null, "size": 120760, "sha256": "c0c06a698a4bff3ba8071add865dc4314759116fd948df6fedd9ba2a1ce492b7", "operations": "EDS of the Copley Controls Accelnet family (FileRevision 7, 2014-03-18)"}
+      ]
+    },
+    {
+      "id": "wireshark",
+      "class": "C",
+      "classReason": "Origin not stated; SocketCAN capture with microsecond timing and node-IDs 0x21, 0x33, 0x42, 0x63; no device identity in it.",
+      "url": "https://wiki.wireshark.org/uploads/__moin_import__/attachments/SampleCaptures/CANopen.pcap",
+      "mirror": "https://github.com/EmreEkin/ICS-Pcaps/blob/0ffbf023afb4e39373228b54851bb4a1f33a3ab8/CANopen/CANopen.pcap (byte-identical)",
+      "licence": "none stated; published as a sample capture for Wireshark's dissector",
+      "redistributed": true,
+      "files": [
+        {"name": "CANopen.pcap", "path": "wireshark/canopen-sample.pcap", "size": 1060, "sha256": "71a5d2a2cc89dacc6f99fcca1e5208857af3c498bb4cca785da95f1c232f5025", "frames": 34, "operations": "boot-up, NMT, SDO upload/download answered with aborts, upload segment, block upload, LSS identify non-configured slave"}
+      ]
+    },
+    {
+      "id": "ros-canopen-473",
+      "class": "B",
+      "classReason": "candump of a Lichuan servo drive on a Raspberry Pi 4B with a USB-CAN adapter, posted by the user; the device is not identified in the traffic.",
+      "url": "https://github.com/ros-industrial/ros_canopen/issues/473",
+      "redistributed": false,
+      "used": false,
+      "reason": "About 25 frames in candump's console format, truncated by the poster ('lots of 080'); no PDO mapping is shown, so its PDOs cannot be interpreted. It adds nothing the Copley logs do not show except a boot-up message and NMT reset communication, both covered by unit tests."
+    }
+  ],
+  "cases": [
+    {"id": "copley-identity", "source": "copley/absolute-move, copley/pvt-move", "lines": "303-315 (absolute), 724-734 (pvt)", "checks": "0x1018 uploads give vendor 0xAB and the product, revision and serial numbers", "tests": ["dissect TestCopleyIdentity", "sdo TestCaptureReplayClient", "sdo TestCaptureReplayServer"]},
+    {"id": "copley-sdo-exchanges", "source": "copley excerpts (whole logs extended)", "checks": "every request is answered on the same node and object with the matching command; the client sends the recorded requests byte for byte and accepts the answers; the server answers the recorded requests as the drive did", "dynamicFields": "values are device state: before each upload the server's object holds the value the drive answered; bytes after the indicated size of an expedited answer are undefined (CiA 301) and not compared (the drives leave stale bytes there)", "tests": ["dissect TestCopleyExcerpts", "sdo TestCaptureReplayClient", "sdo TestCaptureReplayServer", "sdo TestCaptureReplayExtended"]},
+    {"id": "copley-configured-pdo", "source": "copley/absolute-move lines 449-460, copley/linkage-home-and-move lines 161-174, 345-356", "checks": "TPDO5 on COB-ID 0x180 maps 0x1013 (high-resolution time stamp, microseconds); frames on it decode as that TPDO after the configuration is seen, not before", "tests": ["dissect TestCopleyConfiguredPDOs", "dissect TestTrackerConfiguredPDO"]},
+    {"id": "copley-node-guarding", "source": "copley excerpts", "checks": "every RTR on 0x700+node is answered with the state and an alternating toggle bit (first answer 0x85); guard time 200 ms, life time factor 3; life guarding error 0x8130 600 ms after the last request", "tests": ["dissect TestCopleyGuarding", "nmt TestCaptureGuardMaster", "nmt TestCaptureLifeGuarding"]},
+    {"id": "copley-emcy", "source": "copley/absolute-move lines 429, 1938, 1940", "checks": "error reset after NMT start; 0x8130 and 0x61FF with register 0x81", "tests": ["dissect TestCopleyEmergencies"]},
+    {"id": "copley-cia402", "source": "copley/absolute-move, copley/pvt-move", "checks": "statusword from TPDO1 with the mapping read over SDO; fault reset is transition 15; Enable operation in Switch on disabled goes to Operation enabled (no CiA 402 transition: vendor behaviour)", "tests": ["cia402 TestCaptureCopleyStateMachine", "cia402 TestCaptureDriveParity"]},
+    {"id": "copley-eds", "source": "copley/CANopen.eds (extended)", "checks": "the EDS validates without errors and every object the logs read or write is in it with a matching access type and size", "tests": ["eds TestCopleyEDS", "eds TestValidateMappedVariableLength"]},
+    {"id": "wireshark-sample", "source": "wireshark/canopen-sample.pcap", "checks": "34 frames decode with the counts of each kind Wireshark shows; 10 aborts", "tests": ["dissect TestWiresharkSampleCapture"]},
+    {"id": "wireshark-oracle", "source": "all committed frames (whole Copley logs extended)", "checks": "Decode equals Wireshark 4.6's CANopen dissector field by field", "tests": ["dissect TestRecordedFramesMatchWireshark", "dissect TestCopleyExtended"]}
+  ]
+}

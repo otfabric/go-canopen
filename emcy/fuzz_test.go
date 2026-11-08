@@ -11,6 +11,10 @@ import (
 
 func FuzzParseFrame(f *testing.F) {
 	f.Add(uint32(0x085), uint8(0), []byte{0x30, 0x81, 0x11, 1, 2, 3, 4, 5})
+	// Recorded from a Copley drive (testdata/captures): life guarding
+	// error and the manufacturer-specific 0x61FF, register 0x81.
+	f.Add(uint32(0x081), uint8(0), []byte{0x30, 0x81, 0x81, 0x00, 0x00, 0x40, 0x00, 0x00})
+	f.Add(uint32(0x081), uint8(0), []byte{0xFF, 0x61, 0x81, 0x00, 0x00, 0xC0, 0x00, 0x00})
 	f.Add(uint32(0x080), uint8(0), []byte{0x00, 0x10, 0x01})
 	f.Add(uint32(0x0FF), uint8(2), []byte{})
 	f.Add(uint32(0x1234567), uint8(1), []byte{0, 0, 0, 0, 0, 0, 0, 0, 0})
