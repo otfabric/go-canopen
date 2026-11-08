@@ -122,7 +122,7 @@ func pcapFile(order binary.ByteOrder, recs ...[]byte) []byte {
 }
 
 func TestReadSocketCANPCAP(t *testing.T) {
-	std := []byte{0, 0, 0x06, 0x42, 2, 0x7F, 0, 0, 0x40, 0x08} // FDF set in byte 5: still classical
+	std := []byte{0, 0, 0x06, 0x42, 2, 0x7F, 0, 0, 0x40, 0x08} // FDF set in byte 5: read as classical
 	ext := []byte{0x80, 0x01, 0x23, 0x45, 1, 0, 0, 0, 0xAA}    // 29-bit
 	rtr := []byte{0x40, 0, 0x07, 0x01, 1, 0, 0, 0}             // remote request, DLC 1
 	short := []byte{0, 0, 0x01, 0x81, 8, 0, 0, 0, 1, 2}        // DLC 8, 2 bytes recorded

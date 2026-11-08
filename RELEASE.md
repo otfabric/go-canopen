@@ -54,6 +54,14 @@ and an EDS validator that called the vendor's EDS invalid.
   golden cases). Every capture test runs on all 16,527 frames in every
   test run.
 
+### Dependencies
+
+- go-canbus v0.9.0 (from v0.8.0): its trace writers keep each
+  interface's channel, the candump writer can write direction tokens, and
+  an ISO-TP consecutive frame queued when N_Cr expires is no longer
+  dropped. go-canopen uses none of the changed functions; no change was
+  needed.
+
 ### Tests
 
 - `dissect`: every recorded frame decodes without error; SDO answers
@@ -85,9 +93,11 @@ the two recorded false positives unchanged.
 Recorded evidence covers expedited SDO, node guarding, PDOs, EMCY, SYNC
 and CiA 402 only; segmented and block SDO, aborts, heartbeat, LSS and
 MPDO remain verified against the software stacks of canopen-interop
-alone (INTEROPERABILITY.md). The go-canbus pcap reader reads the
-Wireshark sample's classical frames as CAN FD (0x7F in the FD flags byte
-of 16-byte records); the tests read it with their own reader.
+alone (INTEROPERABILITY.md). The Wireshark sample's writer left 0x7F in
+the FD flags byte of classical CANopen frames, so go-canbus and Wireshark
+read them as CAN FD as the link type defines; the tests read the file as
+classical frames with their own reader, since go-canopen decodes CAN FD
+frames on the SDO identifiers as USDO.
 
 ---
 

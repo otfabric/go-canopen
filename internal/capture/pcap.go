@@ -15,13 +15,17 @@ import (
 // 29-bit identifier with its RTR bit, the DLC and the data bytes the
 // record holds.
 //
-// It is not go-canbus's capture.PCAPReader on purpose. The Wireshark wiki's
-// CANopen sample capture has 0x7F in byte 5 of classical frames of 16
-// bytes or fewer, where a CAN FD frame has its flags; go-canbus reads them
-// as CAN FD frames because the FDF bit (0x04) is set, Wireshark 4.6 as
-// classical frames because a record of at most 16 bytes cannot hold a CAN
-// FD frame. This reader follows Wireshark, and refuses records longer
-// than 16 bytes (CAN FD) and error frames, which the corpus does not hold.
+// It is not go-canbus's capture.PCAPReader on purpose. The writer of the
+// Wireshark wiki's CANopen sample capture left 0x7F in byte 5 of most
+// records, the FD flags byte; with the FDF bit (0x04) set,
+// LINKTYPE_CAN_SOCKETCAN defines them as CAN FD frames, and go-canbus and
+// Wireshark 4.6.9 read them so. Their content is classical CANopen (8-byte
+// SDO frames, DLC 8 or less, 16-byte records), which Wireshark's CANopen
+// dissector, having no CANopen FD support, decodes as classical SDO; as
+// CAN FD frames go-canopen would decode them as USDO (CiA 1301). This
+// reader ignores byte 5 and reads every record as a classical frame, and
+// refuses records longer than 16 bytes and error frames, which the corpus
+// does not hold.
 func ReadSocketCANPCAP(b []byte) ([]canbus.Frame, error) {
 	if len(b) < 24 {
 		return nil, fmt.Errorf("pcap: %d bytes", len(b))
