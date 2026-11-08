@@ -2,6 +2,14 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.5.0 (2026-11-08)
+
+Tested against recorded traffic of real Copley Controls drives and their
+EDS. `dissect.Tracker` decodes node guarding answers with the toggle bit
+clear as guard responses (they were heartbeats) and learns PDO COB-IDs
+from SDO traffic (`PDO.Configured`); `eds.File.Validate` warns instead of
+failing on mappable string objects. go-canbus v0.9.0.
+
 ## v0.4.1 (2026-11-04)
 
 `sdo`: a segmented transfer retried on a bus that delays or reorders

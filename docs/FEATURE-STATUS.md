@@ -43,4 +43,6 @@ No independent oracle, tested against go-canopen itself only:
 | Store and restore parameters (0x1010, 0x1011) | contract 1.1 has no operation for it |
 | Program download of CiA 302-3 | contract 1.1 has no operation for it |
 
+Recorded traffic of real devices (Copley Controls drives; [testdata/captures](../testdata/captures/README.md), [INTEROPERABILITY.md](../INTEROPERABILITY.md#recorded-traffic-of-real-drives)): SDO expedited (client and server parity), node guarding and life guarding, PDOs on configured COB-IDs, EMCY, CiA 402 state changes, the vendor's EDS. Segmented and block SDO, heartbeat, LSS and MPDO have no recording of a real device.
+
 Other references, outside the matrix: Wireshark's CANopen dissector (`dissect/wireshark_test.go`) and python canopen's EDS reader (`eds/crosscheck_test.go`).

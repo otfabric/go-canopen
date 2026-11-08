@@ -1,0 +1,8278 @@
+; This file contains the CANopen Electronic Data Sheet for 
+; the Copley Controls Accelnet amplifier family.
+;
+; The EDS is a standard CANopen file format used to describe the
+; device's object dictionary.  It is used as part of the CANopen
+; test tool.
+
+[Comments]
+lines=0
+
+[FileInfo]
+FileName=COPLEYAMP.EDS
+FileVersion=1
+FileRevision=7
+EDSVersion=4.0
+Description=CANopen Electronic Datasheet
+CreationTime=09:00AM
+CreationDate=09-26-2002
+CreatedBy=Copley Controls Corp.
+ModificationTime=04:11PM
+ModificationDate=03-18-2014
+ModifiedBy=Copley Controls Corp.
+
+[DeviceInfo]
+VendorName=Copley Controls Corp.
+VendorNumber=0x000000AB
+ProductName=Accelnet
+ProductNumber=0
+RevisionNumber=0
+OrderCode=0
+BaudRate_10=0
+BaudRate_20=1
+BaudRate_50=1
+BaudRate_125=1
+BaudRate_250=1
+BaudRate_500=1
+BaudRate_800=1
+BaudRate_1000=1
+SimpleBootUpMaster=0
+SimpleBootUpSlave=1
+Granularity=0x8
+DynamicChannelsSupported=0
+GroupMessaging=0
+NrOfRXPDO=8
+NrOfTXPDO=8
+LSS_Supported=0
+
+[DummyUsage]
+Dummy0001=0
+Dummy0002=1
+Dummy0003=1
+Dummy0004=1
+Dummy0005=1
+Dummy0006=1
+Dummy0007=1
+
+[MandatoryObjects]
+SupportedObjects=3
+1=0x1000
+2=0x1001
+3=0x1018
+
+[1000]
+ParameterName=Device Type
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+DefaultValue=393618
+LowLimit=393618
+HighLimit=393618
+
+[1001]
+ParameterName=Error Register
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=1
+
+[1018]
+ParameterName=Identity Object
+ObjectType=8
+SubNumber=5
+
+[1018sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=4
+LowLimit=4
+HighLimit=4
+
+[1018sub1]
+ParameterName=CANopen Vendor ID
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+DefaultValue=171
+LowLimit=171
+HighLimit=171
+
+[1018sub2]
+ParameterName=Product Code
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1018sub3]
+ParameterName=Revision Number
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1018sub4]
+ParameterName=Serial number
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[OptionalObjects]
+SupportedObjects=144
+1=0x1002
+2=0x1003
+3=0x1005
+4=0x1006
+5=0x1008
+6=0x1009
+7=0x100a
+8=0x100c
+9=0x100d
+10=0x1010
+11=0x1013
+12=0x1014
+13=0x1015
+14=0x1017
+15=0x10f0
+16=0x1200
+17=0x1400
+18=0x1401
+19=0x1402
+20=0x1403
+21=0x1404
+22=0x1405
+23=0x1406
+24=0x1407
+25=0x1600
+26=0x1601
+27=0x1602
+28=0x1603
+29=0x1604
+30=0x1605
+31=0x1606
+32=0x1607
+33=0x1800
+34=0x1801
+35=0x1802
+36=0x1803
+37=0x1804
+38=0x1805
+39=0x1806
+40=0x1807
+41=0x1a00
+42=0x1a01
+43=0x1a02
+44=0x1a03
+45=0x1a04
+46=0x1a05
+47=0x1a06
+48=0x1a07
+49=0x6007
+50=0x603f
+51=0x6040
+52=0x6041
+53=0x605a
+54=0x605b
+55=0x605c
+56=0x605d
+57=0x605e
+58=0x6060
+59=0x6061
+60=0x6062
+61=0x6063
+62=0x6064
+63=0x6065
+64=0x6066
+65=0x6067
+66=0x6068
+67=0x6069
+68=0x606a
+69=0x606b
+70=0x606c
+71=0x606d
+72=0x606e
+73=0x606f
+74=0x6070
+75=0x6071
+76=0x6072
+77=0x6073
+78=0x6074
+79=0x6075
+80=0x6076
+81=0x6077
+82=0x6078
+83=0x607a
+84=0x607b
+85=0x607c
+86=0x607d
+87=0x607e
+88=0x607f
+89=0x6080
+90=0x6081
+91=0x6083
+92=0x6084
+93=0x6085
+94=0x6086
+95=0x6087
+96=0x6088
+97=0x608f
+98=0x6091
+99=0x6092
+100=0x6096
+101=0x6097
+102=0x6098
+103=0x6099
+104=0x609a
+105=0x60a2
+106=0x60a4
+107=0x60b0
+108=0x60b1
+109=0x60b2
+110=0x60b8
+111=0x60b9
+112=0x60ba
+113=0x60bb
+114=0x60bc
+115=0x60bd
+116=0x60c0
+117=0x60c1
+118=0x60c2
+119=0x60c5
+120=0x60c6
+121=0x60d0
+122=0x60d1
+123=0x60d2
+124=0x60d3
+125=0x60d4
+126=0x60ea
+127=0x60f4
+128=0x60f6
+129=0x60f8
+130=0x60f9
+131=0x60fa
+132=0x60fb
+133=0x60fc
+134=0x60fd
+135=0x60ff
+136=0x6403
+137=0x6404
+138=0x6410
+139=0x6502
+140=0x6503
+141=0x6504
+142=0x6505
+143=0x6510
+144=0x67ff
+
+[1002]
+ParameterName=Amplifier event word
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[1003]
+ParameterName=Pre-defined error object
+ObjectType=8
+SubNumber=9
+
+[1003sub0]
+ParameterName=Number of errors in error history
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[1003sub1]
+ParameterName=Standard error field 1
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1003sub2]
+ParameterName=Standard error field 2
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1003sub3]
+ParameterName=Standard error field 3
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1003sub4]
+ParameterName=Standard error field 4
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1003sub5]
+ParameterName=Standard error field 5
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1003sub6]
+ParameterName=Standard error field 6
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1003sub7]
+ParameterName=Standard error field 7
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1003sub8]
+ParameterName=Standard error field 8
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1005]
+ParameterName=COB-ID SYNC message
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=128
+
+[1006]
+ParameterName=Communication Cycle Period
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[1008]
+ParameterName=Amplifier model number
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[1009]
+ParameterName=Hardware version string
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[100a]
+ParameterName=Manufacturer Software Version
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[100c]
+ParameterName=Node Guarding time
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=65535
+
+[100d]
+ParameterName=Life Time Factor
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=255
+
+[1010]
+ParameterName=Store Parameters
+ObjectType=8
+SubNumber=5
+
+[1010sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=4
+LowLimit=4
+HighLimit=4
+
+[1010sub1]
+ParameterName=Save all parameters
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[1010sub2]
+ParameterName=Save communication parameters
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[1010sub3]
+ParameterName=Save application parameters
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[1010sub4]
+ParameterName=Save manufacturer defined parameters
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[1013]
+ParameterName=High resolution time stamp
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[1014]
+ParameterName=Emergency object ID
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[1015]
+ParameterName=Emergency object inhibit time
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[1017]
+ParameterName=Heartbeat Time
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=65535
+
+[10f0]
+ParameterName=Backup parameter info
+ObjectType=9
+SubNumber=2
+
+[10f0sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=1
+LowLimit=1
+HighLimit=1
+
+[10f0sub1]
+ParameterName=CRC of parameter storage
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[1200]
+ParameterName=Server SDO parameter
+ObjectType=9
+SubNumber=3
+
+[1200sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1200sub1]
+ParameterName=SDO COB-ID Client->Server
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+DefaultValue=$NODEID+1536
+LowLimit=$NODEID+1536
+HighLimit=$NODEID+1536
+
+[1200sub2]
+ParameterName=SDO COB-ID Server->Client
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+DefaultValue=$NODEID+1408
+LowLimit=$NODEID+1408
+HighLimit=$NODEID+1408
+
+[1400]
+ParameterName=Receive PDO 1 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1400sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1400sub1]
+ParameterName=COB-ID use by RPDO 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+512
+
+[1400sub2]
+ParameterName=Transmission type RPDO 1
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1401]
+ParameterName=Receive PDO 2 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1401sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1401sub1]
+ParameterName=COB-ID use by RPDO 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+768
+
+[1401sub2]
+ParameterName=Transmission type RPDO 2
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1402]
+ParameterName=Receive PDO 3 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1402sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1402sub1]
+ParameterName=COB-ID use by RPDO 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+1024
+
+[1402sub2]
+ParameterName=Transmission type RPDO 3
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1403]
+ParameterName=Receive PDO 4 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1403sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1403sub1]
+ParameterName=COB-ID use by RPDO 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+1280
+
+[1403sub2]
+ParameterName=Transmission type RPDO 4
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1404]
+ParameterName=Receive PDO 5 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1404sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1404sub1]
+ParameterName=COB-ID use by RPDO 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1404sub2]
+ParameterName=Transmission type RPDO 5
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1405]
+ParameterName=Receive PDO 6 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1405sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1405sub1]
+ParameterName=COB-ID use by RPDO 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1405sub2]
+ParameterName=Transmission type RPDO 6
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1406]
+ParameterName=Receive PDO 7 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1406sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1406sub1]
+ParameterName=COB-ID use by RPDO 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1406sub2]
+ParameterName=Transmission type RPDO 7
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1407]
+ParameterName=Receive PDO 8 Communication Parameter
+ObjectType=9
+SubNumber=3
+
+[1407sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1407sub1]
+ParameterName=COB-ID use by RPDO 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1407sub2]
+ParameterName=Transmission type RPDO 8
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1600]
+ParameterName=Receive PDO 1 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1600sub0]
+ParameterName=Number of mapped objects RPDO 1
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=0
+HighLimit=8
+
+[1600sub1]
+ParameterName=RPDO 1 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1600sub2]
+ParameterName=RPDO 1 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1600sub3]
+ParameterName=RPDO 1 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1600sub4]
+ParameterName=RPDO 1 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1600sub5]
+ParameterName=RPDO 1 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1600sub6]
+ParameterName=RPDO 1 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1600sub7]
+ParameterName=RPDO 1 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1600sub8]
+ParameterName=RPDO 1 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1601]
+ParameterName=Receive PDO 2 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1601sub0]
+ParameterName=Number of mapped objects RPDO 2
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1601sub1]
+ParameterName=RPDO 2 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1601sub2]
+ParameterName=RPDO 2 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1616904200
+
+[1601sub3]
+ParameterName=RPDO 2 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1601sub4]
+ParameterName=RPDO 2 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1601sub5]
+ParameterName=RPDO 2 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1601sub6]
+ParameterName=RPDO 2 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1601sub7]
+ParameterName=RPDO 2 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1601sub8]
+ParameterName=RPDO 2 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1602]
+ParameterName=Receive PDO 3 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1602sub0]
+ParameterName=Number of mapped objects RPDO 3
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1602sub1]
+ParameterName=RPDO 3 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1602sub2]
+ParameterName=RPDO 3 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1618608160
+
+[1602sub3]
+ParameterName=RPDO 3 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1602sub4]
+ParameterName=RPDO 3 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1602sub5]
+ParameterName=RPDO 3 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1602sub6]
+ParameterName=RPDO 3 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1602sub7]
+ParameterName=RPDO 3 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1602sub8]
+ParameterName=RPDO 3 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1603]
+ParameterName=Receive PDO 4 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1603sub0]
+ParameterName=Number of mapped objects RPDO 4
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1603sub1]
+ParameterName=RPDO 4 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1603sub2]
+ParameterName=RPDO 4 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1627324448
+
+[1603sub3]
+ParameterName=RPDO 4 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1603sub4]
+ParameterName=RPDO 4 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1603sub5]
+ParameterName=RPDO 4 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1603sub6]
+ParameterName=RPDO 4 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1603sub7]
+ParameterName=RPDO 4 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1603sub8]
+ParameterName=RPDO 4 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1604]
+ParameterName=Receive PDO 5 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1604sub0]
+ParameterName=Number of mapped objects RPDO 5
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1604sub1]
+ParameterName=RPDO 5 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1604sub2]
+ParameterName=RPDO 5 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1618018320
+
+[1604sub3]
+ParameterName=RPDO 5 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1604sub4]
+ParameterName=RPDO 5 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1604sub5]
+ParameterName=RPDO 5 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1604sub6]
+ParameterName=RPDO 5 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1604sub7]
+ParameterName=RPDO 5 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1604sub8]
+ParameterName=RPDO 5 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1605]
+ParameterName=Receive PDO 6 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1605sub0]
+ParameterName=Number of mapped objects RPDO 6
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=0
+HighLimit=8
+
+[1605sub1]
+ParameterName=RPDO 6 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1605sub2]
+ParameterName=RPDO 6 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1605sub3]
+ParameterName=RPDO 6 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1605sub4]
+ParameterName=RPDO 6 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1605sub5]
+ParameterName=RPDO 6 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1605sub6]
+ParameterName=RPDO 6 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1605sub7]
+ParameterName=RPDO 6 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1605sub8]
+ParameterName=RPDO 6 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1606]
+ParameterName=Receive PDO 7 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1606sub0]
+ParameterName=Number of mapped objects RPDO 7
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=0
+HighLimit=8
+
+[1606sub1]
+ParameterName=RPDO 7 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1606sub2]
+ParameterName=RPDO 7 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1606sub3]
+ParameterName=RPDO 7 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1606sub4]
+ParameterName=RPDO 7 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1606sub5]
+ParameterName=RPDO 7 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1606sub6]
+ParameterName=RPDO 7 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1606sub7]
+ParameterName=RPDO 7 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1606sub8]
+ParameterName=RPDO 7 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1607]
+ParameterName=Receive PDO 8 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1607sub0]
+ParameterName=Number of mapped objects RPDO 8
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1607sub1]
+ParameterName=RPDO 8 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614807056
+
+[1607sub2]
+ParameterName=RPDO 8 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1616904200
+
+[1607sub3]
+ParameterName=RPDO 8 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1607sub4]
+ParameterName=RPDO 8 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1607sub5]
+ParameterName=RPDO 8 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1607sub6]
+ParameterName=RPDO 8 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1607sub7]
+ParameterName=RPDO 8 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1607sub8]
+ParameterName=RPDO 8 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1800]
+ParameterName=Transmit PDO 1 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1800sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1800sub1]
+ParameterName=COB-ID use by TPDO 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+384
+
+[1800sub2]
+ParameterName=Transmission type TPDO 1
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1801]
+ParameterName=Transmit PDO 2 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1801sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1801sub1]
+ParameterName=COB-ID use by TPDO 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+640
+
+[1801sub2]
+ParameterName=Transmission type TPDO 2
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1802]
+ParameterName=Transmit PDO 3 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1802sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1802sub1]
+ParameterName=COB-ID use by TPDO 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+896
+
+[1802sub2]
+ParameterName=Transmission type TPDO 3
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=255
+
+[1803]
+ParameterName=Transmit PDO 4 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1803sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1803sub1]
+ParameterName=COB-ID use by TPDO 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=$NODEID+1152
+
+[1803sub2]
+ParameterName=Transmission type TPDO 4
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=255
+
+[1804]
+ParameterName=Transmit PDO 5 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1804sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1804sub1]
+ParameterName=COB-ID use by TPDO 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1804sub2]
+ParameterName=Transmission type TPDO 5
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=255
+
+[1805]
+ParameterName=Transmit PDO 6 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1805sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1805sub1]
+ParameterName=COB-ID use by TPDO 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1805sub2]
+ParameterName=Transmission type TPDO 6
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=255
+
+[1806]
+ParameterName=Transmit PDO 7 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1806sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1806sub1]
+ParameterName=COB-ID use by TPDO 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1806sub2]
+ParameterName=Transmission type TPDO 7
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=255
+LowLimit=0
+HighLimit=255
+
+[1807]
+ParameterName=Transmit PDO 8 communication parameters
+ObjectType=9
+SubNumber=3
+
+[1807sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[1807sub1]
+ParameterName=COB-ID use by TPDO 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=2147483648
+
+[1807sub2]
+ParameterName=Transmission type TPDO 8
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=255
+
+[1a00]
+ParameterName=Transmit PDO 1 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a00sub0]
+ParameterName=Number of mapped objects TPDO 1
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=0
+HighLimit=8
+
+[1a00sub1]
+ParameterName=TPDO 1 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614872592
+
+[1a00sub2]
+ParameterName=TPDO 1 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a00sub3]
+ParameterName=TPDO 1 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a00sub4]
+ParameterName=TPDO 1 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a00sub5]
+ParameterName=TPDO 1 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a00sub6]
+ParameterName=TPDO 1 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a00sub7]
+ParameterName=TPDO 1 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a00sub8]
+ParameterName=TPDO 1 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a01]
+ParameterName=Transmit PDO 2 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a01sub0]
+ParameterName=Number of mapped objects TPDO 2
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1a01sub1]
+ParameterName=TPDO 2 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614872592
+
+[1a01sub2]
+ParameterName=TPDO 2 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1616969736
+
+[1a01sub3]
+ParameterName=TPDO 2 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a01sub4]
+ParameterName=TPDO 2 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a01sub5]
+ParameterName=TPDO 2 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a01sub6]
+ParameterName=TPDO 2 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a01sub7]
+ParameterName=TPDO 2 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a01sub8]
+ParameterName=TPDO 2 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a02]
+ParameterName=Transmit PDO 3 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a02sub0]
+ParameterName=Number of mapped objects TPDO 3
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1a02sub1]
+ParameterName=TPDO 3 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614872592
+
+[1a02sub2]
+ParameterName=TPDO 3 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1617166368
+
+[1a02sub3]
+ParameterName=TPDO 3 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a02sub4]
+ParameterName=TPDO 3 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a02sub5]
+ParameterName=TPDO 3 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a02sub6]
+ParameterName=TPDO 3 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a02sub7]
+ParameterName=TPDO 3 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a02sub8]
+ParameterName=TPDO 3 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a03]
+ParameterName=Transmit PDO 4 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a03sub0]
+ParameterName=Number of mapped objects TPDO 4
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1a03sub1]
+ParameterName=TPDO 4 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614872592
+
+[1a03sub2]
+ParameterName=TPDO 4 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1617690656
+
+[1a03sub3]
+ParameterName=TPDO 4 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a03sub4]
+ParameterName=TPDO 4 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a03sub5]
+ParameterName=TPDO 4 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a03sub6]
+ParameterName=TPDO 4 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a03sub7]
+ParameterName=TPDO 4 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a03sub8]
+ParameterName=TPDO 4 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a04]
+ParameterName=Transmit PDO 5 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a04sub0]
+ParameterName=Number of mapped objects TPDO 5
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1a04sub1]
+ParameterName=TPDO 5 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614872592
+
+[1a04sub2]
+ParameterName=TPDO 5 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1618411536
+
+[1a04sub3]
+ParameterName=TPDO 5 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a04sub4]
+ParameterName=TPDO 5 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a04sub5]
+ParameterName=TPDO 5 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a04sub6]
+ParameterName=TPDO 5 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a04sub7]
+ParameterName=TPDO 5 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a04sub8]
+ParameterName=TPDO 5 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a05]
+ParameterName=Transmit PDO 6 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a05sub0]
+ParameterName=Number of mapped objects TPDO 6
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=0
+HighLimit=8
+
+[1a05sub1]
+ParameterName=TPDO 6 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614872592
+
+[1a05sub2]
+ParameterName=TPDO 6 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a05sub3]
+ParameterName=TPDO 6 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a05sub4]
+ParameterName=TPDO 6 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a05sub5]
+ParameterName=TPDO 6 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a05sub6]
+ParameterName=TPDO 6 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a05sub7]
+ParameterName=TPDO 6 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a05sub8]
+ParameterName=TPDO 6 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a06]
+ParameterName=Transmit PDO 7 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a06sub0]
+ParameterName=Number of mapped objects TPDO 7
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=2
+LowLimit=0
+HighLimit=8
+
+[1a06sub1]
+ParameterName=TPDO 7 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1614872592
+
+[1a06sub2]
+ParameterName=TPDO 7 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=1627193376
+
+[1a06sub3]
+ParameterName=TPDO 7 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a06sub4]
+ParameterName=TPDO 7 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a06sub5]
+ParameterName=TPDO 7 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a06sub6]
+ParameterName=TPDO 7 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a06sub7]
+ParameterName=TPDO 7 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a06sub8]
+ParameterName=TPDO 7 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07]
+ParameterName=Transmit PDO 8 mapping parameter
+ObjectType=9
+SubNumber=9
+
+[1a07sub0]
+ParameterName=Number of mapped objects TPDO 8
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=8
+
+[1a07sub1]
+ParameterName=TPDO 8 mapping information 1
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07sub2]
+ParameterName=TPDO 8 mapping information 2
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07sub3]
+ParameterName=TPDO 8 mapping information 3
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07sub4]
+ParameterName=TPDO 8 mapping information 4
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07sub5]
+ParameterName=TPDO 8 mapping information 5
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07sub6]
+ParameterName=TPDO 8 mapping information 6
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07sub7]
+ParameterName=TPDO 8 mapping information 7
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[1a07sub8]
+ParameterName=TPDO 8 mapping information 8
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+
+[6007]
+ParameterName=CANopen abort option code
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[603f]
+ParameterName=Last error code
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[6040]
+ParameterName=Control word
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[6041]
+ParameterName=Status word
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[605a]
+ParameterName=Quick stop option code
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[605b]
+ParameterName=Shutdown option code
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[605c]
+ParameterName=Disable option code
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[605d]
+ParameterName=Halt option code
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[605e]
+ParameterName=Fault reaction option code
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[6060]
+ParameterName=Modes of operation
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[6061]
+ParameterName=Modes of operation display
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=1
+
+[6062]
+ParameterName=Commanded position
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[6063]
+ParameterName=Actual motor position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[6064]
+ParameterName=Actual motor position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[6065]
+ParameterName=Tracking warning distance
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[6066]
+ParameterName=Tracking warning timeout
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[6067]
+ParameterName=Tracking window distance
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[6068]
+ParameterName=Tracking window time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[6069]
+ParameterName=Actual motor velocity
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[606a]
+ParameterName=Velocity sensor selection
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[606b]
+ParameterName=Commanded velocity
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[606c]
+ParameterName=Actual motor velocity
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[606d]
+ParameterName=Velocity window (16-bit version)
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[606e]
+ParameterName=Velocity window time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[606f]
+ParameterName=Velocity threshold
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[6070]
+ParameterName=Velocity threshold time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[6071]
+ParameterName=Target Torque
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[6072]
+ParameterName=Max Torque
+ObjectType=7
+DataType=6
+AccessType=RWR
+PDOMapping=1
+
+[6073]
+ParameterName=Max Current
+ObjectType=7
+DataType=6
+AccessType=RWR
+PDOMapping=1
+
+[6074]
+ParameterName=Torque demand value
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[6075]
+ParameterName=Motor rated current
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6076]
+ParameterName=Motor rated torque
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6077]
+ParameterName=Torque actual value
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[6078]
+ParameterName=Current actual value
+ObjectType=7
+DataType=3
+AccessType=RWR
+PDOMapping=1
+
+[607a]
+ParameterName=Profile target position
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[607b]
+ParameterName=Position range limit
+ObjectType=8
+SubNumber=3
+
+[607bsub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[607bsub1]
+ParameterName=Minimum position range limit
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[607bsub2]
+ParameterName=Maximum position range limit
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[607c]
+ParameterName=Homing offset
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[607d]
+ParameterName=Software position limits
+ObjectType=8
+SubNumber=3
+
+[607dsub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[607dsub1]
+ParameterName=Negative software limit position
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[607dsub2]
+ParameterName=Positive software limit position
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[607e]
+ParameterName=Factor group polarity
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[607f]
+ParameterName=Max profile velocity
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[6080]
+ParameterName=Maximum Motor Speed
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6081]
+ParameterName=Profile target velocity
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[6083]
+ParameterName=Profile target acceleration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[6084]
+ParameterName=Profile target deceleration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[6085]
+ParameterName=Profile abort acceleration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[6086]
+ParameterName=Motion profile type
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[6087]
+ParameterName=Torque slope
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[6088]
+ParameterName=Torque profile type
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[608f]
+ParameterName=Position encoder resolution
+ObjectType=8
+SubNumber=3
+
+[608fsub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[608fsub1]
+ParameterName=Encoder Increments
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[608fsub2]
+ParameterName=Motor Revolutions
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6091]
+ParameterName=Gear Ratio
+ObjectType=8
+SubNumber=3
+
+[6091sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[6091sub1]
+ParameterName=Motor shaft revolutions
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6091sub2]
+ParameterName=Drive shaft revolutions
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6092]
+ParameterName=Feed constant
+ObjectType=8
+SubNumber=3
+
+[6092sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[6092sub1]
+ParameterName=Feed
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6092sub2]
+ParameterName=Shaft revolutions
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6096]
+ParameterName=Velocity factor
+ObjectType=8
+SubNumber=3
+
+[6096sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[6096sub1]
+ParameterName=Velocity factor numerator
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6096sub2]
+ParameterName=Velocity factor divisor
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6097]
+ParameterName=Acceleration factor
+ObjectType=8
+SubNumber=3
+
+[6097sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[6097sub1]
+ParameterName=Acceleratoin factor numerator
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6097sub2]
+ParameterName=Acceleration factor divisor
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6098]
+ParameterName=Homing method
+ObjectType=7
+DataType=2
+AccessType=RWW
+PDOMapping=1
+
+[6099]
+ParameterName=Homing speeds
+ObjectType=8
+SubNumber=3
+
+[6099sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[6099sub1]
+ParameterName=Homing velocity (fast)
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[6099sub2]
+ParameterName=Homing velocity (slow)
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[609a]
+ParameterName=Homing acceleration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[60a2]
+ParameterName=Jerk factor
+ObjectType=8
+SubNumber=3
+
+[60a2sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[60a2sub1]
+ParameterName=Jerk factor numerator
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[60a2sub2]
+ParameterName=Jerk factor divisor
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[60a4]
+ParameterName=Profile Jerk
+ObjectType=8
+SubNumber=2
+
+[60a4sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=1
+LowLimit=1
+HighLimit=1
+
+[60a4sub1]
+ParameterName=Profile Jerk 1
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[60b0]
+ParameterName=Position offset
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[60b1]
+ParameterName=Velocity offset
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[60b2]
+ParameterName=Torque offset
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[60b8]
+ParameterName=Touch probe function
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60b9]
+ParameterName=Touch probe status
+ObjectType=7
+DataType=6
+AccessType=RWR
+PDOMapping=1
+
+[60ba]
+ParameterName=Touch probe pos1 pos value
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[60bb]
+ParameterName=Touch probe pos1 neg value
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[60bc]
+ParameterName=Touch probe pos2 pos value
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[60bd]
+ParameterName=Touch probe pos2 neg value
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[60c0]
+ParameterName=Interpolation submode select
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[60c1]
+ParameterName=Interpolation data record
+ObjectType=9
+SubNumber=4
+
+[60c1sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=3
+LowLimit=3
+HighLimit=3
+
+[60c1sub1]
+ParameterName=Interpolated position value
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[60c1sub2]
+ParameterName=Interpolated time value
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[60c1sub3]
+ParameterName=Interpolated velocity value
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[60c2]
+ParameterName=Interpolation time period
+ObjectType=9
+SubNumber=3
+
+[60c2sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[60c2sub1]
+ParameterName=Interpolation time value
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[60c2sub2]
+ParameterName=Interpolation time units
+ObjectType=7
+DataType=2
+AccessType=RWW
+PDOMapping=1
+
+[60c5]
+ParameterName=Maximum Acceleration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[60c6]
+ParameterName=Maximum Deceleration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[60d0]
+ParameterName=Touch probe source
+ObjectType=9
+SubNumber=3
+
+[60d0sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=2
+LowLimit=2
+HighLimit=2
+
+[60d0sub1]
+ParameterName=Touch probe 1 source
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[60d0sub2]
+ParameterName=Touch probe 2 source
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[60d1]
+ParameterName=Touch probe time1 pos
+ObjectType=7
+DataType=7
+AccessType=RWR
+PDOMapping=1
+
+[60d2]
+ParameterName=Touch probe time1 neg
+ObjectType=7
+DataType=7
+AccessType=RWR
+PDOMapping=1
+
+[60d3]
+ParameterName=Touch probe time2 pos
+ObjectType=7
+DataType=7
+AccessType=RWR
+PDOMapping=1
+
+[60d4]
+ParameterName=Touch probe time2 neg
+ObjectType=7
+DataType=7
+AccessType=RWR
+PDOMapping=1
+
+[60ea]
+ParameterName=Commutation angle
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60f4]
+ParameterName=Position loop error.
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[60f6]
+ParameterName=Current loop control parameters
+ObjectType=9
+SubNumber=4
+
+[60f6sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=3
+LowLimit=3
+HighLimit=3
+
+[60f6sub1]
+ParameterName=Proportional gain for current loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60f6sub2]
+ParameterName=Integral gain for current loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60f6sub3]
+ParameterName=Current offset value
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[60f8]
+ParameterName=Tracking warning distance
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[60f9]
+ParameterName=Velocity control parameters
+ObjectType=9
+SubNumber=7
+
+[60f9sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=6
+LowLimit=6
+HighLimit=6
+
+[60f9sub1]
+ParameterName=Proportional gain for velocity loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60f9sub2]
+ParameterName=Integral gain for velocity loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60f9sub3]
+ParameterName=Velocity loop acceleration feed forward
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60f9sub4]
+ParameterName=Shift value for velocity loop gain
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=-2
+HighLimit=10
+
+[60f9sub5]
+ParameterName=Integral drain for velocity loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60f9sub6]
+ParameterName=Velocity loop command feed forward
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[60fa]
+ParameterName=Commanded velocity
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[60fb]
+ParameterName=Position control parameter set
+ObjectType=9
+SubNumber=8
+
+[60fbsub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=7
+LowLimit=7
+HighLimit=7
+
+[60fbsub1]
+ParameterName=Proportional gain for position loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60fbsub2]
+ParameterName=Velocity feed forward for position loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60fbsub3]
+ParameterName=Acceleration feed forward for position loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[60fbsub4]
+ParameterName=Position loop scaling factor
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+DefaultValue=100
+LowLimit=1
+HighLimit=25000
+
+[60fbsub5]
+ParameterName=Integral gain for position loop
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[60fbsub6]
+ParameterName=Derivitive gain for position loop
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[60fbsub7]
+ParameterName=Integral drain for position loop
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[60fc]
+ParameterName=Commanded position
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[60fd]
+ParameterName=Digital input line status
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[60ff]
+ParameterName=Target velocity
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[6403]
+ParameterName=Motor model number
+ObjectType=7
+DataType=9
+AccessType=RW
+PDOMapping=0
+
+[6404]
+ParameterName=Motor manufacturer
+ObjectType=7
+DataType=9
+AccessType=RW
+PDOMapping=0
+
+[6410]
+ParameterName=Motor data
+ObjectType=9
+SubNumber=35
+
+[6410sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=34
+LowLimit=34
+HighLimit=34
+
+[6410sub1]
+ParameterName=Motor type
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6410sub2]
+ParameterName=Motor pole pairs
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub3]
+ParameterName=Motor wiring reversed
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6410sub4]
+ParameterName=Motor hall type
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub5]
+ParameterName=Motor hall wiring
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub6]
+ParameterName=Motor hall offset
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=-180
+HighLimit=180
+
+[6410sub7]
+ParameterName=Motor resistance
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub8]
+ParameterName=Motor inductance
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub9]
+ParameterName=Motor intertia
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6410suba]
+ParameterName=Motor back EMF constant
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6410subb]
+ParameterName=Motor max velocity
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[6410subc]
+ParameterName=Motor torque constant
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6410subd]
+ParameterName=Motor peak torque
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6410sube]
+ParameterName=Motor continuous torque
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6410subf]
+ParameterName=Motor has temp sensor
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6410sub10]
+ParameterName=Motor has brake
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6410sub11]
+ParameterName=Delay from error to brake active
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6410sub12]
+ParameterName=Delay from brake to PWM disable
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6410sub13]
+ParameterName=Velocity where brake may be activated without delay
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[6410sub14]
+ParameterName=Motor encoder type
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=7
+
+[6410sub15]
+ParameterName=Encoder units
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub16]
+ParameterName=Encoder direction
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6410sub17]
+ParameterName=Encoder counts per rev
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6410sub18]
+ParameterName=Encoder resolution
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub19]
+ParameterName=Encoder electrical distance (linear only)
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6410sub1a]
+ParameterName=Encoder index pulse distance
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6410sub1b]
+ParameterName=Motor Units
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub1c]
+ParameterName=Shift amount for analog encoder
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=10
+
+[6410sub1d]
+ParameterName=Microstepping resolution
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[6410sub1e]
+ParameterName=Load encoder type
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=5
+
+[6410sub1f]
+ParameterName=Load encoder direction
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[6410sub20]
+ParameterName=Load encoder resolution
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=1
+HighLimit=2147483647
+
+[6410sub21]
+ParameterName=Motor gear ratio
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[6410sub22]
+ParameterName=Resolver cycles / rev
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=1
+HighLimit=8
+
+[6502]
+ParameterName=Supported drive modes
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+DefaultValue=1005
+LowLimit=1005
+HighLimit=1005
+
+[6503]
+ParameterName=Amplifier model number
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[6504]
+ParameterName=Drive manufacturer
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[6505]
+ParameterName=Drive manufacturer web address
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[6510]
+ParameterName=Drive Data
+ObjectType=9
+SubNumber=31
+
+[6510sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=30
+LowLimit=30
+HighLimit=30
+
+[6510sub1]
+ParameterName=Serial number
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[6510sub2]
+ParameterName=Amplifier manufacturing info
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[6510sub3]
+ParameterName=Amplifier peak current limit
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub4]
+ParameterName=Amplifier continuous current limit
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub5]
+ParameterName=Amplifer time at peak current
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[6510sub6]
+ParameterName=Amplifier maximum voltage
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub7]
+ParameterName=Amplifier minimum voltage
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub8]
+ParameterName=Amplifier over voltage hysteresis
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub9]
+ParameterName=Amplifier maximum temperature
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510suba]
+ParameterName=Amplifier temperature hysteresis
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510subb]
+ParameterName=Amplifier PWM period
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6510subc]
+ParameterName=Amplifier Servo period
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[6510subd]
+ParameterName=Amplifier hardware type
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sube]
+ParameterName=Amplifier current scaler
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510subf]
+ParameterName=Amplifier voltage scaler
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub10]
+ParameterName=Analog reference scaling factor
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub11]
+ParameterName=minimum PWM off time
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[6510sub12]
+ParameterName=PWM Deadtime at continuous limit
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[6510sub13]
+ParameterName=PWM Deadtime at zero current
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[6510sub14]
+ParameterName=Regen transister peak current
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub15]
+ParameterName=Regen transister continuous current
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub16]
+ParameterName=Regen transister time at peak current
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[6510sub17]
+ParameterName=Amplifier analog encoder scaling factor
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub18]
+ParameterName=Firmware version number
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub19]
+ParameterName=Max axes supported by amplifier
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub1a]
+ParameterName=Amp regen transistor current limit
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub1b]
+ParameterName=FPGA image version number
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[6510sub1c]
+ParameterName=NIOS processor firmware version
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[6510sub1d]
+ParameterName=Misc hardware options
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[6510sub1e]
+ParameterName=Current level for minimum PWM Deadtime
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[67ff]
+ParameterName=Device Type
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+DefaultValue=459154
+LowLimit=459154
+HighLimit=459154
+
+[ManufacturerObjects]
+SupportedObjects=227
+1=0x2000
+2=0x2001
+3=0x2002
+4=0x2010
+5=0x2011
+6=0x2012
+7=0x2013
+8=0x2080
+9=0x2100
+10=0x2101
+11=0x2102
+12=0x2103
+13=0x2104
+14=0x2105
+15=0x2106
+16=0x2107
+17=0x2108
+18=0x2109
+19=0x210a
+20=0x210b
+21=0x210c
+22=0x210d
+23=0x2110
+24=0x2111
+25=0x2112
+26=0x2113
+27=0x2114
+28=0x2115
+29=0x2116
+30=0x2117
+31=0x2120
+32=0x2121
+33=0x2122
+34=0x2123
+35=0x2140
+36=0x2141
+37=0x2142
+38=0x2150
+39=0x2151
+40=0x2152
+41=0x2153
+42=0x2154
+43=0x2155
+44=0x2156
+45=0x2157
+46=0x2160
+47=0x2161
+48=0x2162
+49=0x2163
+50=0x2164
+51=0x2165
+52=0x2180
+53=0x2181
+54=0x2182
+55=0x2183
+56=0x2184
+57=0x2185
+58=0x2190
+59=0x2191
+60=0x2192
+61=0x2193
+62=0x2194
+63=0x2195
+64=0x2196
+65=0x2197
+66=0x2198
+67=0x2199
+68=0x219a
+69=0x219b
+70=0x219c
+71=0x219d
+72=0x21a0
+73=0x21a1
+74=0x21a2
+75=0x21a3
+76=0x21b0
+77=0x21b1
+78=0x21b2
+79=0x21b3
+80=0x21b4
+81=0x21c0
+82=0x21c1
+83=0x21c2
+84=0x21c3
+85=0x21c4
+86=0x21d0
+87=0x21d1
+88=0x21d2
+89=0x21d5
+90=0x21d6
+91=0x21d7
+92=0x21d8
+93=0x21e0
+94=0x21e1
+95=0x2200
+96=0x2201
+97=0x2202
+98=0x2203
+99=0x2204
+100=0x2205
+101=0x2206
+102=0x2207
+103=0x2208
+104=0x2209
+105=0x220a
+106=0x220b
+107=0x220c
+108=0x220d
+109=0x220e
+110=0x220f
+111=0x2210
+112=0x2211
+113=0x2212
+114=0x2213
+115=0x2214
+116=0x2215
+117=0x2216
+118=0x2217
+119=0x2218
+120=0x2219
+121=0x221a
+122=0x221b
+123=0x221c
+124=0x221d
+125=0x221e
+126=0x2220
+127=0x2221
+128=0x2222
+129=0x2223
+130=0x2224
+131=0x2225
+132=0x2226
+133=0x2227
+134=0x2230
+135=0x2231
+136=0x2232
+137=0x2240
+138=0x2241
+139=0x2242
+140=0x2250
+141=0x2251
+142=0x2252
+143=0x2253
+144=0x2254
+145=0x2255
+146=0x2260
+147=0x2261
+148=0x2262
+149=0x2263
+150=0x2300
+151=0x2301
+152=0x2310
+153=0x2311
+154=0x2312
+155=0x2313
+156=0x2314
+157=0x2315
+158=0x2320
+159=0x2321
+160=0x2322
+161=0x2323
+162=0x2324
+163=0x2325
+164=0x2326
+165=0x2327
+166=0x2328
+167=0x2329
+168=0x232a
+169=0x2330
+170=0x2331
+171=0x2332
+172=0x2333
+173=0x2340
+174=0x2341
+175=0x2350
+176=0x2351
+177=0x2352
+178=0x2353
+179=0x2360
+180=0x2361
+181=0x2362
+182=0x2363
+183=0x2370
+184=0x2371
+185=0x2378
+186=0x2379
+187=0x237a
+188=0x2380
+189=0x2381
+190=0x2382
+191=0x2383
+192=0x2384
+193=0x2400
+194=0x2401
+195=0x2402
+196=0x2403
+197=0x2404
+198=0x2405
+199=0x2406
+200=0x2408
+201=0x2409
+202=0x240a
+203=0x240b
+204=0x240c
+205=0x240d
+206=0x2410
+207=0x2411
+208=0x2420
+209=0x2421
+210=0x2422
+211=0x2500
+212=0x2501
+213=0x2502
+214=0x2503
+215=0x2504
+216=0x2505
+217=0x2506
+218=0x2507
+219=0x2508
+220=0x2509
+221=0x250a
+222=0x250b
+223=0x250c
+224=0x2600
+225=0x5040
+226=0x5041
+227=0x5042
+
+[2000]
+ParameterName=Serial command handler
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2001]
+ParameterName=Flash program updater
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2002]
+ParameterName=PDO request object
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2010]
+ParameterName=PVT Buffer data
+ObjectType=7
+DataType=27
+AccessType=RWW
+PDOMapping=1
+
+[2011]
+ParameterName=PVT buffer count
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[2012]
+ParameterName=PVT buffer status
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[2013]
+ParameterName=PVT segment ID
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[2080]
+ParameterName=Amplifier scaling info
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[2100]
+ParameterName=Velocity loop acceleration limit
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2101]
+ParameterName=Velocity loop deceleration limit
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2102]
+ParameterName=Velocity loop e-stop decel limit
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2103]
+ParameterName=Velocity loop velocity limit
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[2104]
+ParameterName=Velocity window
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[2105]
+ParameterName=Velocity window time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2106]
+ParameterName=Velocity loop output filter coefficients
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[2107]
+ParameterName=Hall velocity mode shift value
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=8
+
+[2108]
+ParameterName=Velocity loop command filter coefficients
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[2109]
+ParameterName=Analog reference input filter
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[210a]
+ParameterName=Velocity loop output filter coefficients (2)
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[210b]
+ParameterName=Velocity loop output filter coefficients (3)
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[210c]
+ParameterName=Current loop command filter coefficients (1)
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[210d]
+ParameterName=Current loop command filter coefficients (2)
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[2110]
+ParameterName=Peak current limit
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2111]
+ParameterName=Continuous current limit
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2112]
+ParameterName=Time at peak current limit
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2113]
+ParameterName=Current max rate of change mA/sec
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2114]
+ParameterName=Period over which RMS current is calculated
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2115]
+ParameterName=RMS current
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2116]
+ParameterName=User current limit running sum
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2117]
+ParameterName=Amp current limit running sum
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2120]
+ParameterName=Tracking error distance
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2121]
+ParameterName=Profile target jerk
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2122]
+ParameterName=Trajectory generator destination position
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2123]
+ParameterName=Profile abort Jerk
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2140]
+ParameterName=PWM output mode and status bits
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2141]
+ParameterName=Amplifier time
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[2142]
+ParameterName=Current for open motor test
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2150]
+ParameterName=Regen resistor resistance
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2151]
+ParameterName=Regen resistor continuous power
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2152]
+ParameterName=Regen resistor peak power
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2153]
+ParameterName=Regen resistor peak time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2154]
+ParameterName=Regen turn on voltage
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2155]
+ParameterName=Regen turn off voltage
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2156]
+ParameterName=Regen resistor model number string
+ObjectType=7
+DataType=9
+AccessType=RW
+PDOMapping=0
+
+[2157]
+ParameterName=Regen flags
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2160]
+ParameterName=Output compare configuration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2161]
+ParameterName=Output compare status
+ObjectType=7
+DataType=7
+AccessType=RWR
+PDOMapping=1
+
+[2162]
+ParameterName=Output compare value 0
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2163]
+ParameterName=Output compare value 1
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2164]
+ParameterName=Output compare increment
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2165]
+ParameterName=Output compare pulse width
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2180]
+ParameterName=Sticky version of event status
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[2181]
+ParameterName=Amplifier latched events
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2182]
+ParameterName=Latching fault mask
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2183]
+ParameterName=Latching faults
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2184]
+ParameterName=Event mask for CANopen status word drive limit bit
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2185]
+ParameterName=Amplifier event word
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[2190]
+ParameterName=General purpose inputs
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[2191]
+ParameterName=Input pull-up control mask
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192]
+ParameterName=Input pin configuration
+ObjectType=8
+SubNumber=25
+
+[2192sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[2192sub1]
+ParameterName=Input 0 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub2]
+ParameterName=Input 1 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub3]
+ParameterName=Input 2 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub4]
+ParameterName=Input 3 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub5]
+ParameterName=Input 4 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub6]
+ParameterName=Input 5 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub7]
+ParameterName=Input 6 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub8]
+ParameterName=Input 7 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub9]
+ParameterName=Input 8 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192suba]
+ParameterName=Input 9 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192subb]
+ParameterName=Input 10 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192subc]
+ParameterName=Input 11 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192subd]
+ParameterName=Input 12 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sube]
+ParameterName=Input 13 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192subf]
+ParameterName=Input 14 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub10]
+ParameterName=Input 15 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub11]
+ParameterName=Input 16 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub12]
+ParameterName=Input 17 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub13]
+ParameterName=Input 18 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub14]
+ParameterName=Input 19 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub15]
+ParameterName=Input 20 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub16]
+ParameterName=Input 21 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub17]
+ParameterName=Input 22 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2192sub18]
+ParameterName=Input 23 configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2193]
+ParameterName=Output pin configuration
+ObjectType=8
+SubNumber=13
+
+[2193sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=12
+LowLimit=12
+HighLimit=12
+
+[2193sub1]
+ParameterName=Output 0 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub2]
+ParameterName=Output 1 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub3]
+ParameterName=Output 2 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub4]
+ParameterName=Output 3 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub5]
+ParameterName=Output 4 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub6]
+ParameterName=Output 5 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub7]
+ParameterName=Output 6 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub8]
+ParameterName=Output 7 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193sub9]
+ParameterName=Output 8 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193suba]
+ParameterName=Output 9 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193subb]
+ParameterName=Output 10 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2193subc]
+ParameterName=Output 11 configuration
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2194]
+ParameterName=Output pin values
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195]
+ParameterName=Input pin debounce time
+ObjectType=8
+SubNumber=25
+
+[2195sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[2195sub1]
+ParameterName=Input 0 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub2]
+ParameterName=Input 1 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub3]
+ParameterName=Input 2 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub4]
+ParameterName=Input 3 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub5]
+ParameterName=Input 4 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub6]
+ParameterName=Input 5 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub7]
+ParameterName=Input 6 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub8]
+ParameterName=Input 7 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub9]
+ParameterName=Input 8 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195suba]
+ParameterName=Input 9 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195subb]
+ParameterName=Input 10 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195subc]
+ParameterName=Input 11 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195subd]
+ParameterName=Input 12 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sube]
+ParameterName=Input 13 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195subf]
+ParameterName=Input 14 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub10]
+ParameterName=Input 15 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub11]
+ParameterName=Input 16 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub12]
+ParameterName=Input 17 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub13]
+ParameterName=Input 18 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub14]
+ParameterName=Input 19 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub15]
+ParameterName=Input 20 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub16]
+ParameterName=Input 21 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub17]
+ParameterName=Input 22 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2195sub18]
+ParameterName=Input 23 debounce time
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2196]
+ParameterName=General purpose inputs without debouncing
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[2197]
+ParameterName=Current state of the CAN ID selection switch
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[2198]
+ParameterName=Optional configuration of GPIO
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2199]
+ParameterName=Delay from PWM enable to brake release
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[219a]
+ParameterName=General purpose inputs
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[219b]
+ParameterName=General purpose inputs without debouncing
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[219c]
+ParameterName=Input pull-up control mask
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[219d]
+ParameterName=Safety circuit control/status
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[21a0]
+ParameterName=Axis name string
+ObjectType=7
+DataType=9
+AccessType=RW
+PDOMapping=0
+
+[21a1]
+ParameterName=I/O extension configuration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[21a2]
+ParameterName=I/O extension transmit data
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[21a3]
+ParameterName=I/O extension receive data
+ObjectType=7
+DataType=10
+AccessType=RWR
+PDOMapping=1
+
+[21b0]
+ParameterName=Node ID configuration
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[21b1]
+ParameterName=Input pin mapping for CAN ID selection
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[21b2]
+ParameterName=Node guarding error action
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[21b3]
+ParameterName=Network configuration
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[21b4]
+ParameterName=Network status register
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[21c0]
+ParameterName=Motor phasing mode
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=6
+
+[21c1]
+ParameterName=Microstepping rate
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[21c2]
+ParameterName=Max current for algorithmic phase init.
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[21c3]
+ParameterName=Time for algorithmic phase init.
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[21c4]
+ParameterName=Algorithmic phase init configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[21d0]
+ParameterName=Holding current for microstepping
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[21d1]
+ParameterName=Run to hold time for microstepping
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[21d2]
+ParameterName=Stepper detent scaling factor
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[21d5]
+ParameterName=Hold current to voltage mode time for microstepping
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[21d6]
+ParameterName=Stepper configuration
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[21d7]
+ParameterName=KP gain for stepper encoder adjustment
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[21d8]
+ParameterName=Max adjustment velocity for encoder outter loop
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[21e0]
+ParameterName=D/A converter configuration
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[21e1]
+ParameterName=D/A converter output value
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2200]
+ParameterName=Reference A/D input
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2201]
+ParameterName=Bus voltage
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2202]
+ParameterName=Amplifier temperature A/D input
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2203]
+ParameterName=Actual current A/D reading, winding A
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2204]
+ParameterName=Actual current A/D reading, winding B
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2205]
+ParameterName=Analog encoder sine input
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2206]
+ParameterName=Analog encoder cosine input
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2207]
+ParameterName=A/D unit offset value (filtered)
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2208]
+ParameterName=Secondary analog reference value
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2209]
+ParameterName=Motor temperature analog input
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[220a]
+ParameterName=Motor temperature limit
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[220b]
+ParameterName=Analog encoder sine offset
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[220c]
+ParameterName=Analog encoder cosine offset
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[220d]
+ParameterName=Analog encoder cosine scaler
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[220e]
+ParameterName=Analog encoder signal magnitude
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[220f]
+ParameterName=Motor temp thermister constants
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[2210]
+ParameterName=Winding A current reading offset value
+ObjectType=7
+DataType=3
+AccessType=RWR
+PDOMapping=1
+
+[2211]
+ParameterName=Winding B current reading offset value
+ObjectType=7
+DataType=3
+AccessType=RWR
+PDOMapping=1
+
+[2212]
+ParameterName=X axis of calculated stator current vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2213]
+ParameterName=Y axis of calculated stator current vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2214]
+ParameterName=D axis of calculated rotor current vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2215]
+ParameterName=Q axis of calculated rotor current vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2216]
+ParameterName=D axis of commanded rotor current vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2217]
+ParameterName=Q axis of commanded rotor current vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2218]
+ParameterName=D axis of rotor commanded voltage vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2219]
+ParameterName=Q axis of rotor commanded voltage vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[221a]
+ParameterName=X axis of stator output voltage vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[221b]
+ParameterName=Y axis of stator output voltage vector
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[221c]
+ParameterName=Actual motor current
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[221d]
+ParameterName=Commanded current being sent to current loop
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[221e]
+ParameterName=Limited version of commanded current
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2220]
+ParameterName=Motor encoder wrap position
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2221]
+ParameterName=Load encoder wrap position
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2222]
+ParameterName=Motor encoder options
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2223]
+ParameterName=Load encoder options
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2224]
+ParameterName=Motor encoder status
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[2225]
+ParameterName=Load encoder status
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[2226]
+ParameterName=Motor encoder calibration settings
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2227]
+ParameterName=Load encoder calibration settings
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2230]
+ParameterName=Limited version of commanded velocity
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2231]
+ParameterName=Load encoder velocity
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2232]
+ParameterName=Raw (unfiltered) motor velocity
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2240]
+ParameterName=Actual motor position
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2241]
+ParameterName=Buffered encoder output configuration
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2242]
+ParameterName=Position of load encoder
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2250]
+ParameterName=Velocity output from trajectory generator
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2251]
+ParameterName=Acceleration output from trajectory generator
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=1
+
+[2252]
+ParameterName=Profile status
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2253]
+ParameterName=Software limit acceleration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2254]
+ParameterName=Input shaping filter
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[2255]
+ParameterName=Trajectory generation options
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2260]
+ParameterName=Phase Angle
+ObjectType=7
+DataType=3
+AccessType=RWR
+PDOMapping=1
+
+[2261]
+ParameterName=Hall sensor state
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2262]
+ParameterName=Phase Angle
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2263]
+ParameterName=Motor encoder phase Angle
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2300]
+ParameterName=Desired amplifier state
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2301]
+ParameterName=Servo loop configuration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2310]
+ParameterName=Analog reference scaler
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2311]
+ParameterName=Analog reference input offset value
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2312]
+ParameterName=Analog reference calibration offset value
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2313]
+ParameterName=Analog reference deadband
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2314]
+ParameterName=Secondary analog refernece offset
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2315]
+ParameterName=Second Analog calibration offset value (millivolts)
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2320]
+ParameterName=PWM input configuration
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2321]
+ParameterName=PWM input scaling factor
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2322]
+ParameterName=PWM Input frequency
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2323]
+ParameterName=PWM position mode minimum pulse width (microseconds)
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2324]
+ParameterName=PWM position mode maximum pulse width (microseconds)
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2325]
+ParameterName=Registration offset for step and direction mode
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2326]
+ParameterName=UV mode configuration
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2327]
+ParameterName=UV mode U input
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2328]
+ParameterName=UV mode V input
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2329]
+ParameterName=Pulse & direction counter
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[232a]
+ParameterName=PWM input duty cycle
+ObjectType=7
+DataType=3
+AccessType=RWR
+PDOMapping=1
+
+[2330]
+ParameterName=Function generator configuration
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2331]
+ParameterName=Function generator frequency
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2332]
+ParameterName=Function generator amplitude
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2333]
+ParameterName=Function generator duty cycle
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2340]
+ParameterName=Programmed current command used in amplifier state 1
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2341]
+ParameterName=Programmed velocity for mode 11
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2350]
+ParameterName=Homing current
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2351]
+ParameterName=Delay for hard stop homing mode
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2352]
+ParameterName=Homing configuration
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2353]
+ParameterName=Last home position adjustment
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2360]
+ParameterName=Camming mode configuration
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2361]
+ParameterName=Camming mode delay in forward direction
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2362]
+ParameterName=Camming mode delay in reverse direction
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2363]
+ParameterName=Camming mode virtual master velocity
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2370]
+ParameterName=Gain scheduling configuration
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2371]
+ParameterName=Gain schedulong key parameter
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2378]
+ParameterName=Cross coupling position loop KP
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2379]
+ParameterName=Cross coupling position loop KI
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[237a]
+ParameterName=Cross coupling position loop KD
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2380]
+ParameterName=Current loop control parameters
+ObjectType=9
+SubNumber=4
+
+[2380sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=3
+LowLimit=3
+HighLimit=3
+
+[2380sub1]
+ParameterName=Proportional gain for current loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2380sub2]
+ParameterName=Integral gain for current loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2380sub3]
+ParameterName=Current offset value
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2381]
+ParameterName=Velocity control parameters
+ObjectType=9
+SubNumber=7
+
+[2381sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=6
+LowLimit=6
+HighLimit=6
+
+[2381sub1]
+ParameterName=Proportional gain for velocity loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2381sub2]
+ParameterName=Integral gain for velocity loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2381sub3]
+ParameterName=Velocity loop acceleration feed forward
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2381sub4]
+ParameterName=Shift value for velocity loop gain
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+DefaultValue=0
+LowLimit=-2
+HighLimit=10
+
+[2381sub5]
+ParameterName=Integral drain for velocity loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2381sub6]
+ParameterName=Velocity loop command feed forward
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2382]
+ParameterName=Position control parameter set
+ObjectType=9
+SubNumber=8
+
+[2382sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=7
+LowLimit=7
+HighLimit=7
+
+[2382sub1]
+ParameterName=Proportional gain for position loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2382sub2]
+ParameterName=Velocity feed forward for position loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2382sub3]
+ParameterName=Acceleration feed forward for position loop
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2382sub4]
+ParameterName=Position loop scaling factor
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+DefaultValue=100
+LowLimit=1
+HighLimit=25000
+
+[2382sub5]
+ParameterName=Integral gain for position loop
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2382sub6]
+ParameterName=Derivitive gain for position loop
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2382sub7]
+ParameterName=Integral drain for position loop
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2383]
+ParameterName=Motor data
+ObjectType=9
+SubNumber=35
+
+[2383sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=34
+LowLimit=34
+HighLimit=34
+
+[2383sub1]
+ParameterName=Motor type
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2383sub2]
+ParameterName=Motor pole pairs
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub3]
+ParameterName=Motor wiring reversed
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2383sub4]
+ParameterName=Motor hall type
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub5]
+ParameterName=Motor hall wiring
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub6]
+ParameterName=Motor hall offset
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=-180
+HighLimit=180
+
+[2383sub7]
+ParameterName=Motor resistance
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub8]
+ParameterName=Motor inductance
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub9]
+ParameterName=Motor intertia
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2383suba]
+ParameterName=Motor back EMF constant
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2383subb]
+ParameterName=Motor max velocity
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[2383subc]
+ParameterName=Motor torque constant
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2383subd]
+ParameterName=Motor peak torque
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2383sube]
+ParameterName=Motor continuous torque
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2383subf]
+ParameterName=Motor has temp sensor
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2383sub10]
+ParameterName=Motor has brake
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2383sub11]
+ParameterName=Delay from error to brake active
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2383sub12]
+ParameterName=Delay from brake to PWM disable
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2383sub13]
+ParameterName=Velocity where brake may be activated without delay
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=500000000
+
+[2383sub14]
+ParameterName=Motor encoder type
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=7
+
+[2383sub15]
+ParameterName=Encoder units
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub16]
+ParameterName=Encoder direction
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2383sub17]
+ParameterName=Encoder counts per rev
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2383sub18]
+ParameterName=Encoder resolution
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub19]
+ParameterName=Encoder electrical distance (linear only)
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2383sub1a]
+ParameterName=Encoder index pulse distance
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2383sub1b]
+ParameterName=Motor Units
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub1c]
+ParameterName=Shift amount for analog encoder
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=10
+
+[2383sub1d]
+ParameterName=Microstepping resolution
+ObjectType=7
+DataType=7
+AccessType=RW
+PDOMapping=0
+
+[2383sub1e]
+ParameterName=Load encoder type
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+DefaultValue=0
+LowLimit=0
+HighLimit=5
+
+[2383sub1f]
+ParameterName=Load encoder direction
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2383sub20]
+ParameterName=Load encoder resolution
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=1
+HighLimit=2147483647
+
+[2383sub21]
+ParameterName=Motor gear ratio
+ObjectType=7
+DataType=4
+AccessType=RW
+PDOMapping=0
+
+[2383sub22]
+ParameterName=Resolver cycles / rev
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+DefaultValue=1
+LowLimit=1
+HighLimit=8
+
+[2384]
+ParameterName=Drive Data
+ObjectType=9
+SubNumber=31
+
+[2384sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=30
+LowLimit=30
+HighLimit=30
+
+[2384sub1]
+ParameterName=Serial number
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[2384sub2]
+ParameterName=Amplifier manufacturing info
+ObjectType=7
+DataType=9
+AccessType=RO
+PDOMapping=0
+
+[2384sub3]
+ParameterName=Amplifier peak current limit
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub4]
+ParameterName=Amplifier continuous current limit
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub5]
+ParameterName=Amplifer time at peak current
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[2384sub6]
+ParameterName=Amplifier maximum voltage
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub7]
+ParameterName=Amplifier minimum voltage
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub8]
+ParameterName=Amplifier over voltage hysteresis
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub9]
+ParameterName=Amplifier maximum temperature
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384suba]
+ParameterName=Amplifier temperature hysteresis
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384subb]
+ParameterName=Amplifier PWM period
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2384subc]
+ParameterName=Amplifier Servo period
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2384subd]
+ParameterName=Amplifier hardware type
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sube]
+ParameterName=Amplifier current scaler
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384subf]
+ParameterName=Amplifier voltage scaler
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub10]
+ParameterName=Analog reference scaling factor
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub11]
+ParameterName=minimum PWM off time
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[2384sub12]
+ParameterName=PWM Deadtime at continuous limit
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[2384sub13]
+ParameterName=PWM Deadtime at zero current
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[2384sub14]
+ParameterName=Regen transister peak current
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub15]
+ParameterName=Regen transister continuous current
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub16]
+ParameterName=Regen transister time at peak current
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[2384sub17]
+ParameterName=Amplifier analog encoder scaling factor
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub18]
+ParameterName=Firmware version number
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub19]
+ParameterName=Max axes supported by amplifier
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub1a]
+ParameterName=Amp regen transistor current limit
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub1b]
+ParameterName=FPGA image version number
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=0
+
+[2384sub1c]
+ParameterName=NIOS processor firmware version
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[2384sub1d]
+ParameterName=Misc hardware options
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[2384sub1e]
+ParameterName=Current level for minimum PWM Deadtime
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2400]
+ParameterName=Position capture control register
+ObjectType=7
+DataType=3
+AccessType=RWW
+PDOMapping=1
+
+[2401]
+ParameterName=Position capture status register
+ObjectType=7
+DataType=3
+AccessType=RO
+PDOMapping=1
+
+[2402]
+ParameterName=Captured index position
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2403]
+ParameterName=Captured home position
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2404]
+ParameterName=Time (microseconds) of last high speed capture
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2405]
+ParameterName=Position of last high speed capture
+ObjectType=7
+DataType=4
+AccessType=RO
+PDOMapping=1
+
+[2406]
+ParameterName=Position of last high speed load capture
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[2408]
+ParameterName=Input capture control
+ObjectType=8
+SubNumber=25
+
+[2408sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[2408sub1]
+ParameterName=Input 1 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub2]
+ParameterName=Input 2 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub3]
+ParameterName=Input 3 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub4]
+ParameterName=Input 4 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub5]
+ParameterName=Input 5 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub6]
+ParameterName=Input 6 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub7]
+ParameterName=Input 7 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub8]
+ParameterName=Input 8 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub9]
+ParameterName=Input 9 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408suba]
+ParameterName=Input 10 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408subb]
+ParameterName=Input 11 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408subc]
+ParameterName=Input 12 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408subd]
+ParameterName=Input 13 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sube]
+ParameterName=Input 14 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408subf]
+ParameterName=Input 15 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub10]
+ParameterName=Input 16 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub11]
+ParameterName=Input 17 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub12]
+ParameterName=Input 18 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub13]
+ParameterName=Input 19 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub14]
+ParameterName=Input 20 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub15]
+ParameterName=Input 21 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub16]
+ParameterName=Input 22 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub17]
+ParameterName=Input 23 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2408sub18]
+ParameterName=Input 24 capture control
+ObjectType=7
+DataType=5
+AccessType=RW
+PDOMapping=0
+
+[2409]
+ParameterName=Input capture status
+ObjectType=8
+SubNumber=25
+
+[2409sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[2409sub1]
+ParameterName=Input 1 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub2]
+ParameterName=Input 2 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub3]
+ParameterName=Input 3 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub4]
+ParameterName=Input 4 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub5]
+ParameterName=Input 5 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub6]
+ParameterName=Input 6 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub7]
+ParameterName=Input 7 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub8]
+ParameterName=Input 8 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub9]
+ParameterName=Input 9 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409suba]
+ParameterName=Input 10 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409subb]
+ParameterName=Input 11 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409subc]
+ParameterName=Input 12 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409subd]
+ParameterName=Input 13 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sube]
+ParameterName=Input 14 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409subf]
+ParameterName=Input 15 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub10]
+ParameterName=Input 16 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub11]
+ParameterName=Input 17 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub12]
+ParameterName=Input 18 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub13]
+ParameterName=Input 19 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub14]
+ParameterName=Input 20 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub15]
+ParameterName=Input 21 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub16]
+ParameterName=Input 22 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub17]
+ParameterName=Input 23 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[2409sub18]
+ParameterName=Input 24 capture status
+ObjectType=7
+DataType=5
+AccessType=RWW
+PDOMapping=1
+
+[240a]
+ParameterName=Captured rising edge position
+ObjectType=8
+SubNumber=25
+
+[240asub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[240asub1]
+ParameterName=Input 1 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub2]
+ParameterName=Input 2 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub3]
+ParameterName=Input 3 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub4]
+ParameterName=Input 4 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub5]
+ParameterName=Input 5 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub6]
+ParameterName=Input 6 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub7]
+ParameterName=Input 7 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub8]
+ParameterName=Input 8 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub9]
+ParameterName=Input 9 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asuba]
+ParameterName=Input 10 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asubb]
+ParameterName=Input 11 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asubc]
+ParameterName=Input 12 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asubd]
+ParameterName=Input 13 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asube]
+ParameterName=Input 14 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asubf]
+ParameterName=Input 15 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub10]
+ParameterName=Input 16 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub11]
+ParameterName=Input 17 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub12]
+ParameterName=Input 18 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub13]
+ParameterName=Input 19 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub14]
+ParameterName=Input 20 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub15]
+ParameterName=Input 21 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub16]
+ParameterName=Input 22 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub17]
+ParameterName=Input 23 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240asub18]
+ParameterName=Input 24 captured rising edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240b]
+ParameterName=Captured falling edge position
+ObjectType=8
+SubNumber=25
+
+[240bsub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[240bsub1]
+ParameterName=Input 1 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub2]
+ParameterName=Input 2 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub3]
+ParameterName=Input 3 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub4]
+ParameterName=Input 4 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub5]
+ParameterName=Input 5 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub6]
+ParameterName=Input 6 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub7]
+ParameterName=Input 7 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub8]
+ParameterName=Input 8 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub9]
+ParameterName=Input 9 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsuba]
+ParameterName=Input 10 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsubb]
+ParameterName=Input 11 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsubc]
+ParameterName=Input 12 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsubd]
+ParameterName=Input 13 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsube]
+ParameterName=Input 14 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsubf]
+ParameterName=Input 15 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub10]
+ParameterName=Input 16 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub11]
+ParameterName=Input 17 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub12]
+ParameterName=Input 18 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub13]
+ParameterName=Input 19 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub14]
+ParameterName=Input 20 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub15]
+ParameterName=Input 21 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub16]
+ParameterName=Input 22 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub17]
+ParameterName=Input 23 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240bsub18]
+ParameterName=Input 24 captured falling edge position
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[240c]
+ParameterName=Captured rising edge time
+ObjectType=8
+SubNumber=25
+
+[240csub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[240csub1]
+ParameterName=Input 1 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub2]
+ParameterName=Input 2 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub3]
+ParameterName=Input 3 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub4]
+ParameterName=Input 4 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub5]
+ParameterName=Input 5 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub6]
+ParameterName=Input 6 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub7]
+ParameterName=Input 7 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub8]
+ParameterName=Input 8 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub9]
+ParameterName=Input 9 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csuba]
+ParameterName=Input 10 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csubb]
+ParameterName=Input 11 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csubc]
+ParameterName=Input 12 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csubd]
+ParameterName=Input 13 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csube]
+ParameterName=Input 14 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csubf]
+ParameterName=Input 15 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub10]
+ParameterName=Input 16 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub11]
+ParameterName=Input 17 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub12]
+ParameterName=Input 18 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub13]
+ParameterName=Input 19 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub14]
+ParameterName=Input 20 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub15]
+ParameterName=Input 21 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub16]
+ParameterName=Input 22 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub17]
+ParameterName=Input 23 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240csub18]
+ParameterName=Input 24 captured rising edge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240d]
+ParameterName=Captured fallingedge time
+ObjectType=8
+SubNumber=25
+
+[240dsub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=24
+LowLimit=24
+HighLimit=24
+
+[240dsub1]
+ParameterName=Input 1 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub2]
+ParameterName=Input 2 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub3]
+ParameterName=Input 3 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub4]
+ParameterName=Input 4 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub5]
+ParameterName=Input 5 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub6]
+ParameterName=Input 6 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub7]
+ParameterName=Input 7 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub8]
+ParameterName=Input 8 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub9]
+ParameterName=Input 9 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsuba]
+ParameterName=Input 10 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsubb]
+ParameterName=Input 11 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsubc]
+ParameterName=Input 12 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsubd]
+ParameterName=Input 13 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsube]
+ParameterName=Input 14 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsubf]
+ParameterName=Input 15 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub10]
+ParameterName=Input 16 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub11]
+ParameterName=Input 17 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub12]
+ParameterName=Input 18 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub13]
+ParameterName=Input 19 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub14]
+ParameterName=Input 20 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub15]
+ParameterName=Input 21 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub16]
+ParameterName=Input 22 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub17]
+ParameterName=Input 23 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[240dsub18]
+ParameterName=Input 24 captured fallingedge time
+ObjectType=7
+DataType=27
+AccessType=RWR
+PDOMapping=1
+
+[2410]
+ParameterName=Position read time
+ObjectType=7
+DataType=7
+AccessType=RWR
+PDOMapping=1
+
+[2411]
+ParameterName=Position latched with time read
+ObjectType=7
+DataType=4
+AccessType=RWR
+PDOMapping=1
+
+[2420]
+ParameterName=Misclaneous amplifiers options
+ObjectType=7
+DataType=4
+AccessType=RWW
+PDOMapping=1
+
+[2421]
+ParameterName=Reserved for CME2 software use
+ObjectType=7
+DataType=9
+AccessType=RW
+PDOMapping=0
+
+[2422]
+ParameterName=Extended firmware version information
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[2500]
+ParameterName=Trace channel configuration
+ObjectType=8
+SubNumber=7
+
+[2500sub0]
+ParameterName=Number of trace channels
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=6
+
+[2500sub1]
+ParameterName=Trace channel 1 configuration
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2500sub2]
+ParameterName=Trace channel 2 configuration
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2500sub3]
+ParameterName=Trace channel 3 configuration
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2500sub4]
+ParameterName=Trace channel 4 configuration
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2500sub5]
+ParameterName=Trace channel 5 configuration
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2500sub6]
+ParameterName=Trace channel 6 configuration
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2501]
+ParameterName=Trace system status
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[2502]
+ParameterName=Trace reference period
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[2503]
+ParameterName=Trace sample count
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=1
+
+[2504]
+ParameterName=Trace system maximum samples
+ObjectType=7
+DataType=6
+AccessType=RO
+PDOMapping=0
+
+[2505]
+ParameterName=Trace period
+ObjectType=7
+DataType=6
+AccessType=RW
+PDOMapping=0
+
+[2506]
+ParameterName=Trace trigger configuration
+ObjectType=7
+DataType=10
+AccessType=RW
+PDOMapping=0
+
+[2507]
+ParameterName=Trace trigger delay
+ObjectType=7
+DataType=3
+AccessType=RW
+PDOMapping=0
+
+[2508]
+ParameterName=Trace start/stop control
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[2509]
+ParameterName=Trace data
+ObjectType=7
+DataType=10
+AccessType=RO
+PDOMapping=0
+
+[250a]
+ParameterName=Trace memory reserve size
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[250b]
+ParameterName=Trace memory address
+ObjectType=7
+DataType=6
+AccessType=RWW
+PDOMapping=1
+
+[250c]
+ParameterName=Trace memory access
+ObjectType=7
+DataType=10
+AccessType=RWW
+PDOMapping=1
+
+[2600]
+ParameterName=Indexer register values
+ObjectType=8
+SubNumber=33
+
+[2600sub0]
+ParameterName=Number of indexer registers
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=32
+
+[2600sub1]
+ParameterName=Indexer register 0
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub2]
+ParameterName=Indexer register 1
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub3]
+ParameterName=Indexer register 2
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub4]
+ParameterName=Indexer register 3
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub5]
+ParameterName=Indexer register 4
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub6]
+ParameterName=Indexer register 5
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub7]
+ParameterName=Indexer register 6
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub8]
+ParameterName=Indexer register 7
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub9]
+ParameterName=Indexer register 8
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600suba]
+ParameterName=Indexer register 9
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600subb]
+ParameterName=Indexer register 10
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600subc]
+ParameterName=Indexer register 11
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600subd]
+ParameterName=Indexer register 12
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sube]
+ParameterName=Indexer register 13
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600subf]
+ParameterName=Indexer register 14
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub10]
+ParameterName=Indexer register 15
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub11]
+ParameterName=Indexer register 16
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub12]
+ParameterName=Indexer register 17
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub13]
+ParameterName=Indexer register 18
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub14]
+ParameterName=Indexer register 19
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub15]
+ParameterName=Indexer register 20
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub16]
+ParameterName=Indexer register 21
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub17]
+ParameterName=Indexer register 22
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub18]
+ParameterName=Indexer register 23
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub19]
+ParameterName=Indexer register 24
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub1a]
+ParameterName=Indexer register 25
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub1b]
+ParameterName=Indexer register 26
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub1c]
+ParameterName=Indexer register 27
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub1d]
+ParameterName=Indexer register 28
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub1e]
+ParameterName=Indexer register 29
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub1f]
+ParameterName=Indexer register 30
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[2600sub20]
+ParameterName=Indexer register 31
+ObjectType=7
+DataType=7
+AccessType=RWW
+PDOMapping=1
+
+[5040]
+ParameterName=Position units
+ObjectType=9
+SubNumber=5
+
+[5040sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=4
+LowLimit=4
+HighLimit=4
+
+[5040sub1]
+ParameterName=Full scale representation
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[5040sub2]
+ParameterName=Full scale units
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+
+[5040sub3]
+ParameterName=Full scale data type
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+
+[5040sub4]
+ParameterName=Full scale value
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[5041]
+ParameterName=Velocity units
+ObjectType=9
+SubNumber=5
+
+[5041sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=4
+LowLimit=4
+HighLimit=4
+
+[5041sub1]
+ParameterName=Full scale representation
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[5041sub2]
+ParameterName=Full scale units
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+
+[5041sub3]
+ParameterName=Full scale data type
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+
+[5041sub4]
+ParameterName=Full scale value
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[5042]
+ParameterName=Acceleration units
+ObjectType=9
+SubNumber=5
+
+[5042sub0]
+ParameterName=Number of Entries
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+DefaultValue=4
+LowLimit=4
+HighLimit=4
+
+[5042sub1]
+ParameterName=Full scale representation
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0
+
+[5042sub2]
+ParameterName=Full scale units
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+
+[5042sub3]
+ParameterName=Full scale data type
+ObjectType=7
+DataType=5
+AccessType=RO
+PDOMapping=0
+
+[5042sub4]
+ParameterName=Full scale value
+ObjectType=7
+DataType=7
+AccessType=RO
+PDOMapping=0

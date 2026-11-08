@@ -435,8 +435,16 @@ func (v *validator) variable(sec string, e *Entry, ot od.ObjectType) {
 		v.add(Error, sec, "DataType", "unknown or structured data type 0x%04X", uint16(t))
 		return
 	}
-	if e.PDOMapping && t.IsVariable() {
+	switch {
+	case e.PDOMapping && t == canopen.Domain:
 		v.add(Error, sec, "PDOMapping", "%s cannot be mapped into a PDO", t)
+	case e.PDOMapping && t.IsVariable():
+		// CiA 306 does not forbid it, and vendor EDS files mark such
+		// objects mappable (the Copley Controls Accelnet EDS: 15 OCTET
+		// STRING objects); this library's PDOs map fixed-length types
+		// only (pdo.ValidateEntry).
+		v.add(Warning, sec, "PDOMapping", "%s has no fixed length: this library cannot map it into a PDO", t)
+	default: // no special case
 	}
 	if (e.UploadFile != "" || e.DownloadFile != "") && t != canopen.Domain {
 		v.add(Warning, sec, "UploadFile", "UploadFile and DownloadFile apply to DOMAIN objects")

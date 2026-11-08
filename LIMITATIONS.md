@@ -111,6 +111,27 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 
 ## Behaviour to be aware of
 
+- **Evidence from real devices is recorded traffic of Copley drives
+  only** ([testdata/captures](testdata/captures/README.md)): expedited SDO,
+  node guarding, PDOs, EMCY, SYNC and CiA 402 state changes of three
+  drives. Segmented and block SDO, SDO aborts, heartbeat, LSS, MPDO,
+  TIME and CANopen FD have no recording of a real device; their
+  independent evidence is the interop suite against software stacks.
+- **`dissect.Decode` cannot tell a node guarding answer with the toggle
+  bit clear from a heartbeat**: the frames are identical. Use a
+  `dissect.Tracker`, which sees the request before it.
+- **`dissect.Tracker` learns PDO COB-IDs from SDO traffic only**:
+  11-bit COB-IDs of 0x1400..0x15FF and 0x1800..0x19FF sub-index 1 in
+  expedited transfers it sees. A configuration made before the recording,
+  by a DCF or by a segmented transfer is not known; PDO mappings are not
+  decoded.
+- **CiA 402 shortcut.** Recorded Copley drives go from Switch on disabled
+  to Operation enabled on a single Enable operation controlword. `cia402.Drive`
+  follows the state diagram (Shutdown, Switch on, Enable operation) and
+  stays in Switch on disabled; with `StrictControlword` it refuses the
+  write. A controller driving such a device works either way;
+  `cia402.Path` gives the commands the diagram needs.
+
 - **Node-relative defaults must fit node-ID 127.** `od.Dictionary.Add`
   refuses an `od.Variable` with `NodeIDRelative` whose default plus 127
   exceeds its data type (UNSIGNED8 0x81 and above), so no valid node-ID
@@ -178,6 +199,10 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 - Text is kept as the file's bytes (no Latin-1 conversion).
 - Limits apply to integer and float types only.
 - `codegen` does not support limits with `$NODEID`.
+- A mappable VISIBLE_STRING, OCTET_STRING or UNICODE_STRING (the Copley
+  Accelnet EDS has 15) is a warning: CiA 306 allows it, but this
+  library's PDOs map fixed-length types only (`pdo.ValidateEntry`). A
+  mappable DOMAIN is an error.
 - An `NrOfRXPDO`/`NrOfTXPDO` that does not match the PDO objects is a
   warning, not an error (as Lely CANopen and python canopen accept such
   files).

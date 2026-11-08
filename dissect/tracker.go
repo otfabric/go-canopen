@@ -30,7 +30,16 @@ type transfer struct {
 	index     uint16
 	sub       uint8
 	expedited bool
-	lastSeg   bool // the data sender sent its last segment
+	lastSeg   bool   // the data sender sent its last segment
+	value     []byte // data of an expedited download, applied when confirmed
+}
+
+// pdoRef names a PDO of a node, as its communication parameter
+// (0x1400.. RPDO, 0x1800.. TPDO) does.
+type pdoRef struct {
+	node     canopen.NodeID
+	number   int
+	transmit bool
 }
 
 // Tracker decodes frames like [Decode] and follows the SDO transfers on
@@ -40,29 +49,77 @@ type transfer struct {
 // as commands. It must see every frame of a transfer, in bus order; a
 // missed frame confuses it until the next initiate or abort. A Tracker is
 // safe for concurrent use.
+//
+// It also uses what the bus shows of the network's configuration:
+//
+//   - A node guarding reply that follows a node guarding request is a
+//     [KindGuardResponse] whatever its toggle bit, where [Decode], seeing
+//     the frame alone, takes a reply with the toggle bit clear for a
+//     heartbeat.
+//   - A PDO COB-ID that an expedited SDO transfer of a communication
+//     parameter (0x1400..0x15FF RPDO, 0x1800..0x19FF TPDO, sub-index 1)
+//     sets or reads names that node's PDO: frames on it decode as that PDO
+//     (with [PDO.Configured] set), where the predefined connection set
+//     would call them another node's PDO or nothing (a recorded Copley
+//     drive sends its TPDO5 on 0x180). A COB-ID with bit 31 set (PDO not
+//     valid) forgets the PDO's identifier. Downloads count once the server
+//     confirms them. When a node's TPDO and another node's RPDO share an
+//     identifier (the producer and a consumer of the PDO), the frame is the
+//     TPDO; an identifier known only from consumers' RPDOs names the last
+//     one learned.
 type Tracker struct {
-	mu    sync.Mutex
-	nodes map[canopen.NodeID]*transfer
+	mu     sync.Mutex
+	nodes  map[canopen.NodeID]*transfer
+	guard  map[canopen.NodeID]bool // node guarding request not yet answered
+	pdoIDs map[canbus.ID]pdoRef    // identifiers learned from SDO transfers
 }
 
 // NewTracker returns a tracker with no transfers in progress.
-func NewTracker() *Tracker { return &Tracker{nodes: map[canopen.NodeID]*transfer{}} }
+func NewTracker() *Tracker {
+	t := &Tracker{}
+	t.Reset()
+	return t
+}
 
-// Reset forgets every transfer in progress.
+// Reset forgets every transfer in progress, outstanding node guarding
+// requests and the PDO identifiers learned.
 func (t *Tracker) Reset() {
 	t.mu.Lock()
 	t.nodes = map[canopen.NodeID]*transfer{}
+	t.guard = map[canopen.NodeID]bool{}
+	t.pdoIDs = map[canbus.ID]pdoRef{}
 	t.mu.Unlock()
 }
 
 // Decode decodes a frame, using and updating the SDO transfer state.
 func (t *Tracker) Decode(f *canbus.Frame) Message {
 	m := Decode(f)
-	if m.SDO == nil {
-		return m
-	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	switch {
+	case m.Kind == KindGuardRequest:
+		t.guard[m.Node] = true
+		return m
+	case m.ErrorControl != nil && m.Error == "" && m.Service == canopen.ServiceHeartbeat:
+		if t.guard[m.Node] {
+			delete(t.guard, m.Node)
+			if m.ErrorControl.State != canopen.StateInitialising || m.ErrorControl.Toggle {
+				m.Kind = KindGuardResponse
+			}
+		}
+		return m
+	case !f.IsExtended() && !f.IsError() && !f.IsFD() && (m.Kind == KindUnknown || m.PDO != nil):
+		if ref, ok := t.pdoIDs[f.ID]; ok {
+			m.Kind, m.Service, m.Node, m.Error = KindRPDO, canopen.ServiceRPDO, ref.node, ""
+			if ref.transmit {
+				m.Kind, m.Service = KindTPDO, canopen.ServiceTPDO
+			}
+			m.PDO = &PDO{Number: ref.number, Transmit: ref.transmit, Configured: true}
+		}
+		return m
+	case m.SDO == nil:
+		return m
+	}
 	tr := t.nodes[m.Node]
 	if tr == nil {
 		tr = &transfer{}
@@ -92,6 +149,9 @@ func (t *Tracker) Decode(f *canbus.Frame) Message {
 		switch {
 		case s.CS == CCSInitiateDownload:
 			begin(stDownload)
+			if s.Expedited {
+				tr.value = append([]byte(nil), s.Data...)
+			}
 		case s.CS == CCSInitiateUpload:
 			begin(stUpload)
 		case s.CS == CCSDownloadSegment && tr.state == stDownload:
@@ -123,6 +183,9 @@ func (t *Tracker) Decode(f *canbus.Frame) Message {
 	case s.CS == SCSInitiateDownload && tr.state == stDownload:
 		t.attach(tr, s)
 		if tr.expedited {
+			if s.Index == tr.index && s.SubIndex == tr.sub {
+				t.learn(m.Node, tr.index, tr.sub, tr.value)
+			}
 			*tr = transfer{}
 		}
 	case s.CS == SCSDownloadSegment && tr.state == stDownload:
@@ -133,6 +196,9 @@ func (t *Tracker) Decode(f *canbus.Frame) Message {
 	case s.CS == SCSInitiateUpload && tr.state == stUpload:
 		t.attach(tr, s)
 		if s.Expedited {
+			if s.Index == tr.index && s.SubIndex == tr.sub {
+				t.learn(m.Node, tr.index, tr.sub, s.Data)
+			}
 			*tr = transfer{}
 		}
 	case s.CS == SCSUploadSegment && tr.state == stUpload:
@@ -164,4 +230,32 @@ func (t *Tracker) attach(tr *transfer, s *SDO) {
 	if !s.HasIndex && tr.state != stIdle {
 		s.Index, s.SubIndex, s.HasIndex = tr.index, tr.sub, true
 	}
+}
+
+// learn records the COB-ID of a PDO communication parameter that an SDO
+// transfer showed. Only 11-bit identifiers are learned; a 29-bit one
+// (bit 29), a COB-ID of fewer than 4 bytes or another object is ignored.
+func (t *Tracker) learn(node canopen.NodeID, index uint16, sub uint8, v []byte) {
+	if sub != 1 || len(v) != 4 || index < 0x1400 || index > 0x19FF || index >= 0x1600 && index < 0x1800 {
+		return
+	}
+	ref := pdoRef{node: node, transmit: index >= 0x1800}
+	ref.number = int(index-0x1400) + 1
+	if ref.transmit {
+		ref.number = int(index-0x1800) + 1
+	}
+	for id, r := range t.pdoIDs {
+		if r == ref {
+			delete(t.pdoIDs, id)
+		}
+	}
+	cob := uint32(v[0]) | uint32(v[1])<<8 | uint32(v[2])<<16 | uint32(v[3])<<24
+	if cob&(1<<31) != 0 || cob&(1<<29) != 0 {
+		return
+	}
+	id := canbus.ID(cob & 0x7FF)
+	if old, ok := t.pdoIDs[id]; ok && old.transmit && !ref.transmit {
+		return // the producer names the frame, not one of its consumers
+	}
+	t.pdoIDs[id] = ref
 }

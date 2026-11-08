@@ -10,6 +10,7 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	rec "github.com/otfabric/go-canopen/internal/capture"
 )
 
 func frame(t testing.TB, id canbus.ID, data ...byte) *canbus.Frame {
@@ -229,6 +230,26 @@ func FuzzDecode(f *testing.F) {
 		f.Add(s.id, s.data, false)
 	}
 	f.Add(uint16(0x705), []byte{}, true)
+	// Frames recorded from Copley drives (testdata/captures): one of each
+	// identifier and first byte.
+	seen := map[[2]uint16]bool{}
+	for _, name := range rec.CopleyLogs {
+		recs, err := rec.LoadCopley(name)
+		if err != nil {
+			f.Fatal(err)
+		}
+		for _, r := range recs {
+			d := r.Frame.Payload()
+			k := [2]uint16{uint16(r.Frame.ID), 0x100}
+			if len(d) > 0 {
+				k[1] = uint16(d[0])
+			}
+			if !seen[k] {
+				seen[k] = true
+				f.Add(uint16(r.Frame.ID), append([]byte(nil), d...), r.Frame.IsRemote())
+			}
+		}
+	}
 	tr := NewTracker()
 	f.Fuzz(func(t *testing.T, id uint16, data []byte, remote bool) {
 		if len(data) > 8 {

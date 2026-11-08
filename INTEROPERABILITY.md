@@ -16,6 +16,31 @@ as a pass.
 | python canopen (christiansandberg/canopen) | MIT | `eds/crosscheck_test.go` (`TestCrossCheckPythonCanopen`) | The dictionaries built from the EDS/DCF fixtures (and python canopen's own sample EDS) compared with python canopen's import of the same files: data type, access type, PDO mappability, names, default values at node-ID 0x10 | Only where `EDS_PYCANOPEN` (or `python3`) can import canopen; otherwise it skips with a message. CI does not install python canopen, so **CI does not run this test**; the interop suite compares python canopen's import with go-canopen in CI (EDS scenarios below) |
 | Third-party EDS files | Apache-2.0 (CANopenNode), MIT (python canopen) | `eds/testdata/third_party` (see its NOTICE) | CANopenNode's `DS301_profile.eds` and python canopen's `sample.eds` parse, validate, build dictionaries and round-trip; `codegen` generates from them | Every test run |
 
+## Recorded traffic of real drives
+
+Logs that Copley Controls publishes of its own drives (CANview format,
+four logs, 16,527 frames; [testdata/captures](testdata/captures/README.md))
+are the only evidence from physical CANopen devices: three drives (five
+axes) identify themselves in 0x1018 (vendor 0x000000AB, product codes
+0x1100, 0x11E0, 0x1060, revision 0x00010004). The logs are committed and
+every test run checks all their frames. The master that recorded
+them is not identified. This is recorded evidence, not a test against a
+live drive.
+
+| Area | Recorded | go-canopen against it |
+|---|---|---|
+| SDO expedited upload and download (1,101 exchanges; no segmented, block or abort) | identity, PDO parameters, 0x1005/0x1006/0x100C/0x100D/0x1017, CiA 402 objects, manufacturer objects | Client: sends every request byte for byte as the recorded master, accepts every answer (also with stale bytes after the size). Server: answers every request as the drive did (command byte, multiplexer, data; values set to the drive's) |
+| Node guarding (460 request/answer pairs), life guarding | guard time 200 ms, factor 3; first answer toggle 1; EMCY 0x8130 600 ms after the last request | Guard master accepts all answers; responder's life time equals the drive's; `dissect.Tracker` labels every answer a guard response (fixed: before v0.5.0 half of them were "heartbeat") |
+| PDOs on configured COB-IDs | TPDO5 on 0x180 with 0x1013 (µs time stamp), consumed by another axis's RPDO5; remapped TPDO1/RPDO1 | `dissect.Tracker` learns the COB-IDs from the SDO traffic (new in v0.5.0; before, 0x180 was "unknown") |
+| EMCY | error reset after NMT start; 0x8130 and 0x61FF with register 0x81 | decoded; go-canopen's node raises 0x8130 with register 0x11 (generic and communication), the drive with 0x81 (generic and manufacturer-specific) and a manufacturer MSEF |
+| CiA 402 | fault reset (transition 15); Enable operation from Switch on disabled straight to Operation enabled | `cia402.Next` and `Drive` follow the diagram and do not take the shortcut (vendor behaviour, recorded) |
+| EDS (Copley Accelnet, 374 objects) | every object the logs access | validates without errors (fixed in v0.5.0: 15 mappable OCTET STRING objects were errors), builds a dictionary whose types and access match every recorded transfer |
+| All frames | | `dissect.Decode` equals Wireshark 4.6's dissector field by field |
+
+The Wireshark wiki's CANopen sample capture (origin unknown, class C) is
+committed as a decoder regression: its 34 frames (aborted SDO uploads and
+downloads, a block upload, LSS) decode as Wireshark shows them.
+
 The pdo package's reconfiguration rules mirror CANopenNode v4's
 `CO_PDO.c` (documented deviations in the package documentation), and the
 SDO interpretations follow the open-source stacks' behaviour; that is

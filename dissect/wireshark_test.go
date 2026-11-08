@@ -91,6 +91,14 @@ func TestWireshark(t *testing.T) {
 	add(0x7E4, 0x11, 0x00, 0, 0, 0, 0, 0, 0)
 	add(0x7E5, 0x5E, 0, 0, 0, 0, 0, 0, 0)
 
+	compareWithWireshark(t, bin, frames)
+}
+
+// compareWithWireshark writes frames to a pcap (their time stamps are
+// replaced) and compares every frame's Decode with the fields of
+// Wireshark's CANopen dissector.
+func compareWithWireshark(t *testing.T, bin string, frames []canbus.Frame) {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "canopen.pcap")
 	fh, err := os.Create(path)
 	if err != nil {
@@ -149,6 +157,10 @@ func TestWireshark(t *testing.T) {
 // expected returns the Wireshark field values a message should have.
 func expected(m Message) map[string]string {
 	u := func(x any) string { return fmt.Sprint(x) }
+	if m.Remote {
+		// Wireshark 4.6 does not dissect remote frames as CANopen.
+		return nil
+	}
 	e := map[string]string{"canopen.function_code": u(uint32(m.ID) >> 7)}
 	if m.Node != 0 {
 		e["canopen.node_id"] = u(m.Node)

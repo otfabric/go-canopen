@@ -159,7 +159,7 @@ const (
 	KindHeartbeat     Kind = "heartbeat"
 	KindBootUp        Kind = "boot-up"
 	KindGuardRequest  Kind = "guard-request"  // node guarding RTR
-	KindGuardResponse Kind = "guard-response" // node guarding reply (toggle bit set)
+	KindGuardResponse Kind = "guard-response" // node guarding reply (toggle bit set, or after a request: Tracker)
 	KindLSSMaster     Kind = "lss-master"
 	KindLSSSlave      Kind = "lss-slave"
 	KindUnknown       Kind = "unknown"
@@ -262,10 +262,14 @@ NMT is an NMT module control message.
 
 ```go
 type PDO struct {
-	// Number is the PDO number 1..4 of the predefined connection set.
+	// Number is the PDO number: 1..4 of the predefined connection set, or
+	// 1..512 when Configured.
 	Number int `json:"number"`
 	// Transmit is true for a TPDO (sent by the node), false for an RPDO.
 	Transmit bool `json:"transmit"`
+	// Configured marks a PDO a [Tracker] identified by the COB-ID it saw
+	// set or read over SDO, not by the predefined connection set.
+	Configured bool `json:"configured,omitempty"`
 }
 ```
 
@@ -380,11 +384,19 @@ TIME is a TIME stamp message: a TIME\_OF\_DAY.
 
 ```go
 type Tracker struct {
-	// contains filtered or unexported fields
+
+	// node guarding request not yet answered
+	// identifiers learned from SDO transfers
+
 }
 ```
 
 Tracker decodes frames like [Decode](#func-decode) and follows the SDO transfers on the default SDO channel of every node, so that it can attribute SDO segments to the object being transferred (SDO.HasIndex) and decode the data segments of block transfers (PhaseSubBlock), which [Decode](#func-decode) reads as commands. It must see every frame of a transfer, in bus order; a missed frame confuses it until the next initiate or abort. A Tracker is safe for concurrent use.
+
+It also uses what the bus shows of the network's configuration:
+
+  - A node guarding reply that follows a node guarding request is a KindGuardResponse whatever its toggle bit, where [Decode](#func-decode), seeing the frame alone, takes a reply with the toggle bit clear for a heartbeat.
+  - A PDO COB-ID that an expedited SDO transfer of a communication parameter (0x1400..0x15FF RPDO, 0x1800..0x19FF TPDO, sub-index 1) sets or reads names that node's PDO: frames on it decode as that PDO (with [PDO.Configured](#func-pdo-configured) set), where the predefined connection set would call them another node's PDO or nothing (a recorded Copley drive sends its TPDO5 on 0x180). A COB-ID with bit 31 set (PDO not valid) forgets the PDO's identifier. Downloads count once the server confirms them. When a node's TPDO and another node's RPDO share an identifier (the producer and a consumer of the PDO), the frame is the TPDO; an identifier known only from consumers' RPDOs names the last one learned.
 
 #### func NewTracker
 
@@ -408,7 +420,7 @@ Decode decodes a frame, using and updating the SDO transfer state.
 func (t *Tracker) Reset()
 ```
 
-Reset forgets every transfer in progress.
+Reset forgets every transfer in progress, outstanding node guarding requests and the PDO identifiers learned.
 
 ### type USDO
 

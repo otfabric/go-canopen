@@ -272,7 +272,7 @@ func TestValidateBroken(t *testing.T) {
 		{Error, "2000", "DataType"},
 		{Error, "2001", "DefaultValue"},
 		{Error, "2002", "LowLimit"},
-		{Error, "2003", "PDOMapping"},
+		{Warning, "2003", "PDOMapping"}, // a mapped VISIBLE_STRING: this library cannot map it
 		{Error, "2004", "ObjectType"},
 		{Error, "2005", "CompactSubObj"},
 		{Error, "2005Name", "5"},
@@ -493,5 +493,24 @@ func TestReadFixtureBytes(t *testing.T) {
 	}
 	if !reflect.DeepEqual(f, mustParse(t, "testdata/io401.eds")) {
 		t.Error("Parse and ParseFile differ")
+	}
+}
+
+// TestValidateMappedVariableLength: a mappable OCTET_STRING (as the Copley
+// Controls Accelnet EDS has 15 of) is a warning, a mappable DOMAIN an error.
+func TestValidateMappedVariableLength(t *testing.T) {
+	f, err := ParseBytes([]byte("[21A2]\nParameterName=I/O extension transmit data\nObjectType=7\nDataType=10\nAccessType=RWW\nPDOMapping=1\n" +
+		"[2194]\nParameterName=Program\nObjectType=7\nDataType=0x000F\nAccessType=rw\nPDOMapping=1\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Severity{}
+	for _, d := range f.Validate() {
+		if d.Key == "PDOMapping" {
+			got[d.Section] = d.Severity
+		}
+	}
+	if got["21A2"] != Warning || got["2194"] != Error {
+		t.Errorf("%v", got)
 	}
 }

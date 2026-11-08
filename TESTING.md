@@ -6,6 +6,7 @@
 |-------|-------|---------|
 | Unit and property tests, race detector | any OS | `make test` |
 | Tests on SocketCAN (vcan): the e2e plant and scenarios over `vcan0` (CAN FD sockets for the CANopen FD scenario) | Linux with `vcan0` (MTU 72) | `make vcan-setup test-vcan` (`CANOPEN_REQUIRE_VCAN=1`: a missing interface fails instead of skipping) |
+| Recorded traffic of real drives (the four Copley Controls logs, 16,527 frames, their EDS, the Wireshark sample capture; [testdata/captures](testdata/captures/README.md)) | any OS (the Wireshark comparison with tshark) | `make test` |
 | Wireshark CANopen dissector oracle (`dissect`) | any OS with tshark | `make test`; CI's vcan jobs install tshark and set `CANOPEN_REQUIRE_TSHARK=1` |
 | python canopen EDS cross-check (`eds`) | any OS with python canopen | `EDS_PYCANOPEN=/path/to/python make test`; skipped (with a message) without it; not run in CI |
 | End-to-end plant | any OS (virtual bus); Linux with vcan0 also SocketCAN | `make e2e` |
@@ -36,7 +37,7 @@ and Windows, and on Linux amd64 and arm64 with vcan.
 
 ## Test inventory
 
-478 `Test` functions, 27 fuzz targets, 13 `Example` functions and 4
+502 `Test` functions, 27 fuzz targets, 13 `Example` functions and 4
 benchmarks (SDO), in every library package and `e2e` (including the
 hostile-peer suite `e2e/hostile_test.go` and the chaos test
 `TestMonkeyNodeSDO`); and the interop
@@ -68,6 +69,10 @@ Linux 7.0 arm64 VM.
 | codegen | `FuzzGenerate` | EDS models: no panic; accepted files give Go source that parses |
 | cia402 | `FuzzDrive` | Controlword, mode, option code, fault and step sequences: the statusword always matches a valid state, every transition is one of the state diagram |
 | dissect | `FuzzDecode`, `FuzzDecodeFD` | Arbitrary classical and CAN FD frames: no panic |
+
+The fuzz targets of `dissect`, `sdo` (server and client), `nmt` (error
+control) and `emcy` are also seeded with frames recorded from Copley
+drives ([testdata/captures](testdata/captures/README.md)).
 
 ### Chaos
 
