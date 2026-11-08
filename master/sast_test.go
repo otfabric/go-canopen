@@ -138,11 +138,15 @@ func TestEventQueueBounded(t *testing.T) {
 	nettest.Eventually(t, 5*time.Second, "EMCY received", func() bool {
 		return r.m.Stats().EMCY.Received >= frames
 	})
-	dropped := r.m.Stats().EventsDropped
+	// The EMCY consumer counts a frame before the master queues (or
+	// drops) its event: read EventsDropped while waiting for delivery,
+	// not once here.
+	var dropped uint64
 	unblock()
 	// The event in the handler when the flood came, the bound, the
 	// heartbeat loss; the state change before it may be dropped.
 	nettest.Eventually(t, 5*time.Second, "delivery", func() bool {
+		dropped = r.m.Stats().EventsDropped
 		mu.Lock()
 		defer mu.Unlock()
 		n, lost := 0, false
