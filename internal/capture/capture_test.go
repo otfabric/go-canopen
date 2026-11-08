@@ -32,7 +32,7 @@ func TestParseCopleyLine(t *testing.T) {
 		"1 CAN-1: 0x00000080 -", "1 CAN0: 0x80 -", "1 CAN0: 0x0000008G -", "1 CAN0: 0x00000800 -",
 		"1 RTR0: 0x00000181 - 0x01", "1 CAN0: 0x00000181 0x01", "1 CAN0: 0x00000181",
 		"1 CAN0: 0x00000181 - 0x1", "1 CAN0: 0x00000181 - 0xZZ", "1 CAN0: 0x00000181 - 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08 0x09",
-		"1 CAN0: 1x00000181 -",
+		"1 CAN0: 1x00000181 -", "-1 CAN0: 0x00000080 -", "99999999999999999999 CAN0: 0x00000080 -",
 	} {
 		if _, err := ParseCopleyLine(bad); !errors.Is(err, ErrFormat) {
 			t.Errorf("%q: %v", bad, err)

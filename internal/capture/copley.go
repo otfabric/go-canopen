@@ -23,6 +23,8 @@ package capture
 
 import (
 	"bufio"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -36,7 +38,7 @@ import (
 // Record is one logged frame.
 type Record struct {
 	Line   int          // 1-based line number in the log
-	Micros uint64       // the log's time stamp, microseconds
+	Micros int64        // the log's time stamp, microseconds (not negative)
 	Port   int          // CANview port number (the digit after CAN or RTR)
 	Frame  canbus.Frame // Timestamp is Micros after the Unix epoch
 }
@@ -73,8 +75,8 @@ func ParseCopleyLine(line string) (Record, error) {
 	if len(f) < 3 {
 		return rec, fmt.Errorf("%w: %q", ErrFormat, line)
 	}
-	us, err := strconv.ParseUint(f[0], 10, 64)
-	if err != nil {
+	us, err := strconv.ParseInt(f[0], 10, 64)
+	if err != nil || us < 0 {
 		return rec, fmt.Errorf("%w: time %q", ErrFormat, f[0])
 	}
 	rec.Micros = us
@@ -95,11 +97,12 @@ func ParseCopleyLine(line string) (Record, error) {
 		return rec, fmt.Errorf("%w: port %q", ErrFormat, f[1])
 	}
 	rec.Port = port
-	id, err := hexField(f[2], 8)
+	idb, err := hexField(f[2], 8)
 	if err != nil {
 		return rec, fmt.Errorf("%w: identifier %q", ErrFormat, f[2])
 	}
-	if id > uint64(canbus.MaxStandardID) {
+	id := canbus.ID(binary.BigEndian.Uint32(idb))
+	if id > canbus.MaxStandardID {
 		return rec, fmt.Errorf("%w: identifier 0x%X is not 11 bits (no 29-bit example in the logs)", ErrFormat, id)
 	}
 	rest := f[3:]
@@ -107,7 +110,7 @@ func ParseCopleyLine(line string) (Record, error) {
 		if len(rest) != 0 {
 			return rec, fmt.Errorf("%w: remote request with data", ErrFormat)
 		}
-		rec.Frame, err = canbus.NewRemote(canbus.ID(id), false, 0)
+		rec.Frame, err = canbus.NewRemote(id, false, 0)
 	} else {
 		if len(rest) == 0 || rest[0] != "-" {
 			return rec, fmt.Errorf("%w: missing \"-\" after the identifier", ErrFormat)
@@ -122,23 +125,24 @@ func ParseCopleyLine(line string) (Record, error) {
 			if err != nil {
 				return rec, fmt.Errorf("%w: data byte %q", ErrFormat, s)
 			}
-			data[i] = byte(b)
+			data[i] = b[0]
 		}
-		rec.Frame, err = canbus.NewStandard(canbus.ID(id), data)
+		rec.Frame, err = canbus.NewStandard(id, data)
 	}
 	if err != nil {
 		return rec, fmt.Errorf("%w: %w", ErrFormat, err)
 	}
-	rec.Frame.Timestamp = time.UnixMicro(0).Add(time.Duration(us) * time.Microsecond).UTC()
+	rec.Frame.Timestamp = time.UnixMicro(us).UTC()
 	rec.Frame.Interface = fmt.Sprintf("CAN%d", port)
 	return rec, nil
 }
 
-// hexField parses "0x" followed by exactly digits hex digits.
-func hexField(s string, digits int) (uint64, error) {
+// hexField parses "0x" followed by exactly digits (an even number) hex
+// digits into digits/2 bytes, most significant first.
+func hexField(s string, digits int) ([]byte, error) {
 	h, ok := strings.CutPrefix(s, "0x")
 	if !ok || len(h) != digits {
-		return 0, ErrFormat
+		return nil, ErrFormat
 	}
-	return strconv.ParseUint(h, 16, 32)
+	return hex.DecodeString(h)
 }

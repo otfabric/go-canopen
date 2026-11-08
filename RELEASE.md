@@ -73,6 +73,13 @@ and an EDS validator that called the vendor's EDS invalid.
   object, access and size.
 - Fuzz seeds from recorded frames for `dissect`, `sdo`, `nmt` and `emcy`.
 
+### SAST
+
+gosec and opengrep on the release branch, every severity and confidence:
+two new findings (G115 in the test harness's CANview reader: the time
+stamp and hex bytes are now parsed without conversions), fixed; 0 open,
+the two recorded false positives unchanged.
+
 ### Interoperability
 
 Recorded evidence covers expedited SDO, node guarding, PDOs, EMCY, SYNC

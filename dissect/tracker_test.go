@@ -209,6 +209,16 @@ func TestTrackerConfiguredPDO(t *testing.T) {
 			t.Errorf("0x%03X: %s", id, m)
 		}
 	}
+	// A 29-bit or CAN FD frame with a learned 11-bit identifier is not
+	// that PDO.
+	sdoPair(t, tr, 1, []byte{0x23, 0x04, 0x18, 0x01, 0x80, 0x01, 0, 0}, []byte{0x60, 0x04, 0x18, 0x01, 0, 0, 0, 0})
+	ext, _ := canbus.NewExtended(0x180, []byte{1})
+	fd, _ := canbus.NewFD(0x180, false, false, []byte{1})
+	for _, f := range []canbus.Frame{ext, fd} {
+		if m := tr.Decode(&f); m.PDO != nil {
+			t.Errorf("%v: %s", f, m)
+		}
+	}
 	tr.Reset()
 	if m := pdoOf(0x180); m.Kind != KindUnknown {
 		t.Error(m)

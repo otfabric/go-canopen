@@ -92,7 +92,7 @@ func TestCaptureGuardMaster(t *testing.T) {
 // has passed, not before.
 func TestCaptureLifeGuarding(t *testing.T) {
 	lg := readGuardLog(t, "unknown_copley-1100_absolute-move")
-	var lastReq, emcy uint64
+	var lastReq, emcy int64
 	for _, r := range lg.recs {
 		switch {
 		case r.Frame.ID == 0x701 && r.Frame.IsRemote():
