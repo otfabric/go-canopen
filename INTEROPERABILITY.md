@@ -49,8 +49,8 @@ design input, not a test against them.
 ## The canopen-interop suite
 
 `interop/` (build tag `interop`) runs go-canopen against the three stacks
-of [canopen-interop](https://github.com/otfabric/canopen-interop) v0.3.1
-(container contract 1.1), through their command-line contract only: no
+of [canopen-interop](https://github.com/otfabric/canopen-interop) v0.4.0
+(container contract 1.2), through their command-line contract only: no
 code of those stacks is linked or vendored. The images are pulled by
 release and multi-arch index digest (`interop/harness_test.go`); every
 container runs with `--network host` on the Linux `vcan0` of the test
@@ -236,6 +236,13 @@ upload (0x1001) and the lely master `bootup` scenario timed out in the
 whole run; both lely suites then passed twice in a row on the branch and
 on v0.3.3, so they are timing under load, not differences.
 
+**canopen-interop v0.4.0** (same three images and operations; contract 1.2
+adds only the optional `upstream` block of the capability document;
+pinned since go-canopen v0.5.1), CI: the Interop workflow on GitHub's
+amd64 and arm64 runners, 2026-11-12: on both, 1,620 scenarios, 1,276
+passed, 57 known differences, 287 skipped, 0 failed; per adapter and
+direction exactly the v0.2.0 column above.
+
 The contract 1.0 scenarios are unchanged and give the same results; the
 v0.2.0 device adds 0x1007 (two more uploads per device, normal and
 block) and the EDS checks two fixtures (`mpdo-device.eds`,
@@ -295,7 +302,7 @@ a go-canopen node):
 
 | Adapter | Skipped | Reason |
 |---------|---------|--------|
-| all | `fd-usdo-client`, `fd-pdo` (master), `fd-usdo-server`, `fd-pdo` (device) | no image declares CANopen FD: none of the pinned stacks (nor their development branches) implements CiA 1301; contract 1.1 has no FD operation |
+| all | `fd-usdo-client`, `fd-pdo` (master), `fd-usdo-server`, `fd-pdo` (device) | no image declares CANopen FD: none of the pinned stacks (nor their development branches) implements CiA 1301; contract 1.2 has no FD operation |
 | canopennode | 4 MPDO (both directions), 3 cdcf, `rpdo-*` (4, device), boot master (2, device) | operations it does not offer (`mpdo-*`, `cdcf`, `rpdo-send`, `boot`) |
 | lely | `lss-assign-all` (device), `rpdo-*` (4, device) | no assign-all service, no RPDO sender |
 | pythoncanopen | 14 LSS and `boot-lss` (master), `lss-assign-all` (device), 2 + 2 MPDO, boot master (2), 3 cdcf, SYNC window towards its device (3) | its device has no LSS slave and no RPDOs; no assign-all, MPDO, boot master or concise DCF generator |

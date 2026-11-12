@@ -203,7 +203,7 @@ func masterSyncWindow(t *testing.T, ifc, a string, c caps, desc *od.Dictionary, 
 func fdSkips(t *testing.T, a string, names []string, sc scenarioFunc) {
 	for _, n := range names {
 		sc(t, n, func(t *testing.T) {
-			skipf(t, "%s implements no CANopen FD (CiA 1301): contract 1.1 has no FD operation or feature", a)
+			skipf(t, "%s implements no CANopen FD (CiA 1301): contract 1.2 has no FD operation or feature", a)
 		})
 	}
 }

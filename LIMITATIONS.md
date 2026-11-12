@@ -14,7 +14,7 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 - Interoperability is tested against CANopenNode, Lely CANopen and
   python canopen on Linux vcan through the canopen-interop images
   ([INTEROPERABILITY.md](INTEROPERABILITY.md), with the known differences);
-  only what their contract (1.1) exposes is covered: LSS (CANopenNode
+  only what their contract (1.2) exposes is covered: LSS (CANopenNode
   and Lely slaves, all three masters), MPDOs (Lely only), the CiA 302
   boot-up (go-canopen's manager with every stack's device; Lely's boot
   master), concise DCFs (Lely's generators) and the SYNC window (python
