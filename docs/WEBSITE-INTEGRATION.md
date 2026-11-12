@@ -2,8 +2,9 @@
 
 A proposal for adding go-canopen to otfabric.io (`otfabric/website`).
 Nothing here has been applied to the website; the website is maintained
-separately. Current as of go-canopen v0.3.0 and canopen-interop v0.1.0
-(2026-10-29).
+separately. Written for go-canopen v0.3.0 and canopen-interop v0.1.0
+(2026-10-29); the interop suite now pins canopen-interop v0.3.1 (contract
+1.1), see [INTEROPERABILITY.md](../INTEROPERABILITY.md).
 
 ## Positioning
 
@@ -76,10 +77,10 @@ across restarts, program download) on the virtual bus and Linux vcan,
 Wireshark's CANopen dissector as an oracle, EDS files from CANopenNode
 and python canopen; coverage 97 % (gate 90 %, every package ≥ 90 %).
 Interoperability against CANopenNode, Lely CANopen and python canopen
-(canopen-interop) for the CiA 301 services since v0.2.0; **the v0.3.0
-features (LSS, MPDO, CANopen FD, CiA 302 boot-up, store/restore) have no
-interop results yet** (pending canopen-interop contract 1.1; no
-reference stack implements CANopen FD).
+(canopen-interop) for the CiA 301 services since v0.2.0, and with
+canopen-interop contract 1.1 (pinned: v0.3.1) for LSS, MPDO, the CiA 302
+boot-up, concise DCFs and the SYNC window; store/restore has no interop
+results, and no reference stack implements CANopen FD.
 
 **Limitations to state**: no CiA conformance claim (the specifications
 are member documents); CANopen FD from public sources only (segmented
@@ -89,6 +90,6 @@ one SDO server channel; segmented SDO relies on the CAN CRC; nothing
 tested on real CAN hardware; vcan proves message encoding and protocol
 logic, not timing or electrical behaviour.
 
-**Roadmap**: interop for the v0.3.0 features (canopen-interop contract
-1.1), more device profiles (CiA 401, 406), the remaining CiA 302 objects,
+**Roadmap**: interop for store/restore, program download, TIME and node
+guarding (a later canopen-interop contract), more device profiles (CiA 401, 406), the remaining CiA 302 objects,
 a hardware bench. Details: [ROADMAP.md](../ROADMAP.md).

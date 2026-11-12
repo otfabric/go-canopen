@@ -1,6 +1,6 @@
 # Support and feature matrix
 
-What go-canopen supports, how each feature is tested, and against what. Status: v0.3.1; the latest recorded interop results are canopen-interop v0.2.0 (contract 1.1) against go-canopen v0.3.0, run locally. Per-adapter counts, known differences and skips are in [INTEROPERABILITY.md](../INTEROPERABILITY.md); service details in the [README](../README.md#cia-301-services); what is out of scope in [LIMITATIONS.md](../LIMITATIONS.md).
+What go-canopen supports, how each feature is tested, and against what. Status: v0.5.0; the interop suite pins canopen-interop v0.3.1 (contract 1.1), and the latest recorded interop results are canopen-interop v0.3.1 against go-canopen v0.4.0, run locally (2026-11-04). Per-adapter counts, known differences and skips are in [INTEROPERABILITY.md](../INTEROPERABILITY.md); service details in the [README](../README.md#cia-301-services); what is out of scope in [LIMITATIONS.md](../LIMITATIONS.md).
 
 None of this is a conformance claim: there is no CiA conformance claim, no conformance test run and no certification.
 
@@ -8,7 +8,7 @@ None of this is a conformance claim: there is no CiA conformance claim, no confo
 
 | go-canopen | Go | canopen-interop (contract) | Supported |
 |---|---|---|---|
-| **v0.3.1** | 1.23 or later (CI: 1.23 to 1.26) | v0.2.0 (1.1) | **yes** |
+| **v0.5.0** | 1.26 or later (CI: 1.26 and 1.27) | v0.3.1 (1.1) | **yes** |
 
 ## 2. Platforms
 
