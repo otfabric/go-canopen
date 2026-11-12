@@ -7,7 +7,7 @@ that version as the release notes. Add the section, headed exactly
 
 ## v0.5.1
 
-**Date:** 2026-11-12
+**Date:** 2026-11-13
 **Previous release:** v0.5.0
 
 ### Summary
