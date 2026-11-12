@@ -136,11 +136,11 @@ cross: ## Build every package for the release platforms
 	@for t in linux/amd64 linux/arm64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do \
 		echo "build $$t"; GOOS=$${t%/*} GOARCH=$${t#*/} go build ./... || exit 1; done
 
-# Reference implementations: otfabric/canopen-interop images, pinned by
+# Reference implementations: otfabric/canopen-interop v0.4.0 images, pinned by
 # digest in interop/harness_test.go (see INTEROPERABILITY.md).
 # interop-images builds canopen-interop's source at INTEROP_REF as :dev
 # images, to test unreleased adapters.
-INTEROP_REF ?= main
+INTEROP_REF ?= v0.4.0
 interop-images: ## Build the canopen-interop images from source as :dev (needs Docker)
 	@rm -rf $(BIN_DIR)/canopen-interop && mkdir -p $(BIN_DIR)
 	@git clone -q --depth 1 --branch $(INTEROP_REF) https://github.com/otfabric/canopen-interop.git $(BIN_DIR)/canopen-interop

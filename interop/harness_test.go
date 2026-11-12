@@ -28,10 +28,10 @@ import (
 )
 
 // InteropRelease is the canopen-interop release whose images the suite
-// runs (container contract 1.1). Override the tag with
+// runs (container contract 1.2). Override the tag with
 // CANOPEN_INTEROP_TAG (dev for images built by make interop-images) or one
 // image with CANOPEN_INTEROP_<ADAPTER>_IMAGE (upper case).
-const InteropRelease = "v0.3.1"
+const InteropRelease = "v0.4.0"
 
 // references are the canopen-interop images of independent stacks.
 var references = []string{"canopennode", "lely", "pythoncanopen"}
@@ -67,9 +67,9 @@ func selectAdapters() []string {
 // digests pin the InteropRelease images by multi-arch index digest, so a
 // re-pushed tag cannot change what the suite tests.
 var digests = map[string]string{
-	"canopennode":   "sha256:1430fc9a54af9fc501cdb53fef9fd8cfc971fdc1470511e73dd49cd17ee6d67d",
-	"lely":          "sha256:fc0b80cff1d09cf667ab88df09720a15bacb12074cf3462172f7b33c426383d8",
-	"pythoncanopen": "sha256:ea530a624645c215b4416f33870e17aff04ad10f933521c900de94ce92e943aa",
+	"canopennode":   "sha256:e1f2f96b644b64f60e8a22af2b3499aa5417fcc134be68b7edc3df5240f4ecff",
+	"lely":          "sha256:915e23e86f0bcdf58a634992cfa2ea416577a6e3cb8f8c3ddb9c67989486fd06",
+	"pythoncanopen": "sha256:f3c4828d2de0fa31c7ae262ab00344f229446e83b9f55d98759ef3589aea1907",
 }
 
 // Directions of the report.
