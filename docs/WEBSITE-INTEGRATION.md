@@ -3,8 +3,8 @@
 A proposal for adding go-canopen to otfabric.io (`otfabric/website`).
 Nothing here has been applied to the website; the website is maintained
 separately. Written for go-canopen v0.3.0 and canopen-interop v0.1.0
-(2026-10-29); the interop suite now pins canopen-interop v0.3.1 (contract
-1.1), see [INTEROPERABILITY.md](../INTEROPERABILITY.md).
+(2026-10-29); the interop suite now pins canopen-interop v0.4.0 (contract
+1.2), see [INTEROPERABILITY.md](../INTEROPERABILITY.md).
 
 ## Positioning
 

@@ -5,6 +5,33 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.5.1
+
+**Date:** 2026-11-12
+**Previous release:** v0.5.0
+
+### Summary
+
+Dependency and interop pin update; no change to go-canopen's own code.
+Interoperability against canopen-interop v0.4.0 (contract 1.2), amd64 and
+arm64 in CI: 1,620 scenarios, 1,276 passed, 57 known differences, 287
+skipped, 0 failed, per adapter and direction the same as before.
+
+### Dependencies
+
+- go-canbus v0.9.1 (go-serial v0.3.0, canbus-interop v0.7.0).
+- canopen-interop v0.4.0 images, pinned by release and digest (contract
+  1.2 adds the optional `upstream` block of the capability document; the
+  three reference images and their operations are unchanged).
+  `make interop-images` builds the same tag (`INTEROP_REF`, was `main`).
+
+### Documentation
+
+INTEROPERABILITY.md, TESTING.md, LIMITATIONS.md, docs/FEATURE-STATUS.md,
+docs/WEBSITE-INTEGRATION.md.
+
+---
+
 ## v0.5.0
 
 **Date:** 2026-11-08

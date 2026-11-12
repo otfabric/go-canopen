@@ -1,6 +1,6 @@
 # Support and feature matrix
 
-What go-canopen supports, how each feature is tested, and against what. Status: v0.5.0; the interop suite pins canopen-interop v0.3.1 (contract 1.1), and the latest recorded interop results are canopen-interop v0.3.1 against go-canopen v0.4.0, run locally (2026-11-04). Per-adapter counts, known differences and skips are in [INTEROPERABILITY.md](../INTEROPERABILITY.md); service details in the [README](../README.md#cia-301-services); what is out of scope in [LIMITATIONS.md](../LIMITATIONS.md).
+What go-canopen supports, how each feature is tested, and against what. Status: v0.5.1; the interop suite pins canopen-interop v0.4.0 (contract 1.2), and the latest recorded interop results are canopen-interop v0.4.0 against go-canopen v0.5.1, run by CI on amd64 and arm64 (2026-11-12). Per-adapter counts, known differences and skips are in [INTEROPERABILITY.md](../INTEROPERABILITY.md); service details in the [README](../README.md#cia-301-services); what is out of scope in [LIMITATIONS.md](../LIMITATIONS.md).
 
 None of this is a conformance claim: there is no CiA conformance claim, no conformance test run and no certification.
 
@@ -8,7 +8,8 @@ None of this is a conformance claim: there is no CiA conformance claim, no confo
 
 | go-canopen | Go | canopen-interop (contract) | Supported |
 |---|---|---|---|
-| **v0.5.0** | 1.26 or later (CI: 1.26 and 1.27) | v0.3.1 (1.1) | **yes** |
+| **v0.5.1** | 1.26 or later (CI: 1.26 and 1.27) | v0.4.0 (1.2) | **yes** |
+| v0.5.0 | 1.26 or later | v0.3.1 (1.1) | no |
 
 ## 2. Platforms
 
@@ -40,8 +41,8 @@ No independent oracle, tested against go-canopen itself only:
 | Feature | Why |
 |---|---|
 | CANopen FD (CiA 1301): USDO, FD PDOs, FD emergencies | no reference stack implements it |
-| Store and restore parameters (0x1010, 0x1011) | contract 1.1 has no operation for it |
-| Program download of CiA 302-3 | contract 1.1 has no operation for it |
+| Store and restore parameters (0x1010, 0x1011) | contract 1.2 has no operation for it |
+| Program download of CiA 302-3 | contract 1.2 has no operation for it |
 
 Recorded traffic of real devices (Copley Controls drives; [testdata/captures](../testdata/captures/README.md), [INTEROPERABILITY.md](../INTEROPERABILITY.md#recorded-traffic-of-real-drives)): SDO expedited (client and server parity), node guarding and life guarding, PDOs on configured COB-IDs, EMCY, CiA 402 state changes, the vendor's EDS. Segmented and block SDO, heartbeat, LSS and MPDO have no recording of a real device.
 

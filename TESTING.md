@@ -42,7 +42,7 @@ benchmarks (SDO), in every library package and `e2e` (including the
 hostile-peer suite `e2e/hostile_test.go` and the chaos test
 `TestMonkeyNodeSDO`); and the interop
 suite (`interop/`, build tag `interop`): 4 `Test` functions with 1,620
-scenarios against three stacks, canopen-interop v0.3.1 (contract 1.1:
+scenarios against three stacks, canopen-interop v0.4.0 (contract 1.2:
 LSS, MPDO, CiA 302 boot-up, concise DCF and SYNC window included;
 [INTEROPERABILITY.md](INTEROPERABILITY.md)).
 `go test -race -count=10 ./node ./master ./e2e` passes (twice, macOS), and
