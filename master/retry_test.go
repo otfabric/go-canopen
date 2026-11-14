@@ -430,6 +430,73 @@ func TestNetworkBootResetsBounded(t *testing.T) {
 	nettest.Eventually(t, waitTimeout, "no network boot-up", func() bool { return master.NetworkBootRuns(r.m) == 0 })
 }
 
+// TestBootNetworkSupersededCancel: a BootNetwork call whose network
+// boot-up was replaced returns its own context's error when that context
+// ends while it waits for the newer boot-up.
+func TestBootNetworkSupersededCancel(t *testing.T) {
+	nettest.CheckLeaks(t)
+	buses := testbus.Ports(t, 3)
+	d := mgrDict(t)
+	setDefault := func(index uint16, sub uint8, v uint32) {
+		t.Helper()
+		o, err := d.Variable(index, sub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		o.Default = u32(v)
+		set32(t, d, index, sub, v)
+	}
+	setDefault(master.IndexNMTStartup, 0, master.StartupMaster)
+	setDefault(master.IndexSlaveAssignment, 5, uint32(master.NewAssignment(master.AssignSlave|master.AssignBoot|master.AssignMandatory, 0, 0)))
+
+	sub, err := buses[2].Subscribe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var boots atomic.Int32
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		for {
+			select {
+			case <-sub.Done():
+				return
+			case f := <-sub.Frames():
+				if f.ID == 0 && f.Len == 2 && f.Data[0] == byte(canopen.NMTResetCommunication) && f.Data[1] == 0 {
+					boots.Add(1)
+				}
+			}
+		}
+	}()
+	t.Cleanup(func() { _ = sub.Close(); <-watched })
+
+	r := startManager(t, buses, d)
+	nettest.Eventually(t, waitTimeout, "automatic network boot-up", func() bool { return boots.Load() >= 1 })
+	ctx := nettest.Ctx(t)
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errs := make(chan error, 1)
+	go func() { errs <- r.m.BootNetwork(cctx) }()
+	nettest.Eventually(t, waitTimeout, "BootNetwork", func() bool { return boots.Load() >= 2 })
+
+	// An NMT reset of the master replaces the BootNetwork call's boot-up.
+	f := nmt.CommandFrame(masterID, canopen.NMTResetCommunication)
+	if err := buses[2].Send(ctx, &f); err != nil {
+		t.Fatal(err)
+	}
+	nettest.Eventually(t, waitTimeout, "replacing network boot-up", func() bool { return boots.Load() >= 3 })
+	cancel()
+	select {
+	case err := <-errs:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("BootNetwork = %v, want context.Canceled", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("BootNetwork did not return")
+	}
+	nettest.Eventually(t, waitTimeout, "one network boot-up", func() bool { return master.NetworkBootRuns(r.m) <= 1 })
+}
+
 // TestManagerUintLength: a slave answering an unsigned integer the boot
 // slave process compares (0x1000, 0x1F56:01, 0x1020:01) with no data or
 // more than 8 bytes fails the check it belongs to with ErrDataType
