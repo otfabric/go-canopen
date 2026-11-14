@@ -10,7 +10,7 @@
 | Wireshark CANopen dissector oracle (`dissect`) | any OS with tshark | `make test`; CI's vcan jobs install tshark and set `CANOPEN_REQUIRE_TSHARK=1` |
 | python canopen EDS cross-check (`eds`) | any OS with python canopen | `EDS_PYCANOPEN=/path/to/python make test`; skipped (with a message) without it; not run in CI |
 | End-to-end plant | any OS (virtual bus); Linux with vcan0 also SocketCAN | `make e2e` |
-| Chaos monkey | any OS | `make chaos CHAOS_ITERATIONS=200`; CI: 20 seeds on every push; the Nightly chaos workflow: 500 seeds on amd64 and arm64 |
+| Chaos monkey | any OS | `make chaos CHAOS_ITERATIONS=200`; CI: 20 seeds on every pull request; the Nightly chaos workflow: 500 seeds on amd64 and arm64 |
 | Fuzzing | any OS | `make fuzz FUZZTIME=30s` (CI: 10 s per target); the targets are found automatically (`go test -list '^Fuzz'`) |
 | Coverage gate (90 %) | any OS; CI measures it on Linux with vcan | `make coverage-check` |
 | Per-package floor (90 %) | as above | `make coverage-pkg-check` |
@@ -190,3 +190,15 @@ make chaos CHAOS_ITERATIONS=200
 make e2e
 make check                   # generated code, format, lint, vet, vuln, race tests, coverage, examples, cross builds
 ```
+
+## When CI runs
+
+| Event | Workflow | What runs |
+|---|---|---|
+| Pull request | `pr.yml` | `docs.yml` (docsync, otfabric-policy) always; `ci.yml`, `interop.yml` unless every changed file is documentation; then `OT Fabric Required Checks` |
+| Push to a branch | none | nothing; dispatch `ci.yml`, `interop.yml` to test a branch without a pull request |
+| Push to `main` | `docs.yml` | the light checks; the merged commit was tested as the pull request's merge commit |
+| Schedule | `nightly.yml` | the scheduled runs, on `main` |
+| Release | `release.yml` | the release workflow tests the release commit again |
+
+Documentation means an added or modified `*.md` file outside `.github/`, `testdata/` and `vendor/`, other than `AGENTS.md` and `CLAUDE.md`. A deleted or renamed document, or any other file, runs everything. `OT Fabric Required Checks` fails unless every job that applies succeeded; its summary lists them.
