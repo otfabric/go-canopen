@@ -267,3 +267,63 @@ func TestIsInitiate(t *testing.T) {
 		}
 	}
 }
+
+// unsizedBlock returns the frames of an unsized block transfer of
+// total (15..21) bytes of data in three segments, the last one padded,
+// for a limit of 14 bytes: the initiate (b0), the segments and the end.
+func unsizedBlock(b0 byte, data []byte, total int, crc bool) []frame {
+	var c uint16
+	if crc {
+		c = CRC16(data[:total])
+		b0 |= 4
+	}
+	n := byte(21 - total)
+	return []frame{
+		muxFrame(b0, idxDomain, 0, 0),
+		seg(0x01, data[0:7]...), seg(0x02, data[7:14]...), seg(0x83, data[14:21]...),
+		{0xC1 | n<<2, byte(c), byte(c >> 8)},
+	}
+}
+
+// TestMachineBlockDownloadUnsizedLimit: an unsized block download whose
+// data exceeds the limit by the last segment's 1..7 bytes is aborted
+// with AbortOutOfMemory, as a segmented one is; exactly the limit is
+// written.
+func TestMachineBlockDownloadUnsizedLimit(t *testing.T) {
+	const limit = 14
+	data := make([]byte, 21)
+	for i := range data {
+		data[i] = byte(i + 1)
+	}
+	for _, crc := range []bool{false, true} {
+		for total := limit; total <= 21; total++ {
+			d := testDict(t)
+			m, r := newMachine(d, limit, 10)
+			for _, f := range unsizedBlock(0xC0, data, total, crc) {
+				r.take()
+				m.handle(f)
+			}
+			out := r.take()
+			if len(out) != 1 {
+				t.Fatalf("crc %v, %d bytes: sent %v", crc, total, out)
+			}
+			got, _ := d.Read(idxDomain, 0)
+			if total == limit {
+				if out[0] != (frame{0xA1}) {
+					t.Fatalf("crc %v, %d bytes: answer % X", crc, total, out[0])
+				}
+				equal(t, got, data[:limit])
+				continue
+			}
+			if out[0] != abortOf(idxDomain, canopen.AbortOutOfMemory) {
+				t.Fatalf("crc %v, %d bytes: answer % X", crc, total, out[0])
+			}
+			if len(got) > limit {
+				t.Fatalf("crc %v: %d bytes written", crc, len(got))
+			}
+			if m.state != stIdle {
+				t.Fatalf("state %d", m.state)
+			}
+		}
+	}
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/otfabric/go-canopen/internal/nettest"
 	"github.com/otfabric/go-canopen/internal/testbus"
 	"github.com/otfabric/go-canopen/master"
+	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/node"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/program"
@@ -342,5 +343,146 @@ func TestDownloadProgramLateAnswers(t *testing.T) {
 				t.Fatalf("state %v", st)
 			}
 		})
+	}
+}
+
+// TestNetworkBootResetsBounded: every NMT reset of the manager's node
+// (from any node on the bus) starts a network boot-up that replaces the
+// one in progress. With a mandatory slave absent and no boot time limit
+// the boot-ups never end; the replaced automatic ones end at once rather
+// than waiting for their successors, so at most one stays running
+// (besides a BootNetwork call). A BootNetwork call replaced by many
+// automatic boot-ups in turn still reports the result of the last one.
+func TestNetworkBootResetsBounded(t *testing.T) {
+	nettest.CheckLeaks(t)
+	buses := testbus.Ports(t, 3)
+	d := mgrDict(t)
+	// Defaults: the NMT resets restore them.
+	setDefault := func(index uint16, sub uint8, v uint32) {
+		t.Helper()
+		o, err := d.Variable(index, sub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		o.Default = u32(v)
+		set32(t, d, index, sub, v)
+	}
+	setDefault(master.IndexNMTStartup, 0, master.StartupMaster)
+	setDefault(master.IndexSlaveAssignment, 5, uint32(master.NewAssignment(master.AssignSlave|master.AssignBoot|master.AssignMandatory, 0, 0)))
+
+	// Count the network boot-ups by their broadcast reset communication.
+	sub, err := buses[2].Subscribe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var boots atomic.Int32
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		for {
+			select {
+			case <-sub.Done():
+				return
+			case f := <-sub.Frames():
+				if f.ID == 0 && f.Len == 2 && f.Data[0] == byte(canopen.NMTResetCommunication) && f.Data[1] == 0 {
+					boots.Add(1)
+				}
+			}
+		}
+	}()
+	t.Cleanup(func() { _ = sub.Close(); <-watched })
+
+	r := startManager(t, buses, d)
+	nettest.Eventually(t, waitTimeout, "automatic network boot-up", func() bool { return boots.Load() >= 1 })
+	ctx := nettest.Ctx(t)
+	errs := make(chan error, 1)
+	go func() { errs <- r.m.BootNetwork(ctx) }()
+	nettest.Eventually(t, waitTimeout, "BootNetwork", func() bool { return boots.Load() >= 2 })
+
+	const resets = 50
+	for range resets {
+		before := r.m.Node().Stats().Resets
+		f := nmt.CommandFrame(masterID, canopen.NMTResetCommunication)
+		if err := buses[2].Send(ctx, &f); err != nil {
+			t.Fatal(err)
+		}
+		nettest.Eventually(t, waitTimeout, "reset", func() bool { return r.m.Node().Stats().Resets > before })
+	}
+	// The newest network boot-up, and the BootNetwork call waiting for it.
+	nettest.Eventually(t, waitTimeout, "one network boot-up", func() bool { return master.NetworkBootRuns(r.m) <= 2 })
+	select {
+	case err := <-errs:
+		t.Fatalf("BootNetwork returned %v while the network boot-up runs", err)
+	default:
+	}
+
+	// The mandatory slave comes: the last network boot-up ends, and the
+	// BootNetwork call reports its result.
+	startNode(t, buses[1], nettest.Dict(t, 5, nil))
+	select {
+	case err := <-errs:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("BootNetwork did not return")
+	}
+	nettest.Eventually(t, waitTimeout, "no network boot-up", func() bool { return master.NetworkBootRuns(r.m) == 0 })
+}
+
+// TestManagerUintLength: a slave answering an unsigned integer the boot
+// slave process compares (0x1000, 0x1F56:01, 0x1020:01) with no data or
+// more than 8 bytes fails the check it belongs to with ErrDataType
+// rather than being read as a number.
+func TestManagerUintLength(t *testing.T) {
+	nettest.CheckLeaks(t)
+	buses := testbus.Ports(t, 2)
+	d5 := nettest.Dict(t, 5, nil)
+	var bad atomic.Value // index of the malformed answer
+	bad.Store(uint16(0))
+	var writes atomic.Int32
+	d5.OnWrite(nettest.IdxParam, 0, func(*od.Variable, []byte) error { writes.Add(1); return nil })
+	startNode(t, buses[1], d5, node.WithProgram(program.Config{Handler: &flasher{image: []byte("v1")}}))
+	// After the node's own hooks (0x1F56), which run first.
+	for _, idx := range []uint16{od.IndexDeviceType, program.IndexIdentification, cdcf.IndexVerifyConfiguration} {
+		d5.OnRead(idx, -1, func(v *od.Variable, stored []byte) ([]byte, error) {
+			if bad.Load() == v.Index {
+				return make([]byte, 9), nil
+			}
+			return stored, nil
+		})
+	}
+	d := mgrDict(t)
+	set32(t, d, master.IndexNMTStartup, 0, master.StartupMaster)
+	assign(t, d, 5, master.NewAssignment(master.AssignSlave|master.AssignBoot, 0, 0))
+	r := startManager(t, buses, d)
+	r.rec.wait(t, "boot 5", bootOK(5))
+	ctx := nettest.Ctx(t)
+	var be *master.BootError
+
+	bad.Store(od.IndexDeviceType)
+	if err := r.m.BootSlave(ctx, 5); !errors.As(err, &be) || be.Status != master.BootDeviceType || !errors.Is(err, canopen.ErrDataType) {
+		t.Fatalf("device type: %v", err)
+	}
+
+	bad.Store(program.IndexIdentification)
+	assign(t, d, 5, master.NewAssignment(master.AssignSlave|master.AssignBoot|master.AssignVersionCheck, 0, 0))
+	set32(t, d, program.IndexExpectedIdentification, 5, crc32.ChecksumIEEE([]byte("v1")))
+	if err := r.m.BootSlave(ctx, 5); !errors.As(err, &be) || be.Status != master.BootProgramObjects || !errors.Is(err, canopen.ErrDataType) {
+		t.Fatalf("software identification: %v", err)
+	}
+
+	// A malformed configuration date is not up to date: the slave is
+	// configured.
+	bad.Store(cdcf.IndexVerifyConfiguration)
+	assign(t, d, 5, master.NewAssignment(master.AssignSlave|master.AssignBoot, 0, 0))
+	set32(t, d, cdcf.IndexExpectedConfigDate, 5, 15000)
+	set32(t, d, cdcf.IndexExpectedConfigTime, 5, 3600000)
+	concise(t, d, 5, cdcf.Entry{Index: nettest.IdxParam, Data: u32(0x55)})
+	if err := r.m.BootSlave(ctx, 5); err != nil {
+		t.Fatal(err)
+	}
+	if writes.Load() != 1 {
+		t.Fatalf("%d configuration writes", writes.Load())
 	}
 }

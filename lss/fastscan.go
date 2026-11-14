@@ -257,8 +257,9 @@ func (fs *fastscan) scanOne(p Part) ([]uint32, error) {
 // frame can hide a device (the next Fastscan finds it); it cannot invent
 // one. To give unconfigured devices node-IDs, use [Master.AssignAll].
 // Answers for more than 127 devices (a slave that acknowledges every
-// query) end the listing with [ErrFastscan]; with Max the walk stops once
-// Max devices are found.
+// query, or more than 127 values of one part of the address over the
+// whole listing, complete or not) end the listing with [ErrFastscan];
+// with Max the walk stops once Max devices are found.
 func (m *Master) Fastscan(ctx context.Context, o FastscanOptions) ([]Address, error) {
 	s, err := m.begin(ctx)
 	if err != nil {
@@ -268,14 +269,21 @@ func (m *Master) Fastscan(ctx context.Context, o FastscanOptions) ([]Address, er
 	fs := m.newFastscan(s, o)
 	var out []Address
 	full := func() bool { return o.Max > 0 && len(out) >= o.Max }
-	// budget is how many more values a part may yield: a value stands for
-	// at least one device, so the walk of a part stops at the devices
-	// still wanted (Max), or one beyond maxDevices.
-	budget := func() int {
+	// found counts the values found per part across all prefixes. Values
+	// of one part under distinct prefixes stand for distinct devices, so
+	// more than maxDevices values of any part, even when no address is
+	// ever completed, mean a slave acknowledges queries no network of at
+	// most 127 devices answers; this bounds the walk to about 4*127 part
+	// scans.
+	var found [PartSerial + 1]int
+	// budget is how many more values part p may yield: the devices still
+	// wanted (Max), or one beyond maxDevices for the part.
+	budget := func(p Part) int {
+		b := maxDevices + 1 - found[p]
 		if o.Max > 0 {
-			return min(o.Max-len(out), maxDevices+1)
+			b = min(b, o.Max-len(out))
 		}
-		return maxDevices + 1 - len(out)
+		return b
 	}
 	// walk scans part p below prefix, which holds the parts before p.
 	var walk func(p Part, prefix []uint32) error
@@ -284,11 +292,11 @@ func (m *Master) Fastscan(ctx context.Context, o FastscanOptions) ([]Address, er
 		if err != nil || !ok {
 			return err
 		}
-		vals, err := fs.scanPart(p, false, budget())
+		vals, err := fs.scanPart(p, false, budget(p))
 		if err != nil {
 			return err
 		}
-		if len(vals) > maxDevices {
+		if found[p] += len(vals); found[p] > maxDevices {
 			return tooMany()
 		}
 		for _, v := range vals {

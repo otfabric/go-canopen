@@ -489,6 +489,12 @@ func (m *machine) blockDownloadEnd(f frame) bool {
 	// (empty data) there is nothing to drop.
 	n := min(int(f[0]>>2&7), len(m.buf))
 	data := m.buf[:len(m.buf)-n]
+	// The last segment was taken whole: without an indicated size, its
+	// data may still exceed the limit by up to 7 bytes.
+	if lim, code := m.limit(); len(data) > lim {
+		m.abortCurrent(code)
+		return false
+	}
 	if !m.checkSize(len(data)) {
 		return false
 	}

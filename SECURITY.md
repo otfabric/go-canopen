@@ -49,14 +49,22 @@ report errors instead of panicking. Resource bounds:
   announced size is refused.
 - EMCY producer: at most 256 queued messages.
 - Dictionary writes are checked against access rights, data type lengths,
-  limits and `MaxSize` before hooks run.
+  limits and `MaxSize` before hooks run; a NaN written to a REAL32 or
+  REAL64 object with a limit is refused (`AbortInvalidValue`).
+- EDS/DCF dictionary build: the `CompactSubObj` expansion copies at most
+  `eds.BuildOptions.MaxCompactBytes` (`DefaultMaxCompactBytes`, 1 MiB) of
+  string and domain values per build.
+- LSS Fastscan listing ends with `ErrFastscan` when more than 127 values of
+  one address part answer.
 - `master` event delivery bounds the frame-driven events (EMCY, boot-up,
   state change; `WithEventQueue`, default 4096): under a flood with a
   slow handler the oldest are dropped and counted in
   `Stats().EventsDropped`. Boot results and heartbeat/guarding events are
   not bounded; their rate is set by protocol round trips and timeouts.
 - `sdo` and `usdo` clients and servers refuse transfers above
-  `WithMaxSize` (1 MiB by default) before allocating; a malformed NMT
+  `WithMaxSize` (1 MiB by default) before allocating, block transfers
+  without a size indication included; a `usdo` peer that only repeats its
+  previous segment does not extend the response timeout; a malformed NMT
   frame on ID 0 cannot fence the SDO server.
 
 ### Generated code

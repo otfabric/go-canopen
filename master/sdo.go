@@ -28,6 +28,12 @@ func readUint(ctx context.Context, r remote, index uint16, sub uint8) (uint64, e
 	if err != nil {
 		return 0, err
 	}
+	return decodeUint(index, sub, b)
+}
+
+// decodeUint decodes an unsigned integer of 1..8 bytes uploaded from
+// index:sub; other lengths fail with [canopen.ErrDataType].
+func decodeUint(index uint16, sub uint8, b []byte) (uint64, error) {
 	if len(b) < 1 || len(b) > 8 {
 		return 0, fmt.Errorf("master: 0x%04X:%02X: %w: %d bytes are no integer", index, sub, canopen.ErrDataType, len(b))
 	}

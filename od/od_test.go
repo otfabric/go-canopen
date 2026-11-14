@@ -5,6 +5,7 @@ package od
 import (
 	"bytes"
 	"errors"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -120,6 +121,10 @@ func TestRemoteAccess(t *testing.T) {
 		{"signed above", 0x2001, 0, []byte{11, 0}, canopen.AbortValueHigh},
 		{"float above", 0x2002, 0, mustEncode(canopen.Real32, float32(1.5)), canopen.AbortValueHigh},
 		{"float below", 0x2002, 0, mustEncode(canopen.Real32, float32(-1.5)), canopen.AbortValueLow},
+		{"float qNaN", 0x2002, 0, []byte{0x00, 0x00, 0xC0, 0x7F}, canopen.AbortInvalidValue},
+		{"float sNaN", 0x2002, 0, []byte{0x01, 0x00, 0x80, 0x7F}, canopen.AbortInvalidValue},
+		{"float negative NaN", 0x2002, 0, []byte{0x00, 0x00, 0xC0, 0xFF}, canopen.AbortInvalidValue},
+		{"float +Inf", 0x2002, 0, mustEncode(canopen.Real32, float32(math.Inf(1))), canopen.AbortValueHigh},
 		{"string too long", 0x2003, 0, []byte("hello"), canopen.AbortLengthHigh},
 		{"bool 2", 0x2005, 0, []byte{2}, canopen.AbortInvalidValue},
 		{"ok u8", 0x2000, 0, []byte{100}, nil},
@@ -130,6 +135,7 @@ func TestRemoteAccess(t *testing.T) {
 		{"ok domain", 0x2006, 0, bytes.Repeat([]byte{9}, 1000), nil},
 		{"ok rwr", 0x2007, 3, []byte{1, 0}, nil},
 		{"ok f64", 0x2008, 0, mustEncode(canopen.Real64, 0.75), nil},
+		{"ok f64 NaN without limits", 0x2008, 0, mustEncode(canopen.Real64, math.NaN()), nil},
 	} {
 		err := d.Write(tc.idx, tc.sub, tc.data)
 		if !errors.Is(err, tc.want) && err != tc.want {
@@ -389,4 +395,43 @@ func TestConcurrent(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// TestFloatLimitNaN: a NaN is in no range, so a REAL32/REAL64 with either
+// limit refuses it before the write hooks run and keeps its value; a
+// float without limits still accepts it.
+func TestFloatLimitNaN(t *testing.T) {
+	d := New(5)
+	lowOnly := NewVar(0x2100, "low", canopen.Real64, AccessRW, 0.5)
+	lowOnly.Subs[0].Low = mustEncode(canopen.Real64, -1.0)
+	highOnly := NewVar(0x2101, "high", canopen.Real64, AccessRW, 0.5)
+	highOnly.Subs[0].High = mustEncode(canopen.Real64, 1.0)
+	for _, o := range []*Object{lowOnly, highOnly} {
+		if err := d.Add(o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hooks := 0
+	d.OnWrite(0x2100, -1, func(*Variable, []byte) error { hooks++; return nil })
+	d.OnWrite(0x2101, -1, func(*Variable, []byte) error { hooks++; return nil })
+	nan64 := []byte{0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x7F} // signalling
+	for _, idx := range []uint16{0x2100, 0x2101} {
+		for _, data := range [][]byte{mustEncode(canopen.Real64, math.NaN()), nan64} {
+			if err := d.Write(idx, 0, data); err != canopen.AbortInvalidValue {
+				t.Errorf("0x%04X NaN %x: Write = %v, want %v", idx, data, err, canopen.AbortInvalidValue)
+			}
+		}
+		if got, _ := d.Get(idx, 0); !bytes.Equal(got, mustEncode(canopen.Real64, 0.5)) {
+			t.Errorf("0x%04X value changed to %x", idx, got)
+		}
+	}
+	if hooks != 0 {
+		t.Errorf("write hooks ran %d times for refused NaN writes", hooks)
+	}
+	if err := Validate(lowOnly.Subs[0], mustEncode(canopen.Real64, 0.25)); err != nil {
+		t.Errorf("Validate(0.25) = %v", err)
+	}
+	if isNaN(canopen.Unsigned8, []byte{0}) {
+		t.Error("isNaN(UNSIGNED8) = true")
+	}
 }

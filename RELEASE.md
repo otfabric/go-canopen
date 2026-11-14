@@ -5,6 +5,58 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.6.0
+
+**Date:** 2026-11-14
+**Previous release:** v0.5.3
+
+### Summary
+
+Tighter bounds on input from the bus and from EDS/DCF files, and a
+network boot-up that no longer keeps replaced runs waiting.
+
+### Added
+
+- `eds`: `BuildOptions.MaxCompactBytes` and `DefaultMaxCompactBytes`
+  (1 MiB) bound the string and domain value bytes that the
+  `CompactSubObj` expansion copies into the elements of an array. A file
+  over the bound fails to build; in lenient mode the remaining elements
+  of that object are skipped with a warning. A negative value removes the
+  bound.
+
+### Changed
+
+- `od`: a NaN written to a REAL32 or REAL64 object that has a
+  `LowLimit` or `HighLimit` is refused with abort 0609 0030h (invalid
+  value) before the write hooks run. Objects without limits accept NaN as
+  before.
+- `lss`: a Fastscan listing ends with `ErrFastscan` when more than 127
+  values of one address part answer over the listing, even if no address
+  completes.
+- `master`: the boot slave process checks the length of the uploaded
+  0x1000, 0x1F56:01 and 0x1020:01 values and fails with `ErrDataType` on
+  malformed data; a malformed configuration date counts as not up to
+  date, so the slave is configured again.
+- `codegen`: Unicode format characters (such as U+202E and U+FEFF) are
+  removed from object names in generated comments.
+
+### Fixed
+
+- `sdo`: block downloads (server) and block uploads (client) without a
+  size indication above `WithMaxSize` are aborted with
+  `AbortOutOfMemory`, as segmented transfers are; before, up to 7 bytes
+  more were accepted.
+- `master`: a network boot-up replaced by a newer one at the manager's
+  own boot-up ends at once instead of waiting for its successor;
+  `BootNetwork` still returns the newest run's result.
+- `usdo`: a segmented upload or download times out when the server only
+  repeats its previous segment or confirmation; repeats no longer extend
+  the response timeout.
+- `usdo`: `Server.Close` no longer waits for a blocked bus while sending
+  timeout aborts for expired transfers.
+
+---
+
 ## v0.5.3
 
 **Date:** 2026-11-14

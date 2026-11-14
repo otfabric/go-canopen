@@ -187,7 +187,7 @@ func (s *Server) run(ctx context.Context, sub *canbus.Subscription) {
 	timer := time.NewTimer(time.Hour)
 	defer timer.Stop()
 	for {
-		next := s.expire()
+		next := s.expire(ctx)
 		wait := time.Hour
 		if !next.IsZero() {
 			wait = max(time.Until(next), 0)
@@ -215,15 +215,16 @@ func (s *Server) run(ctx context.Context, sub *canbus.Subscription) {
 }
 
 // expire aborts the transfers whose deadline passed and returns the next
-// deadline (zero: none).
-func (s *Server) expire() time.Time {
+// deadline (zero: none). The aborts are sent with the service's ctx, so
+// Close does not wait for a blocked bus.
+func (s *Server) expire(ctx context.Context) time.Time {
 	now := s.now()
 	var next time.Time
 	for k, ss := range s.sessions {
 		if !now.Before(ss.deadline) {
 			s.st.timeouts.Add(1)
 			s.drop(k)
-			s.send(context.Background(), s.abort(k.client, k.id, ss.index, ss.sub, AbortTimeout))
+			s.send(ctx, s.abort(k.client, k.id, ss.index, ss.sub, AbortTimeout))
 			continue
 		}
 		if next.IsZero() || ss.deadline.Before(next) {

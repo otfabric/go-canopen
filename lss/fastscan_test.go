@@ -521,3 +521,60 @@ func TestFastscanWidened(t *testing.T) {
 		t.Errorf("widened(0): %v", fs.window)
 	}
 }
+
+// spread answers Fastscan for a peer that acknowledges every vendor,
+// product and revision query matching one of the values given for that
+// part, under any prefix, and never a serial-number query: values spread
+// across prefixes without ever completing an address.
+func spread(vals map[Part][]uint32) func(f canbus.Frame) (canbus.Frame, bool) {
+	return func(f canbus.Frame) (canbus.Frame, bool) {
+		if Command(f.Data[0]) != CmdFastscan {
+			return canbus.Frame{}, false
+		}
+		ack := frame(SlaveID, CmdIdentifySlave)
+		bit, sub := f.Data[5], Part(f.Data[6])
+		if bit == fastscanConfirm {
+			return ack, true
+		}
+		if bit > 31 {
+			return canbus.Frame{}, false
+		}
+		mask := ^uint32(0) << bit
+		for _, v := range vals[sub] {
+			if (u32(&f)^v)&mask == 0 {
+				return ack, true
+			}
+		}
+		return canbus.Frame{}, false
+	}
+}
+
+func seq(n int) []uint32 {
+	out := make([]uint32, n)
+	for i := range out {
+		out[i] = uint32(i)
+	}
+	return out
+}
+
+// TestFastscanBoundPerPart: more than 127 values of one part across all
+// prefixes cannot belong to a network of at most 127 devices, so the
+// listing ends with ErrFastscan, even when no address is ever completed.
+// Here 64 revisions under each of two products: before, every revision
+// was walked down to the serial number (128 serial scans) and the
+// listing ended without error; now the second revision scan ends it,
+// after the 64 serial scans below the first product.
+func TestFastscanBoundPerPart(t *testing.T) {
+	checkLeaks(t)
+	ctx := ctxT(t)
+	ports := testbus.Ports(t, 2)
+	m := startMaster(t, ports[0], WithFastscanTimeout(2*time.Millisecond))
+	responder(t, ports[1], spread(map[Part][]uint32{PartVendor: {0}, PartProduct: {0, 1}, PartRevision: seq(64)}))
+	got, err := m.Fastscan(ctx, FastscanOptions{})
+	if !errors.Is(err, ErrFastscan) || len(got) != 0 {
+		t.Fatalf("%v %v", got, err)
+	}
+	if q := m.Stats().Queries; q > 2500 {
+		t.Fatalf("%d queries", q)
+	}
+}

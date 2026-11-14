@@ -452,7 +452,8 @@ type Variable struct {
 	Default        []byte
 	NodeIDRelative bool
 	// Low and High are optional encoded inclusive limits for numeric
-	// types; nil means no limit.
+	// types; nil means no limit. A float with a limit refuses a NaN
+	// ([canopen.AbortInvalidValue]).
 	Low, High []byte
 	// MaxSize bounds the length of a variable-length value (strings,
 	// DOMAIN); 0 means unbounded.
