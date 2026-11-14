@@ -60,8 +60,10 @@
 //     size when it is 1..4 bytes, else 4 bytes.
 //   - A size indicated at the initiate that the data does not match is
 //     aborted with [canopen.AbortLengthHigh] or [canopen.AbortLengthLow].
-//   - The client ignores initiate responses for another object (stale
-//     responses of earlier transfers) and waits on.
+//   - The client ignores initiate responses and aborts for another object
+//     (stale responses of earlier transfers, such as the abort a server
+//     sends for a repeated segment that reached it after its transfer
+//     ended) and waits on.
 //   - Before each segment request (upload) or segment (download) the
 //     client discards the responses already received: they answer stale
 //     requests, such as a request of an earlier attempt delayed past this

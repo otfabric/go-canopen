@@ -440,17 +440,24 @@ func (x *xfer) remoteAbort(f frame) error {
 }
 
 // recvInitiate waits for the response to an initiate request: one of the
-// specifiers, for this transfer's object. Responses for another object
-// are stale and ignored.
+// specifiers, for this transfer's object. Responses and aborts for
+// another object are stale and ignored. A server answers an initiate
+// with the request's multiplexer, an abort included (CiA 301); an abort
+// for another object answers a stale message, such as a repeated or late
+// segment of an earlier transfer that reached the server after that
+// transfer ended, and must not end this one.
 func (x *xfer) recvInitiate(scs ...byte) (frame, error) {
 	for {
-		f, err := x.recv()
+		f, err := x.l.recv(x.ctx, time.Until(x.deadline))
 		if err != nil {
 			return f, err
 		}
 		if idx, sub := f.mux(); idx != x.index || sub != x.sub {
 			x.c.st.ignored.Add(1)
 			continue
+		}
+		if f.cs() == csAbort {
+			return f, x.remoteAbort(f)
 		}
 		for _, s := range scs {
 			if f.cs() == s {

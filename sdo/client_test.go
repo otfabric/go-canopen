@@ -251,6 +251,53 @@ func TestClientLenient(t *testing.T) {
 	}
 }
 
+// TestClientStaleAbortAtInitiate checks that an abort for another object
+// does not end a transfer that waits for its initiate response: a server
+// sends one when a repeated or late frame of an earlier transfer reaches
+// it after that transfer ended (go-canopen#26). An abort for the
+// transfer's own object still ends it.
+func TestClientStaleAbortAtInitiate(t *testing.T) {
+	a, b := testbus.Pair(t)
+	p := newPeer(t, b, canopen.NewCOBID(0x605), canopen.NewCOBID(0x585))
+	c := newClient(t, a, WithTimeout(time.Second))
+	ctx := ctxT(t)
+	type res struct {
+		data []byte
+		err  error
+	}
+	run := func(fn func() ([]byte, error)) chan res {
+		ch := make(chan res, 1)
+		go func() { d, err := fn(); ch <- res{d, err} }()
+		return ch
+	}
+	// Upload: an abort from an idle server (multiplexer 0000:00) and one
+	// for an unknown object, then the response.
+	ch := run(func() ([]byte, error) { return c.Upload(ctx, idxU8, 0) })
+	p.recv(time.Second)
+	p.send(abortFrame(0, 0, canopen.AbortCommand))
+	p.send(abortFrame(0x18D7, 0x84, canopen.AbortNoObject))
+	p.send(muxFrame(0x4F, idxU8, 0, 0x42))
+	if r := <-ch; r.err != nil || len(r.data) != 1 || r.data[0] != 0x42 {
+		t.Fatalf("upload = % X, %v", r.data, r.err)
+	}
+	// Expedited download: the same before the initiate response.
+	ch = run(func() ([]byte, error) { return nil, c.Download(ctx, idxU8, 0, []byte{7}) })
+	p.recv(time.Second)
+	p.send(abortFrame(0, 0, canopen.AbortCommand))
+	p.send(muxFrame(0x60, idxU8, 0, 0))
+	if r := <-ch; r.err != nil {
+		t.Fatalf("download: %v", r.err)
+	}
+	if st := c.Stats(); st.Ignored != 3 || st.AbortsReceived != 0 || st.Failed != 0 {
+		t.Errorf("stats %+v, want 3 ignored, no abort received, no failure", st)
+	}
+	// An abort for the transfer's own object ends it.
+	ch = run(func() ([]byte, error) { return c.Upload(ctx, idxU8, 0) })
+	p.recv(time.Second)
+	p.send(abortFrame(idxU8, 0, canopen.AbortNoObject))
+	wantAbort(t, (<-ch).err, canopen.AbortNoObject, true)
+}
+
 // TestClientBlockResume has a server acknowledge part of a block download
 // and checks that the client resumes after the acknowledged segments.
 func TestClientBlockResume(t *testing.T) {

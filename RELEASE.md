@@ -5,6 +5,32 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.5.2
+
+**Date:** 2026-11-14
+**Previous release:** v0.5.1
+
+### Fixed
+
+- `sdo`: on a bus that repeats or delays frames, a transfer could fail
+  with an abort meant for another request (go-canopen#26). A repeated or
+  late segment of an earlier transfer reached the server after that
+  transfer had ended; the server answered it with an abort for another
+  multiplexer (`0000:00` from an idle server, or the object that the
+  segment's bytes named), and the client took that abort as the end of
+  the transfer it had just started. One such frame could fail the next
+  transfers in a row: `TestChaosBlock` saw 17 of 24 transfers fail on a
+  3-CPU macOS runner. The client now ignores an abort for another object
+  while it waits for an initiate response, as it already ignored
+  responses for another object; `Stats.Ignored` counts them. An abort
+  for the transfer's own object, and any abort after the initiate, still
+  ends the transfer. A server that aborts an initiate with a multiplexer
+  other than the request's (CiA 301 gives the request's) now makes the
+  client time out, and retry with `WithRetries`, instead of failing at
+  once.
+
+---
+
 ## v0.5.1
 
 **Date:** 2026-11-13
