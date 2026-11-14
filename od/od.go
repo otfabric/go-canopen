@@ -124,7 +124,8 @@ type Variable struct {
 	Default        []byte
 	NodeIDRelative bool
 	// Low and High are optional encoded inclusive limits for numeric
-	// types; nil means no limit.
+	// types; nil means no limit. A float with a limit refuses a NaN
+	// ([canopen.AbortInvalidValue]).
 	Low, High []byte
 	// MaxSize bounds the length of a variable-length value (strings,
 	// DOMAIN); 0 means unbounded.
@@ -444,6 +445,12 @@ func Validate(v *Variable, data []byte) error {
 	if t == canopen.Boolean && data[0] > 1 {
 		return canopen.AbortInvalidValue
 	}
+	// A NaN is in no range: a limited float refuses it as an invalid
+	// value (CiA 301 abort 0609 0030h), since it is neither too high
+	// (0609 0031h) nor too low (0609 0032h).
+	if t.IsFloat() && (v.Low != nil || v.High != nil) && isNaN(t, data) {
+		return canopen.AbortInvalidValue
+	}
 	if v.Low != nil && compare(t, data, v.Low) < 0 {
 		return canopen.AbortValueLow
 	}
@@ -451,6 +458,19 @@ func Validate(v *Variable, data []byte) error {
 		return canopen.AbortValueHigh
 	}
 	return nil
+}
+
+// isNaN reports whether data, an encoded float of type t, is a NaN (any
+// encoding: quiet, signalling, either sign).
+func isNaN(t canopen.DataType, data []byte) bool {
+	x, _ := canopen.Decode(t, data)
+	switch f := x.(type) {
+	case float32:
+		return math.IsNaN(float64(f))
+	case float64:
+		return math.IsNaN(f)
+	}
+	return false
 }
 
 // compare orders two encoded numeric values of type t.

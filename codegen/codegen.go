@@ -272,12 +272,19 @@ var accessNames = map[od.Access]string{
 	od.AccessRWR: "od.AccessRWR", od.AccessRWW: "od.AccessRWW", od.AccessConst: "od.AccessConst",
 }
 
-// comment makes text safe for a line comment.
+// comment makes text safe for a line comment: control characters and
+// line separators become spaces, and Unicode format characters (bidi
+// overrides such as U+202E, zero-width characters, U+FEFF), which would
+// make the comment read differently from what the compiler sees, are
+// removed.
 func comment(s string) string {
 	s = strings.ToValidUTF8(s, "?")
 	return strings.Map(func(r rune) rune {
-		if r < ' ' || r == 0x7F || r == 0x2028 || r == 0x2029 {
+		switch {
+		case r < ' ' || r == 0x7F || r == 0x2028 || r == 0x2029:
 			return ' '
+		case unicode.Is(unicode.Cf, r):
+			return -1
 		}
 		return r
 	}, s)

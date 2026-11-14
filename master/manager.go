@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-canbus"
@@ -62,6 +63,9 @@ type manager struct {
 	// boot-ups of the devices it configures are not booted (the reset
 	// that follows the step boots them).
 	lssBusy bool
+	// runs counts the network boot-up goroutines running, including
+	// BootNetwork calls waiting for a newer one (tests).
+	runs atomic.Int32
 }
 
 // newManager builds the manager and the master's node on d.
@@ -186,13 +190,18 @@ func (g *manager) onOwnState(sc nmt.StateChange) {
 }
 
 // startNetwork runs the network boot-up in the background, cancelling one
-// in progress.
+// in progress. Its result is not used, so once a newer boot-up replaces
+// it the goroutine ends rather than waiting for the newer one: repeated
+// boot-ups of the master's node (NMT resets from the bus) leave at most
+// one network boot-up running.
 func (g *manager) startNetwork() {
-	g.m.goBoot(func(ctx context.Context) { _ = g.runNetwork(ctx) })
+	g.m.goBoot(func(ctx context.Context) { _ = g.runNetwork(ctx, false) })
 }
 
-// runNetwork runs the network boot-up, cancelling one in progress.
-func (g *manager) runNetwork(ctx context.Context) error {
+// runNetwork runs the network boot-up, cancelling one in progress. With
+// wait (BootNetwork), a call whose boot-up was replaced waits for the
+// newer one and returns its result; without, it returns at once.
+func (g *manager) runNetwork(ctx context.Context, wait bool) error {
 	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	r := &netRun{cancel: cancel, done: make(chan struct{})}
@@ -203,6 +212,8 @@ func (g *manager) runNetwork(ctx context.Context) error {
 	}
 	g.net = r
 	g.mu.Unlock()
+	g.runs.Add(1)
+	defer g.runs.Add(-1)
 	err := g.bootNetwork(rctx)
 	g.mu.Lock()
 	next, closed := r.next, r.closed
@@ -211,14 +222,13 @@ func (g *manager) runNetwork(ctx context.Context) error {
 	}
 	g.mu.Unlock()
 	if next != nil && !closed {
-		// Superseded by a newer network boot-up (the automatic one at the
-		// master's boot-up, or another BootNetwork call): its result is
-		// this call's.
-		select {
-		case <-next.done:
-			err = next.err
-		case <-ctx.Done():
-			err = ctx.Err()
+		if wait {
+			// Superseded by a newer network boot-up (the automatic one at
+			// the master's boot-up, or another BootNetwork call): its
+			// result is this call's.
+			err = g.successor(ctx, next)
+		} else {
+			r.handedOff = true
 		}
 	}
 	r.err = err
@@ -226,14 +236,35 @@ func (g *manager) runNetwork(ctx context.Context) error {
 	return err
 }
 
+// successor waits for the result of the network boot-up n that replaced
+// one, following n to its own successor when n handed off (an automatic
+// boot-up that was replaced in turn).
+func (g *manager) successor(ctx context.Context, n *netRun) error {
+	for {
+		select {
+		case <-n.done:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if !n.handedOff {
+			return n.err
+		}
+		g.mu.Lock()
+		n = n.next // set before n was cancelled, so before n.done
+		g.mu.Unlock()
+	}
+}
+
 // netRun is one network boot-up. A newer one cancels it and becomes its
-// next: the older one then reports the newer one's result.
+// next: the older one then reports the newer one's result (BootNetwork),
+// or hands off and ends (the automatic boot-up).
 type netRun struct {
-	cancel context.CancelFunc
-	done   chan struct{}
-	err    error   // set before done is closed
-	next   *netRun // guarded by manager.mu
-	closed bool    // the manager is closing; guarded by manager.mu
+	cancel    context.CancelFunc
+	done      chan struct{}
+	err       error   // set before done is closed
+	handedOff bool    // replaced without waiting; set before done is closed
+	next      *netRun // guarded by manager.mu
+	closed    bool    // the manager is closing; guarded by manager.mu
 }
 
 // bootNetwork is the network boot-up of CiA 302-2 (as Lely lely-core's
@@ -565,8 +596,12 @@ identity:
 	if err != nil {
 		return canopen.StateUnknown, BootNoResponse, err
 	}
-	if want := g.u32(IndexExpectedDeviceType, uint8(id)); want != 0 && canopen.DecodeUint(b) != uint64(want) {
-		return canopen.StateUnknown, BootDeviceType, fmt.Errorf("%w: 0x1000 is 0x%08X, want 0x%08X", ErrIdentity, canopen.DecodeUint(b), want)
+	devType, err := decodeUint(od.IndexDeviceType, 0, b)
+	if err != nil {
+		return canopen.StateUnknown, BootDeviceType, err
+	}
+	if want := g.u32(IndexExpectedDeviceType, uint8(id)); want != 0 && devType != uint64(want) {
+		return canopen.StateUnknown, BootDeviceType, fmt.Errorf("%w: 0x1000 is 0x%08X, want 0x%08X", ErrIdentity, devType, want)
 	}
 	checks := []struct {
 		index  uint16
@@ -661,7 +696,10 @@ func (g *manager) checkSoftware(ctx context.Context, id canopen.NodeID, a Assign
 	if err != nil {
 		return false, BootProgramObjects, err
 	}
-	got := canopen.DecodeUint(b)
+	got, err := decodeUint(program.IndexIdentification, 1, b)
+	if err != nil {
+		return false, BootProgramObjects, err
+	}
 	if got == uint64(want) {
 		return true, BootOK, nil
 	}
@@ -701,8 +739,7 @@ func (g *manager) configure(ctx context.Context, id canopen.NodeID, a Assignment
 	t := g.m.cfg.timing
 	date, tod := g.u32(cdcf.IndexExpectedConfigDate, uint8(id)), g.u32(cdcf.IndexExpectedConfigTime, uint8(id))
 	if date != 0 && tod != 0 {
-		d, err := uploadRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 1)
-		if err == nil && canopen.DecodeUint(d) == uint64(date) {
+		if d, err := readUintRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 1); err == nil && d == uint64(date) {
 			if tm, err := readUintRetry(ctx, c, t.SDORetries, cdcf.IndexVerifyConfiguration, 2); err == nil && tm == uint64(tod) {
 				g.m.log.Debug("master: configuration up to date", "node", int(id))
 				return BootOK, nil

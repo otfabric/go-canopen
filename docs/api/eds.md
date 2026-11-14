@@ -35,6 +35,12 @@ const (
 Compact storage names (CiA 306 4.5.2.3): sub-index 0 of an ARRAY with CompactSubObj, and the name pattern of its elements when the object has no \[XXXXName] entry for them (the convention of python canopen: ParameterName, '\_', sub-index in lower-case hexadecimal).
 
 ```go
+const DefaultMaxCompactBytes = 1 << 20
+```
+
+DefaultMaxCompactBytes is the default of [BuildOptions.MaxCompactBytes](#func-buildoptions-maxcompactbytes): 1 MiB, far above what real compact arrays of strings or domains (at most 255 elements of a short default) need.
+
+```go
 const StringLengthMinKey = "StringLengthMin"
 ```
 
@@ -93,6 +99,15 @@ type BuildOptions struct {
 	// that do not parse — and reports them as warnings, instead of
 	// failing.
 	Lenient bool
+	// MaxCompactBytes bounds the bytes of string, OCTET_STRING and DOMAIN
+	// values that the CompactSubObj expansion copies from an object's
+	// value into its elements, summed over the build: each element of a
+	// compact ARRAY gets its own copy, so one short section can otherwise
+	// produce up to 255 times its value. Elements valued from [XXXXValue]
+	// are not counted. Beyond the bound the build fails (in lenient mode
+	// the remaining elements of the object are skipped with a warning).
+	// 0 means [DefaultMaxCompactBytes]; a negative value means no bound.
+	MaxCompactBytes int
 }
 ```
 
@@ -359,7 +374,7 @@ BuildDictionary builds an object dictionary for a node.
 
   - The value of a sub-object is its ParameterValue when present (DCF), else its DefaultValue; an empty value is zero (empty for strings).
   - A value with $NODEID ("$NODEID+0x180", "0x180+$NODEID") becomes a node-ID-relative default: Default holds the offset and NodeIDRelative is set, so the dictionary adds its node-ID, now and after SetNodeID and a reset (an LSS node-ID change). $NODEID in a limit is evaluated with node.
-  - An ARRAY with CompactSubObj=n is expanded: sub-index 0 (UNSIGNED8, ro, value n, named CompactSub0Name) and sub-indices 1..n with the object's DataType, AccessType, PDOMapping and value, named from \[XXXXName] (or ParameterName\_\<sub>), valued from \[XXXXValue] when present.
+  - An ARRAY with CompactSubObj=n is expanded: sub-index 0 (UNSIGNED8, ro, value n, named CompactSub0Name) and sub-indices 1..n with the object's DataType, AccessType, PDOMapping and value, named from \[XXXXName] (or ParameterName\_\<sub>), valued from \[XXXXValue] when present. The bytes of variable-length values copied this way are bounded by [BuildOptions.MaxCompactBytes](#func-buildoptions-maxcompactbytes).
   - Objects below 0x1000 (the data type area: DEFTYPE and DEFSTRUCT definitions) and NULL objects are not part of the dictionary and are skipped silently. A variable whose data type is defined that way (or otherwise unknown or structured) cannot be held.
   - A DOMAIN object (or sub-object) without DataType has type DOMAIN. DOMAIN and OCTET\_STRING values are hexadecimal digit pairs.
   - Limits apply to integer and float types and are ignored otherwise.

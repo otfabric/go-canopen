@@ -495,3 +495,19 @@ func FuzzGenerate(f *testing.F) {
 		}
 	})
 }
+
+func TestComment(t *testing.T) {
+	for in, want := range map[string]string{
+		"Device type":                   "Device type",
+		"a\nb\rc\x00d\x7Fe":             "a b c d e",
+		"line\u2028sep\u2029par":        "line sep par",
+		"admin\u202E//txet":             "admin//txet",
+		"\uFEFFname\u200B\u2066x\u2069": "namex",
+		"bad\xFFutf8":                   "bad?utf8",
+		"Grüße":                         "Grüße",
+	} {
+		if got := comment(in); got != want {
+			t.Errorf("comment(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

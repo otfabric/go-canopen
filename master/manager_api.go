@@ -42,7 +42,7 @@ func (m *Master) BootNetwork(ctx context.Context) error {
 	if m.mgr == nil {
 		return ErrNoDictionary
 	}
-	return m.mgr.runNetwork(ctx)
+	return m.mgr.runNetwork(ctx, true)
 }
 
 // BootSlave runs the CiA 302-2 boot slave process of a node now and waits

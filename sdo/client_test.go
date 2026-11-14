@@ -700,3 +700,40 @@ func TestClientStaleSegment(t *testing.T) {
 		}
 	})
 }
+
+// TestClientBlockUploadUnsizedLimit: an unsized block upload whose data
+// exceeds WithMaxSize by the last segment's 1..7 bytes fails with
+// AbortOutOfMemory, as a segmented one does; exactly the limit is
+// returned.
+func TestClientBlockUploadUnsizedLimit(t *testing.T) {
+	const limit = 14
+	data := make([]byte, 21)
+	for i := range data {
+		data[i] = byte(i + 1)
+	}
+	for _, crc := range []bool{false, true} {
+		for total := limit; total <= 21; total++ {
+			cfg := defaultConfig()
+			cfg.maxSize, cfg.blkSize, cfg.crc = limit, 10, crc
+			if err := cfg.check(); err != nil {
+				t.Fatal(err)
+			}
+			l := &fakeLink{in: unsizedBlock(0xC0, data, total, crc)}
+			c := &Client{cfg: cfg, log: cfg.log}
+			x := &xfer{c: c, l: l, ctx: context.Background(), index: idxDomain}
+			got, err := x.blockUpload(0)
+			err = x.finish(err)
+			if total == limit {
+				if err != nil {
+					t.Fatalf("crc %v, %d bytes: %v", crc, total, err)
+				}
+				equal(t, got, data[:limit])
+				continue
+			}
+			wantAbort(t, err, canopen.AbortOutOfMemory, false)
+			if got != nil {
+				t.Fatalf("crc %v, %d bytes: returned %d bytes", crc, total, len(got))
+			}
+		}
+	}
+}

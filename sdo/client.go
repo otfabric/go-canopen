@@ -789,6 +789,10 @@ func (x *xfer) blockUploadEnd(f frame, buf []byte, sized bool, size int64, useCR
 	n := min(int(f[0]>>2&7), len(buf))
 	data := buf[:len(buf)-n]
 	switch {
+	case !sized && int64(len(data)) > int64(x.c.cfg.maxSize):
+		// The last segment was taken whole: without an indicated size,
+		// its data may still exceed the limit by up to 7 bytes.
+		return nil, protoErr(canopen.AbortOutOfMemory)
 	case sized && int64(len(data)) > size:
 		return nil, protoErr(canopen.AbortLengthHigh)
 	case sized && int64(len(data)) < size:

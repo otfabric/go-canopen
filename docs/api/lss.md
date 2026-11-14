@@ -480,7 +480,7 @@ func (m *Master) Fastscan(ctx context.Context, o FastscanOptions) ([]Address, er
 
 Fastscan lists the LSS addresses of every unconfigured slave (active and pending node-ID Unconfigured) in the waiting state, without selecting or changing any: it walks the address tree with Fastscan queries whose LSSNext keeps the slaves on the part being scanned, and re-positions the slaves (reset, then verification of the known prefix) for each part. The result is sorted by address.
 
-Each bit costs two queries, each at least one listening window, so a device costs about 260 windows (6.5 s with the default 25 ms). A lost frame can hide a device (the next Fastscan finds it); it cannot invent one. To give unconfigured devices node-IDs, use [Master.AssignAll](#func-master-assignall). Answers for more than 127 devices (a slave that acknowledges every query) end the listing with ErrFastscan; with Max the walk stops once Max devices are found.
+Each bit costs two queries, each at least one listening window, so a device costs about 260 windows (6.5 s with the default 25 ms). A lost frame can hide a device (the next Fastscan finds it); it cannot invent one. To give unconfigured devices node-IDs, use [Master.AssignAll](#func-master-assignall). Answers for more than 127 devices (a slave that acknowledges every query, or more than 127 values of one part of the address over the whole listing, complete or not) end the listing with ErrFastscan; with Max the walk stops once Max devices are found.
 
 #### func (Master) FastscanSelect
 

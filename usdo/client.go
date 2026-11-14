@@ -297,7 +297,14 @@ func (x *xfer) fail(err error) error {
 // expect waits for one of the response commands from the server; aborts
 // become remote [AbortError]s; other messages are ignored as stale.
 func (x *xfer) expect(cmds ...Command) (Message, error) {
-	deadline := time.Now().Add(x.timeout)
+	return x.expectBy(time.Now().Add(x.timeout), cmds...)
+}
+
+// expectBy is expect with a fixed deadline. A step that skips repeated
+// responses (an earlier segment or confirmation sent again) keeps one
+// deadline for the whole step, so a peer that only repeats does not
+// extend the response timeout.
+func (x *xfer) expectBy(deadline time.Time, cmds ...Command) (Message, error) {
 	for {
 		left := time.Until(deadline)
 		if left <= 0 {
@@ -375,9 +382,10 @@ func (x *xfer) uploadFrom(m Message) ([]byte, error) {
 			return nil, x.fail(err)
 		}
 		var seg Message
+		deadline := time.Now().Add(x.timeout)
 		for {
 			var err error
-			if seg, err = x.expect(CmdUploadSegmentData, CmdUploadLast); err != nil {
+			if seg, err = x.expectBy(deadline, CmdUploadSegmentData, CmdUploadLast); err != nil {
 				return nil, x.fail(err)
 			}
 			if seg.Cmd == CmdUploadSegmentData && seg.Counter == counter(n-1) && n > 1 {
@@ -488,8 +496,9 @@ func (x *xfer) downloadSegmented(data []byte, cl call) error {
 		if err := x.send(Message{Dest: x.dest, Cmd: CmdDownloadSegment, Session: x.sid, Counter: counter(n), Data: seg}); err != nil {
 			return x.fail(err)
 		}
+		deadline := time.Now().Add(x.timeout)
 		for {
-			r, err := x.expect(CmdDownloadSegmentOK)
+			r, err := x.expectBy(deadline, CmdDownloadSegmentOK)
 			if err != nil {
 				return x.fail(err)
 			}

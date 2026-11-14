@@ -20,7 +20,21 @@ type BuildOptions struct {
 	// that do not parse — and reports them as warnings, instead of
 	// failing.
 	Lenient bool
+	// MaxCompactBytes bounds the bytes of string, OCTET_STRING and DOMAIN
+	// values that the CompactSubObj expansion copies from an object's
+	// value into its elements, summed over the build: each element of a
+	// compact ARRAY gets its own copy, so one short section can otherwise
+	// produce up to 255 times its value. Elements valued from [XXXXValue]
+	// are not counted. Beyond the bound the build fails (in lenient mode
+	// the remaining elements of the object are skipped with a warning).
+	// 0 means [DefaultMaxCompactBytes]; a negative value means no bound.
+	MaxCompactBytes int
 }
+
+// DefaultMaxCompactBytes is the default of [BuildOptions.MaxCompactBytes]:
+// 1 MiB, far above what real compact arrays of strings or domains
+// (at most 255 elements of a short default) need.
+const DefaultMaxCompactBytes = 1 << 20
 
 // Compact storage names (CiA 306 4.5.2.3): sub-index 0 of an ARRAY with
 // CompactSubObj, and the name pattern of its elements when the object has
@@ -52,7 +66,8 @@ func (f *File) Dictionary(node canopen.NodeID) (*od.Dictionary, error) {
 //     ro, value n, named [CompactSub0Name]) and sub-indices 1..n with the
 //     object's DataType, AccessType, PDOMapping and value, named from
 //     [XXXXName] (or ParameterName_<sub>), valued from [XXXXValue] when
-//     present.
+//     present. The bytes of variable-length values copied this way are
+//     bounded by [BuildOptions.MaxCompactBytes].
 //   - Objects below 0x1000 (the data type area: DEFTYPE and DEFSTRUCT
 //     definitions) and NULL objects are not part of the dictionary and
 //     are skipped silently. A variable whose data type is defined that way
@@ -88,6 +103,9 @@ type builder struct {
 	node    canopen.NodeID
 	lenient bool
 	ds      []Diagnostic
+	// compactMax is BuildOptions.MaxCompactBytes resolved (< 0: no
+	// bound); compactUsed counts the bytes the expansion copied so far.
+	compactMax, compactUsed int
 }
 
 // fail records a problem: a warning in lenient mode, else the error.
@@ -103,7 +121,10 @@ func (b *builder) fail(sec, key, format string, args ...any) error {
 
 // odObjects converts the object sections to dictionary objects.
 func (f *File) odObjects(node canopen.NodeID, opts BuildOptions) ([]*od.Object, []Diagnostic, error) {
-	b := &builder{node: node, lenient: opts.Lenient}
+	b := &builder{node: node, lenient: opts.Lenient, compactMax: opts.MaxCompactBytes}
+	if b.compactMax == 0 {
+		b.compactMax = DefaultMaxCompactBytes
+	}
 	var out []*od.Object
 	for _, o := range f.Objects {
 		obj, err := b.object(o)
@@ -149,14 +170,28 @@ func (b *builder) object(o *Object) (*od.Object, error) {
 						name = s
 					}
 				}
-				val := o.Value()
+				val, shared := o.Value(), true
 				if o.Values != nil {
 					if s, ok := o.Values.Entries[i]; ok {
-						val = s
+						val, shared = s, false
 					}
 				}
-				if err := add(b.variable(sectionName(o.Index, int(i)), o.Index, i, name, &o.Entry, od.ObjectVar, val)); err != nil {
+				v, err := b.variable(sectionName(o.Index, int(i)), o.Index, i, name, &o.Entry, od.ObjectVar, val)
+				if err != nil {
 					return nil, err
+				}
+				if v != nil && shared && b.compactMax >= 0 && v.DataType.IsVariable() {
+					if len(v.Default) > b.compactMax-b.compactUsed {
+						if err := b.fail(sec, "CompactSubObj", "expanding %d elements of a %d-byte value exceeds the %d-byte bound at sub-index %d",
+							n, len(v.Default), b.compactMax, i); err != nil {
+							return nil, err
+						}
+						break
+					}
+					b.compactUsed += len(v.Default)
+				}
+				if v != nil {
+					obj.Subs = append(obj.Subs, v)
 				}
 			}
 			break
