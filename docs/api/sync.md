@@ -16,7 +16,7 @@ CANopen FD (CiA 1301) keeps the SYNC protocol (0 or 1 data byte, default CAN-ID 
 
 Timing: the producer uses a time.Ticker, so SYNC does not drift over time, but every message is subject to the scheduling latency of the Go runtime and the operating system (jitter typically in the tens to hundreds of microseconds on an idle system, more under load). Consumers timestamp SYNC with the frame's receive time when the transport reports one (SocketCAN does), which is closer to the bus than the handler call.
 
-Long-running services have Start, which subscribes before it returns, and Close, which stops them and waits for their goroutine. Callbacks run on the service's goroutine and must not block for long.
+Long-running services have Start, which subscribes before it returns, and Close, which stops them and waits for their goroutine; Close is safe to call more than once and from several goroutines, and after it the services send nothing ([canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed)). Callbacks run on the service's goroutine, one call at a time, and must not block for long. A callback may call the service's methods, and its Close, which then does not wait for the goroutine the callback runs on. A callback that does not return normally is logged with its stack ("callback did not return normally"), and the service goes on.
 
 ## Constants
 
@@ -52,7 +52,7 @@ NewConsumer returns a SYNC consumer. Options: [WithLogger](#func-withlogger), [W
 func (c *Consumer) Close() error
 ```
 
-Close stops the consumer and waits for it. It removes the write hooks the consumer installed on the dictionary.
+Close stops the consumer and waits for it. It removes the write hooks the consumer installed on the dictionary. It is safe to call more than once and from several goroutines; called from the handler it does not wait for the goroutine the handler runs on.
 
 #### func (Consumer) InWindow
 
@@ -169,7 +169,7 @@ WithFD selects CANopen FD (CiA 1301), which carries every protocol in CAN FD fra
 func WithHandler(h func(Event)) Option
 ```
 
-WithHandler calls h for every SYNC a [Consumer](#type-consumer) receives, on its goroutine; h must not block for long (synchronous PDOs are due).
+WithHandler calls h for every SYNC a [Consumer](#type-consumer) receives, on its goroutine, one call at a time; h must not block for long (synchronous PDOs are due, and no SYNC is received while it runs). It may call the consumer's methods, and [Consumer.Close](#func-consumer-close), which then does not wait for that goroutine. A handler that does not return normally is logged with its stack, and the next SYNC is delivered.
 
 #### func WithLogger
 
@@ -229,7 +229,7 @@ NewProducer returns a SYNC producer. Options: [WithLogger](#func-withlogger), [W
 func (p *Producer) Close() error
 ```
 
-Close stops producing and waits for the goroutine. It removes the write hooks the producer installed on the dictionary.
+Close stops producing and waits for the goroutine. It removes the write hooks the producer installed on the dictionary. It is safe to call more than once and from several goroutines.
 
 #### func (Producer) Period
 
@@ -253,7 +253,7 @@ Producing reports whether SYNC messages are being generated: a period is set and
 func (p *Producer) Send(ctx context.Context) error
 ```
 
-Send sends one SYNC message now (with the next counter value), for applications that drive the cycle themselves.
+Send sends one SYNC message now (with the next counter value), for applications that drive the cycle themselves. After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 #### func (Producer) SetOverflow
 

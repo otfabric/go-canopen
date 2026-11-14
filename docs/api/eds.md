@@ -331,7 +331,7 @@ FromDictionary describes a dictionary as an EDS, or as a DCF holding its current
 func Parse(r io.Reader) (*File, error)
 ```
 
-Parse parses an EDS or DCF file. It fails only on lines it cannot read; use [File.Validate](#func-file-validate) for the consistency checks.
+Parse parses an EDS or DCF file. It fails only on lines it cannot read, and on a file larger than 16 MiB, which it stops reading at that size; use [File.Validate](#func-file-validate) for the consistency checks.
 
 #### func ParseBytes
 
@@ -339,7 +339,7 @@ Parse parses an EDS or DCF file. It fails only on lines it cannot read; use [Fil
 func ParseBytes(b []byte) (*File, error)
 ```
 
-ParseBytes parses an EDS or DCF file held in memory.
+ParseBytes parses an EDS or DCF file held in memory. A file larger than 16 MiB is refused.
 
 #### func ParseFile
 
@@ -347,7 +347,7 @@ ParseBytes parses an EDS or DCF file held in memory.
 func ParseFile(path string) (*File, error)
 ```
 
-ParseFile parses an EDS or DCF file.
+ParseFile parses an EDS or DCF file. A file larger than 16 MiB is refused without being read.
 
 #### func (File) BuildDictionary
 
@@ -362,7 +362,8 @@ BuildDictionary builds an object dictionary for a node.
   - An ARRAY with CompactSubObj=n is expanded: sub-index 0 (UNSIGNED8, ro, value n, named CompactSub0Name) and sub-indices 1..n with the object's DataType, AccessType, PDOMapping and value, named from \[XXXXName] (or ParameterName\_\<sub>), valued from \[XXXXValue] when present.
   - Objects below 0x1000 (the data type area: DEFTYPE and DEFSTRUCT definitions) and NULL objects are not part of the dictionary and are skipped silently. A variable whose data type is defined that way (or otherwise unknown or structured) cannot be held.
   - A DOMAIN object (or sub-object) without DataType has type DOMAIN. DOMAIN and OCTET\_STRING values are hexadecimal digit pairs.
-  - Limits apply to integer and float types and are ignored otherwise.
+  - Limits apply to integer and float types and are ignored otherwise. A float limit cannot be NaN.
+  - A dictionary holds at most 65536 sub-objects, compact storage counted expanded. A file that describes more is refused before anything is built, in lenient mode too.
   - MaxSize of a variable-length value is 0 (unbounded), unless the section has the CANopenNode key StringLengthMin: then it is the larger of that and the length of the value. The length of the default alone is no bound, since writable strings (names, descriptions) commonly default to a shorter text than a device accepts.
 
 In lenient mode the sub-objects that break these rules are skipped (and objects left without sub-objects) and reported as warnings.

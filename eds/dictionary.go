@@ -60,6 +60,10 @@ func (f *File) Dictionary(node canopen.NodeID) (*od.Dictionary, error) {
 //   - A DOMAIN object (or sub-object) without DataType has type DOMAIN.
 //     DOMAIN and OCTET_STRING values are hexadecimal digit pairs.
 //   - Limits apply to integer and float types and are ignored otherwise.
+//     A float limit cannot be NaN.
+//   - A dictionary holds at most 65536 sub-objects, compact storage
+//     counted expanded. A file that describes more is refused before
+//     anything is built, in lenient mode too.
 //   - MaxSize of a variable-length value is 0 (unbounded), unless the
 //     section has the CANopenNode key StringLengthMin: then it is the
 //     larger of that and the length of the value. The length of the
@@ -101,8 +105,35 @@ func (b *builder) fail(sec, key, format string, args ...any) error {
 	return fmt.Errorf("eds: %s", strings.TrimPrefix(d.String(), "error: "))
 }
 
+// maxSubObjects bounds the sub-objects a dictionary is built with: 65536,
+// many times the number a device description has in practice. Compact
+// storage makes a few bytes of a file hundreds of sub-objects, so the
+// file size alone does not bound them.
+const maxSubObjects = 1 << 16
+
+// subObjects returns the number of sub-objects odObjects would build from
+// the objects of f, before anything is built.
+func (f *File) subObjects() int {
+	n := 0
+	for _, o := range f.Objects {
+		switch {
+		case o.Index < 0x1000 || o.implicit || o.ObjectType == od.ObjectNull:
+		case (o.ObjectType == od.ObjectArray || o.ObjectType == od.ObjectRecord) && o.CompactSubObj > 0:
+			n += int(o.CompactSubObj) + 1
+		case o.ObjectType == od.ObjectArray || o.ObjectType == od.ObjectRecord:
+			n += len(o.Subs)
+		default:
+			n++
+		}
+	}
+	return n
+}
+
 // odObjects converts the object sections to dictionary objects.
 func (f *File) odObjects(node canopen.NodeID, opts BuildOptions) ([]*od.Object, []Diagnostic, error) {
+	if n := f.subObjects(); n > maxSubObjects {
+		return nil, nil, fmt.Errorf("eds: %d sub-objects, more than the %d a dictionary is built with", n, maxSubObjects)
+	}
 	b := &builder{node: node, lenient: opts.Lenient}
 	var out []*od.Object
 	for _, o := range f.Objects {
@@ -210,6 +241,9 @@ func (b *builder) variable(sec string, index uint16, sub uint8, name string, e *
 			}
 			if *l.dst, _, err = parseLiteral(t, l.lit, b.node); err != nil {
 				return nil, b.fail(sec, l.key, "%v", err)
+			}
+			if t.IsFloat() && math.IsNaN(toFloat(t, *l.dst)) {
+				return nil, b.fail(sec, l.key, "a limit cannot be NaN")
 			}
 		}
 	}

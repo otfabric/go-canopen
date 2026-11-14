@@ -9,6 +9,7 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
 )
 
 // FastscanOptions tune a Fastscan.
@@ -441,6 +442,7 @@ func AssignAvoid(ids ...canopen.NodeID) AssignOption {
 }
 
 // AssignHandler calls h after each assignment, on the caller's goroutine.
+// A handler that does not return normally is logged, and the run goes on.
 func AssignHandler(h func(Assignment)) AssignOption { return func(c *assignConfig) { c.handler = h } }
 
 // AssignAll gives every unconfigured device a node-ID, from first upwards
@@ -472,10 +474,18 @@ func AssignHandler(h func(Assignment)) AssignOption { return func(c *assignConfi
 // cannot be told from no answer, so these checks do not exclude two slaves
 // in the configuration state on a link that loses frames (LIMITATIONS.md).
 // The assignments made are returned also when an error ends the run.
+//
+// AssignAll is one sequence: from its first frame to its last no service
+// called from another goroutine runs (it waits).
 func (m *Master) AssignAll(ctx context.Context, first canopen.NodeID, opts ...AssignOption) ([]Assignment, error) {
 	if err := first.Check(); err != nil {
 		return nil, fmt.Errorf("lss: %w", err)
 	}
+	ctx, done, err := m.sequence(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
 	c := assignConfig{avoid: map[canopen.NodeID]bool{}}
 	for _, o := range opts {
 		if o != nil {
@@ -560,7 +570,7 @@ func (m *Master) assigned(c *assignConfig, out []Assignment, done map[Address]bo
 	m.count(func(st *MasterStats) { st.Assigned++ })
 	m.cfg.log.Info("lss node-ID assigned", "address", a.String(), "node", id)
 	if c.handler != nil {
-		c.handler(as)
+		callback.Do(m.cfg.log, "assign handler", func() { c.handler(as) })
 	}
 	return append(out, as)
 }

@@ -7,10 +7,12 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/goid"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -52,6 +54,7 @@ type base struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+	run     atomic.Uint64 // identifier of the service goroutine
 	unwatch func()
 	// unprotect removes the hooks Protect installed.
 	unprotect func()
@@ -149,6 +152,7 @@ func (b *base) start(loop func()) error {
 	}
 	b.unwatch = b.d.Watch(b.watch)
 	b.wg.Go(func() {
+		b.run.Store(goid.ID())
 		loop()
 	})
 	return nil
@@ -170,34 +174,42 @@ func (b *base) watch(v *od.Variable, _ []byte) {
 	b.poke()
 }
 
-// close stops the goroutine and waits for it.
+// close disables the service, stops the goroutine and waits for it, on
+// every call; called on the service goroutine (a handler that closes its
+// own PDO) it does not wait for that goroutine, which ends when the
+// handler returns. A closed service sends and applies nothing more.
 func (b *base) close() error {
 	b.mu.Lock()
-	if b.closed {
+	if !b.closed {
+		b.closed = true
+		b.enabled = false
+		b.reset() // drops a buffered PDO and pending transmissions
+		b.cancel()
+		if b.sub != nil {
+			_ = b.sub.Close()
+			b.sub = nil
+		}
+		unwatch := b.unwatch
+		b.unwatch = nil
 		b.mu.Unlock()
-		return nil
+		if unwatch != nil {
+			unwatch()
+		}
+		b.unprotect()
+	} else {
+		b.mu.Unlock()
 	}
-	b.closed = true
-	b.cancel()
-	if b.sub != nil {
-		_ = b.sub.Close()
-		b.sub = nil
+	if id := goid.ID(); id == 0 || b.run.Load() != id {
+		b.wg.Wait()
 	}
-	unwatch := b.unwatch
-	b.mu.Unlock()
-	if unwatch != nil {
-		unwatch()
-	}
-	b.unprotect()
-	b.wg.Wait()
 	return nil
 }
 
-// setEnabled switches the service on or off.
+// setEnabled switches the service on or off. A closed service stays off.
 func (b *base) setEnabled(on bool, enabled func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.enabled == on {
+	if b.closed || b.enabled == on {
 		return
 	}
 	b.enabled = on

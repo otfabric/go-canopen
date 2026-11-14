@@ -3,73 +3,19 @@
 package nmt
 
 import (
-	"context"
-	"fmt"
 	"io"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
 	"github.com/otfabric/go-canopen/od"
 )
 
 // sendTimeout bounds every frame a service sends on its own (boot-up,
 // heartbeat, guard requests and responses).
 const sendTimeout = time.Second
-
-// lifecycle is the Start/Close state of a long-running service.
-type lifecycle struct {
-	mu     sync.Mutex
-	state  int // 0 new, 1 running, 2 closed
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-// start runs setup with the service context and, when it succeeds, the
-// loop it returns in a new goroutine.
-func (l *lifecycle) start(setup func(ctx context.Context) (func(ctx context.Context), error)) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	switch l.state {
-	case 1:
-		return fmt.Errorf("%w: already started", canopen.ErrBusy)
-	case 2:
-		return canopen.ErrClosed
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	loop, err := setup(ctx)
-	if err != nil {
-		cancel()
-		return err
-	}
-	l.cancel, l.done, l.state = cancel, make(chan struct{}), 1
-	go func() {
-		defer close(l.done)
-		loop(ctx)
-	}()
-	return nil
-}
-
-// close stops the loop and waits for it; later calls do nothing.
-func (l *lifecycle) close() {
-	l.mu.Lock()
-	st, cancel, done := l.state, l.cancel, l.done
-	l.state = 2
-	l.mu.Unlock()
-	if st == 1 {
-		cancel()
-		<-done
-	}
-}
-
-// closed reports whether Close was called.
-func (l *lifecycle) closed() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.state == 2
-}
 
 // Option configures the services of this package. Each option names the
 // services it applies to; the others ignore it.
@@ -110,10 +56,19 @@ func newConfig(opts []Option) config {
 	if c.log == nil {
 		c.log = discard
 	}
+	c.log = callback.Logger(c.log)
 	return c
 }
 
 var discard = slog.New(slog.NewTextHandler(io.Discard, nil))
+
+// stateOf calls a state source, which is the application's code: one
+// that does not return normally is logged and counts as Unknown.
+func stateOf(log *slog.Logger, state func() canopen.NMTState) canopen.NMTState {
+	st := canopen.StateUnknown
+	callback.Do(log, "state source", func() { st = state() })
+	return st
+}
 
 // WithLogger logs service events to l (all services). The default logs
 // nothing.
@@ -151,23 +106,33 @@ func WithLifeGuarding(guardTime time.Duration, lifeTimeFactor uint8) Option {
 // WithStateHandler calls h for every NMT state change of a [Slave]. It
 // runs on the goroutine that caused the change (the slave's for NMT
 // commands, the caller's for Start, SetState and Reset) and must not
-// block for long.
+// block for long. Two changes made by different goroutines call it
+// concurrently, in either order: read [Slave.State] for the state that
+// holds. It may call the slave's methods, [Slave.Close] included (see
+// there). A handler that does not return normally is logged and the
+// slave goes on, as for every handler of this package.
 func WithStateHandler(h func(StateChange)) Option { return func(c *config) { c.onState = h } }
 
 // WithResetHandler calls h during an NMT reset of a [Slave], after the
 // dictionary areas were restored (see [WithDictionary]) and before the
 // boot-up message: the place to reload stored parameters or reinitialise
-// the application. It must not call [Slave.Reset].
+// the application. It runs on the goroutine that does the reset (the
+// slave's for an NMT command, the caller's for [Slave.Reset]), may call
+// [Slave.Close] and must not call [Slave.Reset].
 func WithResetHandler(h func(ResetKind)) Option { return func(c *config) { c.onReset = h } }
 
 // WithBootUpHandler calls h just before a [Slave] sends its boot-up
 // message (at Start and after every reset), on the goroutine that sends
 // it: the moment the node stops being Initialising, for services that
-// must not act on frames received earlier. It must not block.
+// must not act on frames received earlier. It must not block. It may call
+// [Slave.Close]: the boot-up message is then not sent.
 func WithBootUpHandler(h func()) Option { return func(c *config) { c.onBootUp = h } }
 
 // WithHeartbeatHandler calls h for the events of a [HeartbeatConsumer],
-// on its goroutine; h must not block for long.
+// on its goroutine, one at a time; h must not block for long: while it
+// runs no heartbeat is processed. It may call the consumer's methods,
+// and [HeartbeatConsumer.Close], which then does not wait for the
+// goroutine the handler runs on.
 func WithHeartbeatHandler(h func(HeartbeatEvent)) Option {
 	return func(c *config) { c.onHeartbeat = h }
 }
@@ -184,5 +149,7 @@ func WithHeartbeatHandler(h func(HeartbeatEvent)) Option {
 func WithFD(brs bool) Option { return func(c *config) { c.fd, c.brs = true, brs } }
 
 // WithGuardHandler calls h for the events of a [GuardMaster] or a
-// [GuardResponder], on its goroutine; h must not block for long.
+// [GuardResponder], on its goroutine, one at a time; h must not block
+// for long. It may call the service's methods, and its Close, which then
+// does not wait for the goroutine the handler runs on.
 func WithGuardHandler(h func(GuardEvent)) Option { return func(c *config) { c.onGuard = h } }

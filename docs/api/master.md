@@ -18,7 +18,7 @@ Package master is a CANopen network manager (an NMT master with the services a C
 
 #### Events {#hdr-Events}
 
-Everything the master observes is delivered as an [Event](#type-event) to the single handler of [WithEventHandler](#func-witheventhandler): boot-ups, state changes, heartbeat losses and resumptions (of nodes supervised with [Master.Monitor](#func-master-monitor) or a boot configuration), emergency messages and the end of boot procedures. Events are delivered in order, one at a time, on a goroutine of the master's own through an unbounded queue, so the handler may use the master (SDO, NMT) without stalling the network services; it must not call [Master.Close](#func-master-close).
+Everything the master observes is delivered as an [Event](#type-event) to the single handler of [WithEventHandler](#func-witheventhandler): boot-ups, state changes, heartbeat losses and resumptions (of nodes supervised with [Master.Monitor](#func-master-monitor) or a boot configuration), emergency messages and the end of boot procedures. Events are delivered in order, one at a time, on a goroutine of the master's own through a queue, so the handler may use the master (SDO, NMT) without stalling the network services. It may call [Master.Close](#func-master-close), which then does not wait for that goroutine; a handler that does not return normally is logged with its stack, and the next event is delivered. The bus-driven events (EventBootUp, EventStateChange, EventEMCY) are bounded ([WithEventQueue](#func-witheventqueue)): when the handler does not keep up the oldest of them is dropped and counted in [Stats](#type-stats).EventsDropped. The results of the master's own processes and the supervision events are never dropped.
 
 #### SDO {#hdr-SDO}
 
@@ -78,6 +78,10 @@ The behaviour follows Lely lely-core's NMT master (src/co/nmt.c, nmt\_boot.c, nm
 #### CANopen FD {#hdr-CANopen_FD}
 
 With [WithFD](#func-withfd) the master sends NMT commands, SYNC and its heartbeat in CAN FD frames, accepts CAN FD heartbeats and 20-byte emergencies, and reads and writes the nodes' dictionaries with its USDO client ([Master.USDO](#func-master-usdo)) in every procedure (scan, configuration, boot procedures, the CiA 302 boot-up, program download with bulk transfer, remote PDO configuration, CiA 402), since CANopen FD devices serve the USDO in place of the SDO; USDO aborts are reported as SDO aborts (errors.As finds a \*canopen.AbortError). Listen and Sender use CANopen FD PDOs.
+
+#### Close {#hdr-Close}
+
+[Master.Close](#func-master-close) stops the services, the boot procedures, the listeners and the clients, and waits for them; it is safe to call more than once and from several goroutines. Operations in progress end with an error that matches canopen.ErrClosed (a network boot-up, a boot slave process, a scan; SDO and USDO transfers), and operations started afterwards fail with it and send nothing: NMT commands, [Master.Scan](#func-master-scan), [Master.BootNetwork](#func-master-bootnetwork), [Master.BootSlave](#func-master-bootslave), [Master.Sender](#func-master-sender) and the senders it returned, the SYNC and TIME producers.
 
 ## Constants
 
@@ -230,7 +234,7 @@ AddManagerObjects adds to d, where missing, the objects of a CiA 302 manager wit
 func Overlay(base pdo.Config, entries []Entry) (pdo.Config, error)
 ```
 
-Overlay applies entries of one PDO's communication and mapping parameters to a configuration: sub-indices 1 (COB-ID), 2 (transmission type), 3 (inhibit time), 5 (event timer) and 6 (SYNC start value) of the communication parameter; sub-index 0 (number of entries) and 1..64 (entries) of the mapping. Entries of other objects, and sub-indices 0 and 4 of the communication parameter, are ignored.
+Overlay applies entries of one PDO's communication and mapping parameters to a configuration: sub-indices 1 (COB-ID), 2 (transmission type), 3 (inhibit time), 5 (event timer) and 6 (SYNC start value) of the communication parameter; sub-index 0 (number of entries) and 1..64 (entries) of the mapping. Entries of other objects, and sub-indices 0 and 4 of the communication parameter, are ignored. A base mapping of more than [pdo.MaxEntries](https://pkg.go.dev/github.com/otfabric/go-canopen/pdo#MaxEntries) entries is refused with [canopen.AbortPDOLength](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortPDOLength).
 
 ## Types
 
@@ -576,6 +580,9 @@ type Master struct {
 
 	// written under lcMu; read without it (isClosed)
 
+	// closing holds the clients and listeners once the master is closed:
+	// every Close waits for them.
+
 }
 ```
 
@@ -605,7 +612,7 @@ func (m *Master) BootNetwork(ctx context.Context) error
 
 BootNetwork runs the CiA 302-2 network boot-up now (it runs on its own at every boot-up of the master's node when 0x1F80 bit 0 is set), replacing one in progress: the slaves of the network list (0x1F81) are reset (communication), the mandatory and keep-alive ones booted at once and the others when their boot-up message arrives; it returns when every mandatory slave booted (nil, after which the master enters Operational unless 0x1F80 bit 2 is set, and starts the slaves as 0x1F80 says) or one failed (its \*BootError: the boot-up halts, the master stays pre-operational). Without bit 0 of 0x1F80 it does nothing.
 
-One network boot-up runs at a time: a newer one (another BootNetwork call, or the automatic one at a boot-up of the master's node) cancels the one in progress, and a call whose boot-up was replaced waits for the newer one and returns its result; it returns ctx's error only when ctx ends, and the cancellation when the master is closed.
+One network boot-up runs at a time: a newer one (another BootNetwork call, or the automatic one at a boot-up of the master's node) cancels the one in progress, and a call whose boot-up was replaced waits for the newer one and returns its result; it returns ctx's error only when ctx ends. When the master is closed it returns an error that matches [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed) (and, for one that was in progress, context.Canceled); after Close it sends nothing.
 
 #### func (Master) BootSlave
 
@@ -615,13 +622,15 @@ func (m *Master) BootSlave(ctx context.Context, id canopen.NodeID) error
 
 BootSlave runs the CiA 302-2 boot slave process of a node now and waits for it: the checks of the node's identity (0x1F84..0x1F88), software (0x1F55, with an update from 0x1F58 when allowed) and configuration (0x1F26/0x1F27 against the node's 0x1020, the concise DCF 0x1F22), then the start of the error control and, as 0x1F80 allows, of the node. It fails with canopen.ErrBusy while one runs for the node, and with a \*BootError when the process fails; it is not repeated when the node does not answer.
 
+A network boot-up ([Master.BootNetwork](#func-master-bootnetwork), or the automatic one) that starts while the process runs cancels it before it resets the slaves: BootSlave then returns an error that matches context.Canceled, no result is recorded, and the network boot-up boots the node again. When the master is closed BootSlave fails with an error that matches [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
+
 #### func (Master) Close
 
 ```go
 func (m *Master) Close() error
 ```
 
-Close stops the services, the boot procedures in progress, the remote PDO listeners and the SDO clients, and waits for them. Queued events are delivered before it returns.
+Close stops the services, the boot procedures in progress, the remote PDO listeners and the SDO clients, and waits for them. Queued events are delivered before it returns. Operations in progress end with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed), and operations started afterwards fail with it. Close is safe to call more than once and from several goroutines: every call returns only when the master has stopped. Called from the event handler, or from a handler of one of the master's services, it does not wait for the goroutine that handler runs on.
 
 #### func (Master) Configure
 
@@ -743,7 +752,7 @@ Monitor supervises a node's heartbeat with a consumer heartbeat time (at least t
 func (m *Master) NMT(ctx context.Context, node canopen.NodeID, cmd canopen.NMTCommand) error
 ```
 
-NMT sends an NMT command to a node, or to all nodes with node-ID 0.
+NMT sends an NMT command to a node, or to all nodes with node-ID 0. After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 #### func (Master) Node
 
@@ -831,7 +840,7 @@ SYNC returns the master's SYNC producer (COB-ID 0x080): set a period ([syncobj.P
 func (m *Master) Scan(ctx context.Context, nodes []canopen.NodeID) ([]NodeInfo, error)
 ```
 
-Scan queries nodes in parallel (all of 1..127 when nodes is empty) with SDO uploads of the device type 0x1000 and the identity 0x1018, and returns the nodes that answered, by node-ID. A request that times out is repeated once. A node that does not answer 0x1000 is absent; one that answers 0x1000 but fails on 0x1018 sub 1 (mandatory) is reported with that error in the joined error, as are invalid node-IDs. Scan uses its own SDO clients ([WithScanOptions](#func-withscanoptions)).
+Scan queries nodes in parallel (all of 1..127 when nodes is empty) with SDO uploads of the device type 0x1000 and the identity 0x1018, and returns the nodes that answered, by node-ID. A request that times out is repeated once. A node that does not answer 0x1000 is absent; one that answers 0x1000 but fails on 0x1018 sub 1 (mandatory) is reported with that error in the joined error, as are invalid node-IDs. Scan uses its own SDO clients ([WithScanOptions](#func-withscanoptions)). After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed) and sends nothing; a scan in progress when the master is closed ends with it, with the nodes found so far.
 
 #### func (Master) Sender
 
@@ -839,7 +848,7 @@ Scan queries nodes in parallel (all of 1..127 when nodes is empty) with SDO uplo
 func (m *Master) Sender(cob canopen.COBID, mapping pdo.Mapping, desc *od.Dictionary) (*pdo.Sender, error)
 ```
 
-Sender returns a sender of PDOs on a COB-ID with a known mapping, whose objects desc describes; with [WithFD](#func-withfd) it sends CANopen FD PDOs.
+Sender returns a sender of PDOs on a COB-ID with a known mapping, whose objects desc describes; with [WithFD](#func-withfd) it sends CANopen FD PDOs. After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed), and so does the Send of a sender returned earlier.
 
 #### func (Master) SetBoot
 
@@ -1006,7 +1015,7 @@ WithDictionary makes the master a CANopen device of its own, built from d with p
 func WithEventHandler(h func(Event)) Option
 ```
 
-WithEventHandler sets the function every [Event](#type-event) is delivered to. Events are delivered one at a time, in the order they occurred, on a goroutine of the master's own: the handler may call the master (SDO transfers, NMT commands) but not [Master.Close](#func-master-close). A slow handler delays later events, never the services. Events driven by bus frames (EventBootUp, EventStateChange, EventEMCY) wait in a bounded queue ([WithEventQueue](#func-witheventqueue)): when it is full the oldest of them is dropped and counted in [Stats](#type-stats).EventsDropped. The results of the master's own processes (boot, network boot, LSS, node error) and supervision events (heartbeat and guarding loss and resumption) are never dropped.
+WithEventHandler sets the function every [Event](#type-event) is delivered to. Events are delivered one at a time, in the order they occurred, on a goroutine of the master's own: the handler may call the master (SDO transfers, NMT commands). It may call [Master.Close](#func-master-close), which then does not wait for the goroutine the handler runs on: the events still queued are delivered after the handler returns. A handler that does not return normally is logged with its stack, and the next event is delivered. A slow handler delays later events, never the services. Events driven by bus frames (EventBootUp, EventStateChange, EventEMCY) wait in a bounded queue ([WithEventQueue](#func-witheventqueue)): when it is full the oldest of them is dropped and counted in [Stats](#type-stats).EventsDropped. The results of the master's own processes (boot, network boot, LSS, node error) and supervision events (heartbeat and guarding loss and resumption) are never dropped.
 
 #### func WithEventQueue
 

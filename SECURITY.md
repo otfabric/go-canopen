@@ -45,11 +45,30 @@ report errors instead of panicking. Resource bounds:
 - SDO server: segmented and block downloads are buffered up to
   `sdo.WithMaxSize` (beyond it: abort `AbortOutOfMemory`), and a client
   that stops sending is aborted after the server's timeout.
-- SDO client: transfers end after the timeout; an upload larger than the
-  announced size is refused.
+- SDO client: a transfer ends after the timeout when the server does not
+  answer, and with `canopen.ErrProtocol` after more than four responses
+  in a row that move it no further (upload segments without data that are
+  not the last, block acknowledgements of no segment); an upload larger
+  than the announced size is refused.
+- USDO client: a repeated segment or confirmation does not extend the
+  response timeout, and a bulk download waits at most the response
+  timeout between two segments, whatever processing time (t_proc) a
+  server reports.
 - EMCY producer: at most 256 queued messages.
 - Dictionary writes are checked against access rights, data type lengths,
-  limits and `MaxSize` before hooks run.
+  limits and `MaxSize` before hooks run. A float object with a limit
+  refuses NaN (`AbortInvalidValue`); a NaN limit is refused when the
+  object is added. A finite value beyond the range of REAL32 is refused
+  when it is encoded or parsed as REAL32.
+- EDS and DCF files: `eds.Parse`, `ParseFile` and `ParseBytes` refuse a
+  file larger than 16 MiB (`Parse` and `ParseFile` stop reading at that
+  size), and a dictionary is built with at most 65536 sub-objects,
+  compact storage counted expanded; a file that describes more is
+  refused before anything is built (`eds.File.BuildDictionary`,
+  `cdcf.Entries`, `cdcf.FromFile`, `codegen.Generate`).
+- The request objects 0x1F82 and 0x1F83 of a `master` and the program
+  control 0x1F51 of `program` take a one-byte value: declared with a type
+  without fixed size, a write of another length is refused.
 - `master` event delivery bounds the frame-driven events (EMCY, boot-up,
   state change; `WithEventQueue`, default 4096): under a flood with a
   slow handler the oldest are dropped and counted in
@@ -58,6 +77,16 @@ report errors instead of panicking. Resource bounds:
 - `sdo` and `usdo` clients and servers refuse transfers above
   `WithMaxSize` (1 MiB by default) before allocating; a malformed NMT
   frame on ID 0 cannot fence the SDO server.
+- Application code that the services call for a received frame (handlers,
+  the dictionary's hooks and watchers, the log handler) is stopped where
+  it is called when it does not return normally, and logged with its
+  stack; the service goes on (OBSERVABILITY.md, LIMITATIONS.md).
+- A closed service, node or master sends nothing: operations fail with
+  `ErrClosed` (LIMITATIONS.md lists the single frames an application
+  call may still complete).
+- LSS: a node-ID configuration (`lss.Master.Configure`, `AssignAll`) is
+  one sequence; a service of another goroutine cannot change the
+  selection in between.
 
 ### Generated code
 

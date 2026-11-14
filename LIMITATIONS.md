@@ -72,7 +72,9 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
   and end layouts and the counter rules are inferred by analogy (`usdo`
   package documentation, "Inferred"). They make go-canopen's client and
   server interoperate, not necessarily other stacks. The unit of the bulk
-  processing time t_proc is unknown (`usdo.WithTProcUnit`).
+  processing time t_proc is unknown (`usdo.WithTProcUnit`); the client
+  waits at most its response timeout between two bulk segments, whatever
+  t_proc a server reports.
 - **CANopen FD emergency layout**: CiA's CANopen FD poster and the
   HMS/Ixxat whitepaper disagree on the positions of the error register
   and the error code; `emcy.FDLayoutCiA` (the default) follows CiA,
@@ -150,6 +152,18 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
   a request into another valid one, and a corrupted initiate can disable
   the CRC for that transfer (`sdo` package documentation, "Error
   detection").
+- **A failed download can still be applied later on a reordering bus.**
+  SDO and USDO servers act on each request when it arrives. When the bus
+  holds back the last request of a download (an expedited download, the
+  last segment) and loses the client's abort, the client reports the
+  download as failed, and the request reaches the server after the
+  client's next request: the server stores the failed download's data
+  after the next transfer started. An upload that follows returns that
+  data. CiA 301 and CiA 1301 have no sequence number across transfers to
+  detect it; USDO session-IDs do not help, because the late request
+  carries its own session-ID, which the server accepts. A device that
+  must not see a value twice or late needs an application check (a read
+  back, a counter). The `usdo` chaos test accepts exactly this case.
 - SDO interpretations where CiA 301 leaves room (a new initiate abandons
   a running transfer, out-of-sequence block segments are ignored, short
   frames are zero-padded): listed in the `sdo` package documentation.
@@ -182,6 +196,48 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 - A node's SDO server is enabled just before its boot-up message (so
   that a master's immediate request is answered); if that message
   cannot be sent the node stays Initialising with the server enabled.
+  The USDO server of a CANopen FD node is enabled at the same moment. It
+  ignores the requests it processes before that; unlike the SDO server,
+  which goes by the receive timestamp of a request, it answers a request
+  that arrived just before the boot-up message when it gets to it only
+  afterwards.
+- **A node answers node guarding while it produces a heartbeat.** A node
+  whose dictionary has 0x100C and 0x100D runs the guarding responder
+  whatever 0x1017 holds, although CiA 301 has a device use one error
+  control service only (`nmt.GuardResponder` says so). Configure the
+  heartbeat (0x1017) or the guarding by the master, not both; making the
+  responder silent while 0x1017 is not 0 is planned for v0.6.0.
+- **Error behaviour 0x1029** changes the state from Pre-operational or
+  Operational only: a node that is Initialising (resetting, or waiting
+  for a node-ID) or Stopped stays as it is when a supervised node is
+  lost. The state is read and then set in two steps: a reset that starts
+  in between is not held back.
+- **Close from a callback.** A handler, and a dictionary hook or watcher
+  run by a service, may close that service, its node or the master: Close
+  then does not wait for the goroutine the callback runs on. A handler
+  that runs inside `Start` (the NMT state handler of the boot-up) closes
+  the node or slave when `Start` is done, and `Start` returns `ErrClosed`.
+  Cases that still wait for ever, and are the application's to avoid: a
+  callback that blocks; two callbacks on different goroutines that each
+  close a service the other runs on; a dictionary hook that closes its
+  node while an NMT reset of that node is replacing the SDO server the
+  hook runs on (the reset waits for the hook, and Close for the reset).
+- **Callbacks that do not return normally** are stopped and logged
+  (`callback did not return normally`, OBSERVABILITY.md) where the
+  library calls them on its own goroutines, and in the handler calls of
+  `Start`, `SetState` and `Reset`. Not stopped: a dictionary hook or
+  watcher run by the application's own `Read`, `Write`, `Set` or `Reset`
+  call (it ends that call); the callbacks of a `cia402.Drive` used
+  without a node; a `canopen.Bus` implementation; a `program.Handler` or
+  `store.Store` called outside a remote access (`New`, `SaveParameters`,
+  `RestoreDefaults`).
+- **Operations racing Close.** A single frame an application sends itself
+  (`emcy.Producer.Send`, `syncobj.Producer.Send`, `timestamp.Producer.Send`,
+  `nmt.Master`, a `pdo.Sender`) and that is already being sent when Close
+  is called is still sent, within its send timeout of 1 s; calls made
+  after Close fail with `ErrClosed`. An SDO or USDO transfer, a TPDO
+  `Transmit`, an MPDO waiting for its inhibit time, an NMT reset, a
+  network boot-up, a boot slave process and a scan end with `ErrClosed`.
 - The heartbeat consumer restarts its supervision at a reset
   communication (each supervised node waits for its first heartbeat
   again); a node lost before the reset is no longer reported as lost and
@@ -197,7 +253,13 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
 - Comments, blank lines, key order in standard sections, the spelling of
   numbers and duplicate keys (the last wins) are not kept by a round trip.
 - Text is kept as the file's bytes (no Latin-1 conversion).
-- Limits apply to integer and float types only.
+- Limits apply to integer and float types only. A float value or
+  default may be `NaN`, `Inf` or `-Inf`; a float limit may be infinite
+  but not NaN (an error of `Validate` and of the build). A finite REAL32
+  literal beyond the range of REAL32 is an error, not rounded to ±Inf.
+- Files are read up to 16 MiB, and a dictionary is built with at most
+  65536 sub-objects (compact storage counted expanded); both bounds are
+  fixed.
 - `codegen` does not support limits with `$NODEID`.
 - A mappable VISIBLE_STRING, OCTET_STRING or UNICODE_STRING (the Copley
   Accelnet EDS has 15) is a warning: CiA 306 allows it, but this
@@ -219,3 +281,10 @@ expect. Grouped into gaps and follow-ups, with what is not verified:
   `WithStoreAfterConfigure`; `Configure` itself does neither.
 - A boot procedure interrupted by a new boot-up ends without an event;
   only the new procedure reports.
+- `BootSlave` is cancelled by a network boot-up that starts while it
+  runs (the reset of that boot-up would undo what it configured): it
+  returns an error that matches `context.Canceled`, and the network
+  boot-up boots the slave again.
+- An in-progress `BootNetwork`, `BootSlave` or `Scan` ends at `Close`
+  with an error that matches both `canopen.ErrClosed` and
+  `context.Canceled` (the latter is what they returned before v0.5.4).

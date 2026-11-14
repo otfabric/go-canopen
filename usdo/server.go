@@ -6,12 +6,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -77,11 +78,18 @@ type session struct {
 // refusal reaches the client as the USDO abort code of the dictionary's
 // SDO abort code ([FromSDO]). Downloads of more than [MaxExpedited] bytes
 // are buffered and written once, when complete.
+//
+// The hooks and watchers of the dictionary run on the server's
+// goroutine: while one runs the server answers nothing. A hook may call
+// the server's methods and [Server.Close] (see there). A hook or watcher
+// that does not return normally is logged with its stack ("callback did
+// not return normally"), the transfer is aborted, and the server goes
+// on.
 type Server struct {
 	bus canopen.Bus
 	d   *od.Dictionary
 	cfg config
-	lc  lifecycle
+	lc  lifecycle.Service
 
 	enabled atomic.Bool
 	node    atomic.Uint32
@@ -142,7 +150,7 @@ func (s *Server) Sessions() int { return int(s.active.Load()) }
 // subscribes to the client requests and starts serving. Once it returns
 // no request is missed.
 func (s *Server) Start() error {
-	return s.lc.start(func(context.Context) (func(context.Context), error) {
+	return s.lc.Start(func(context.Context) (func(context.Context), error) {
 		id := s.NodeID()
 		if id == 0 {
 			id = s.d.NodeID()
@@ -158,10 +166,31 @@ func (s *Server) Start() error {
 	})
 }
 
-// Close stops the server and waits for its goroutine. It is idempotent.
+// Close stops the server and waits for its goroutine. It is safe to call
+// more than once and from several goroutines: every call returns only
+// when the goroutine has ended, that is, when a dictionary hook the
+// server was running has returned. Called from such a hook it does not
+// wait for that goroutine, which ends when the hook returns.
 func (s *Server) Close() error {
-	s.lc.close()
+	s.lc.Close()
 	return nil
+}
+
+// dictRead is a remote read by the server. The dictionary's read hooks
+// are the application's code: one that does not return normally is
+// logged, and the read fails with [canopen.AbortGeneral].
+func (s *Server) dictRead(index uint16, sub uint8) (data []byte, err error) {
+	err = canopen.AbortGeneral
+	callback.Do(s.cfg.log, "dictionary hook", func() { data, err = s.d.Read(index, sub) })
+	return data, err
+}
+
+// dictWrite is a remote write by the server, as dictRead for the write
+// hooks and the watchers.
+func (s *Server) dictWrite(index uint16, sub uint8, data []byte) (err error) {
+	err = canopen.AbortGeneral
+	callback.Do(s.cfg.log, "dictionary hook", func() { err = s.d.Write(index, sub, data) })
+	return err
 }
 
 // Stats returns a snapshot of the counters.
@@ -349,7 +378,7 @@ func (s *Server) initiate(k sessKey, m Message) []reply {
 	obj := Message{Session: m.Session, Index: m.Index, SubIndex: m.SubIndex}
 	switch m.Cmd {
 	case CmdUpload:
-		data, err := s.d.Read(m.Index, m.SubIndex)
+		data, err := s.dictRead(m.Index, m.SubIndex)
 		if err != nil {
 			return refuse(codeOf(err))
 		}
@@ -375,7 +404,7 @@ func (s *Server) initiate(k sessKey, m Message) []reply {
 		if code := s.checkDownload(k, m, len(m.Data)); code != 0 {
 			return refuse(code)
 		}
-		if err := s.d.Write(m.Index, m.SubIndex, m.Data); err != nil {
+		if err := s.dictWrite(m.Index, m.SubIndex, m.Data); err != nil {
 			return refuse(codeOf(err))
 		}
 		s.st.downloads.Add(1)
@@ -491,7 +520,7 @@ func (s *Server) segment(k sessKey, m Message) []reply {
 		return fail(AbortSize)
 	}
 	s.drop(k)
-	if err := s.d.Write(ss.index, ss.sub, ss.buf); err != nil {
+	if err := s.dictWrite(ss.index, ss.sub, ss.buf); err != nil {
 		return []reply{s.abort(k.client, m.Session, ss.index, ss.sub, codeOf(err))}
 	}
 	s.st.downloads.Add(1)
@@ -538,56 +567,4 @@ func (s *Server) uploadSegment(k sessKey, m Message) []reply {
 		s.st.bytesUp.Add(u64(ss.size))
 	}
 	return s.respond(k.client, out)
-}
-
-// lifecycle is the Start/Close state of a long-running service.
-type lifecycle struct {
-	mu     sync.Mutex
-	state  int // 0 new, 1 running, 2 closed
-	cancel context.CancelFunc
-	done   chan struct{}
-}
-
-// start runs setup and, when it succeeds, the loop it returns in a new
-// goroutine.
-func (l *lifecycle) start(setup func(ctx context.Context) (func(ctx context.Context), error)) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	switch l.state {
-	case 1:
-		return fmt.Errorf("%w: already started", canopen.ErrBusy)
-	case 2:
-		return canopen.ErrClosed
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	loop, err := setup(ctx)
-	if err != nil {
-		cancel()
-		return err
-	}
-	l.cancel, l.done, l.state = cancel, make(chan struct{}), 1
-	go func() {
-		defer close(l.done)
-		loop(ctx)
-	}()
-	return nil
-}
-
-// running reports whether the service was started and not closed.
-func (l *lifecycle) running() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.state == 1
-}
-
-// close stops the loop and waits for it; later calls do nothing.
-func (l *lifecycle) close() {
-	l.mu.Lock()
-	st, cancel, done := l.state, l.cancel, l.done
-	l.state = 2
-	l.mu.Unlock()
-	if st == 1 {
-		cancel()
-		<-done
-	}
 }

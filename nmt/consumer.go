@@ -12,6 +12,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -103,7 +105,7 @@ type HeartbeatConsumerStats struct {
 type HeartbeatConsumer struct {
 	bus  canopen.Bus
 	cfg  config
-	lc   lifecycle
+	lc   lifecycle.Service
 	wake chan struct{}
 
 	mu       sync.Mutex
@@ -310,7 +312,7 @@ func (c *HeartbeatConsumer) Restart() {
 // Start subscribes to the error control messages and starts the
 // supervision; with a dictionary it follows writes of 0x1016 from then on.
 func (c *HeartbeatConsumer) Start() error {
-	return c.lc.start(func(context.Context) (func(context.Context), error) {
+	return c.lc.Start(func(context.Context) (func(context.Context), error) {
 		sub, err := c.bus.Subscribe(errorControlFilter())
 		if err != nil {
 			return nil, fmt.Errorf("nmt: subscribe: %w", err)
@@ -448,7 +450,7 @@ func (c *HeartbeatConsumer) emit(evs []HeartbeatEvent) {
 			c.cfg.log.Debug("heartbeat event", "kind", e.Kind.String(), "node", int(e.Node), "state", e.State.String())
 		}
 		if h := c.cfg.onHeartbeat; h != nil {
-			h(e)
+			callback.Do(c.cfg.log, "heartbeat handler", func() { h(e) })
 		}
 	}
 }
@@ -535,7 +537,9 @@ func (c *HeartbeatConsumer) WaitBootUp(ctx context.Context, node canopen.NodeID,
 
 // Close stops the consumer and waits for it. Pending waits return
 // [canopen.ErrClosed]. It removes the 0x1016 write hook the consumer
-// installed on the dictionary.
+// installed on the dictionary. It is safe to call more than once and
+// from several goroutines; called from the heartbeat handler it does not
+// wait for the goroutine that handler runs on.
 func (c *HeartbeatConsumer) Close() error {
 	c.mu.Lock()
 	select {
@@ -546,7 +550,7 @@ func (c *HeartbeatConsumer) Close() error {
 	unhook := c.unhook
 	c.unhook = nil
 	c.mu.Unlock()
-	c.lc.close()
+	c.lc.Close()
 	if unhook != nil {
 		unhook()
 	}

@@ -62,6 +62,8 @@ type manager struct {
 	// boot-ups of the devices it configures are not booted (the reset
 	// that follows the step boots them).
 	lssBusy bool
+	// closed is set by close: no network boot-up starts afterwards.
+	closed bool
 }
 
 // newManager builds the manager and the master's node on d.
@@ -102,11 +104,13 @@ func (g *manager) Start() error {
 	return g.n.Start()
 }
 
-// close stops the node, the guarding and the hooks.
+// close stops the node, the guarding and the hooks, and the network
+// boot-up in progress; none starts afterwards.
 func (g *manager) close() {
 	_ = g.n.Close()
 	_ = g.guard.Close()
 	g.mu.Lock()
+	g.closed = true
 	if g.net != nil {
 		g.net.closed = true
 		g.net.cancel()
@@ -191,12 +195,18 @@ func (g *manager) startNetwork() {
 	g.m.goBoot(func(ctx context.Context) { _ = g.runNetwork(ctx) })
 }
 
-// runNetwork runs the network boot-up, cancelling one in progress.
+// runNetwork runs the network boot-up, cancelling one in progress. Once
+// the manager is closed it does nothing and fails with
+// [canopen.ErrClosed]; one in progress then ends with it too.
 func (g *manager) runNetwork(ctx context.Context) error {
 	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	r := &netRun{cancel: cancel, done: make(chan struct{})}
 	g.mu.Lock()
+	if g.closed || g.m.isClosed() {
+		g.mu.Unlock()
+		return canopen.ErrClosed
+	}
 	if prev := g.net; prev != nil {
 		prev.next = r
 		prev.cancel()
@@ -220,6 +230,10 @@ func (g *manager) runNetwork(ctx context.Context) error {
 		case <-ctx.Done():
 			err = ctx.Err()
 		}
+	}
+	if closed && err != nil {
+		// Ended by Close.
+		err = errClosed
 	}
 	r.err = err
 	close(r.done)
@@ -364,6 +378,10 @@ func (g *manager) bootNetwork(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-g.m.bootCtx.Done():
+			// The master is closed: no boot slave process starts or
+			// ends any more.
+			return errClosed
 		case <-ch:
 		case <-lateTimer.C:
 			for _, id := range late {
@@ -463,11 +481,7 @@ func (g *manager) bootProcess(ctx context.Context, id canopen.NodeID) {
 	for {
 		st, status, err := g.bootSlave(ctx, id)
 		if ctx.Err() != nil {
-			g.mu.Lock()
-			s := g.slave(id)
-			s.booting, s.ended = false, time.Now()
-			g.broadcastLocked()
-			g.mu.Unlock()
+			g.bootCancelled(id)
 			return
 		}
 		if status == BootNoResponse {
@@ -481,6 +495,17 @@ func (g *manager) bootProcess(ctx context.Context, id canopen.NodeID) {
 		g.bootDone(id, st, status, err)
 		return
 	}
+}
+
+// bootCancelled ends a boot slave process that was cancelled (by a
+// network boot-up, or by Close): no result is recorded.
+func (g *manager) bootCancelled(id canopen.NodeID) {
+	g.mu.Lock()
+	s := g.slave(id)
+	s.booting, s.ended = false, time.Now()
+	s.cancel, s.done = nil, nil
+	g.broadcastLocked()
+	g.mu.Unlock()
 }
 
 // bootDone ends a boot slave process: it records the result, starts the
@@ -500,6 +525,7 @@ func (g *manager) bootDone(id canopen.NodeID, st canopen.NMTState, status BootSt
 	g.mu.Lock()
 	s := g.slave(id)
 	s.booting, s.booted, s.reported, s.status, s.err, s.state, s.ended = false, true, false, status, err, st, time.Now()
+	s.cancel, s.done = nil, nil
 	g.mu.Unlock()
 	if status.OK() {
 		if ms := g.consumerTime(id); ms > 0 {
@@ -935,6 +961,20 @@ func (g *manager) requestTarget(sub uint8) (canopen.NodeID, error) {
 	return id, nil
 }
 
+// requestByte returns the value of a write of 0x1F82 or 0x1F83, an
+// UNSIGNED8. The dictionary checks the length of a fixed-size type; a
+// value of a type without fixed size (a dictionary that declares the
+// object otherwise) must be one byte.
+func requestByte(v *od.Variable, data []byte) (byte, error) {
+	switch {
+	case len(data) == 0:
+		return 0, canopen.AbortLengthLow
+	case len(data) > 1 && v.DataType.Size() == 0:
+		return 0, canopen.AbortLengthHigh
+	}
+	return data[0], nil
+}
+
 // writeRequestNMT executes a write of 0x1F82 (request NMT).
 func (g *manager) writeRequestNMT(v *od.Variable, data []byte) error {
 	id, err := g.requestTarget(v.SubIndex)
@@ -944,8 +984,12 @@ func (g *manager) writeRequestNMT(v *od.Variable, data []byte) error {
 	if !g.isMaster() {
 		return canopen.AbortLocalControl
 	}
+	b, err := requestByte(v, data)
+	if err != nil {
+		return err
+	}
 	var cmd canopen.NMTCommand
-	switch canopen.NMTState(data[0]) {
+	switch canopen.NMTState(b) {
 	case canopen.StateStopped:
 		cmd = canopen.NMTStop
 	case canopen.StateOperational:
@@ -990,10 +1034,14 @@ func (g *manager) writeRequestGuarding(v *od.Variable, data []byte) error {
 	if !g.isMaster() {
 		return canopen.AbortLocalControl
 	}
-	if data[0] > 1 {
+	b, err := requestByte(v, data)
+	if err != nil {
+		return err
+	}
+	if b > 1 {
 		return canopen.AbortInvalidValue
 	}
-	on := data[0] == 1
+	on := b == 1
 	if id != canopen.BroadcastNodeID {
 		return g.guardNode(id, on)
 	}

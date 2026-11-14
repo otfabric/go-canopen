@@ -4,11 +4,15 @@ package master
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/goid"
 	"github.com/otfabric/go-canopen/lss"
 )
 
@@ -157,6 +161,8 @@ type queued struct {
 // back into the order the events occurred in.
 type dispatcher struct {
 	h       func(Event)
+	log     *slog.Logger
+	runID   atomic.Uint64 // identifier of the goroutine of run
 	max     int
 	mu      sync.Mutex
 	cond    *sync.Cond
@@ -168,17 +174,18 @@ type dispatcher struct {
 	done    chan struct{}
 }
 
-func newDispatcher(h func(Event), maxLossy int) *dispatcher {
+func newDispatcher(h func(Event), maxLossy int, log *slog.Logger) *dispatcher {
 	if maxLossy <= 0 {
 		maxLossy = DefaultEventQueue
 	}
-	d := &dispatcher{h: h, max: maxLossy, done: make(chan struct{})}
+	d := &dispatcher{h: h, log: log, max: maxLossy, done: make(chan struct{})}
 	d.cond = sync.NewCond(&d.mu)
 	return d
 }
 
 func (d *dispatcher) run() {
 	defer close(d.done)
+	d.runID.Store(goid.ID())
 	for {
 		d.mu.Lock()
 		for len(d.q) == 0 && len(d.lq) == 0 && !d.stop {
@@ -190,7 +197,7 @@ func (d *dispatcher) run() {
 			return
 		}
 		if d.h != nil {
-			d.h(ev)
+			callback.Do(d.log, "event handler", func() { d.h(ev) })
 		}
 	}
 }
@@ -243,11 +250,17 @@ func (d *dispatcher) droppedEvents() uint64 {
 	return d.dropped
 }
 
-// close delivers the queued events and stops.
+// close delivers the queued events and stops; every call waits for
+// that. Called on the dispatcher's goroutine (the event handler closing
+// the master) it does not wait: the queued events are delivered when the
+// handler has returned.
 func (d *dispatcher) close() {
 	d.mu.Lock()
 	d.stop = true
 	d.mu.Unlock()
 	d.cond.Broadcast()
+	if id := goid.ID(); id != 0 && d.runID.Load() == id {
+		return
+	}
 	<-d.done
 }

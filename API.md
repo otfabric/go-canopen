@@ -7,7 +7,13 @@ programs are in [examples/](examples) and the `Example` functions.
 Conventions shared by every package:
 
 - Services are created with `NewX(bus, ..., opts...)` and run between
-  `Start()` and `Close()`; `Stats()` returns a counter snapshot.
+  `Start()` and `Close()`; `Stats()` returns a counter snapshot. `Close`
+  is safe to call more than once and from several goroutines, waits for
+  the service's goroutine, and may be called from the service's own
+  handlers; afterwards the service's operations fail with `ErrClosed`.
+- Handlers run on the service's goroutine, one call at a time. One that
+  does not return normally is logged with its stack, and the service
+  goes on.
 - Options are functional options (`WithLogger`, `WithDictionary`,
   `WithHandler`, ...). A service given `WithDictionary(d)` reads its
   parameters from the standard objects of `d` and follows their changes.

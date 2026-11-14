@@ -11,6 +11,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/goid"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -204,13 +206,17 @@ type Listener struct {
 	closed  bool
 	done    chan struct{}
 	wg      sync.WaitGroup
+	runID   atomic.Uint64 // identifier of the listener goroutine
 
 	received, errors atomic.Uint64
 }
 
 // NewListener returns a listener for PDOs on a COB-ID. The handler is
 // called from the listener goroutine with each received frame and its
-// decoded values. Of the options only [WithLogger] applies.
+// decoded values, one call at a time; it must not block for long, may
+// call the listener's methods and may call [Listener.Close]. A handler
+// that does not return normally is logged with its stack, and the
+// listener goes on. Of the options only [WithLogger] applies.
 func NewListener(bus canopen.Bus, cob canopen.COBID, dec *Decoder, handler func(f *canbus.Frame, values []Value), opts ...Option) *Listener {
 	o := buildOptions(opts)
 	return &Listener{bus: bus, cob: cob, dec: dec, handler: handler, log: o.log, done: make(chan struct{})}
@@ -238,6 +244,7 @@ func (l *Listener) Start() error {
 
 func (l *Listener) run(s *canbus.Subscription) {
 	defer l.wg.Done()
+	l.runID.Store(goid.ID())
 	for {
 		select {
 		case <-l.done:
@@ -253,17 +260,24 @@ func (l *Listener) run(s *canbus.Subscription) {
 			}
 			l.received.Add(1)
 			if l.handler != nil {
-				l.handler(&f, vals)
+				callback.Do(l.log, "listener handler", func() { l.handler(&f, vals) })
 			}
 		}
 	}
 }
 
 // Request sends a remote transmission request for the PDO. It fails with
-// [ErrNoRTR] for a CANopen FD PDO (a decoder made [WithFD]).
+// [ErrNoRTR] for a CANopen FD PDO (a decoder made [WithFD]) and with
+// [canopen.ErrClosed] after Close.
 func (l *Listener) Request(ctx context.Context) error {
 	if l.dec.c.opt.fd {
 		return ErrNoRTR
+	}
+	l.mu.Lock()
+	closed := l.closed
+	l.mu.Unlock()
+	if closed {
+		return canopen.ErrClosed
 	}
 	// newCodec bounds the mapping to MaxBitsFD bits: Len is 0..64.
 	dlc := uint8(max(min(l.dec.c.m.Len(), MaxBitsFD/8), 0))
@@ -279,19 +293,23 @@ func (l *Listener) Stats() ListenerStats {
 	return ListenerStats{Received: l.received.Load(), Errors: l.errors.Load()}
 }
 
-// Close stops the listener and waits for its goroutine. It is idempotent.
+// Close stops the listener and waits for its goroutine. It is safe to
+// call more than once and from several goroutines: every call returns
+// only when the goroutine has ended. Called from the listener's handler
+// it does not wait for that goroutine, which ends when the handler
+// returns.
 func (l *Listener) Close() error {
 	l.mu.Lock()
-	if l.closed {
-		l.mu.Unlock()
-		return nil
-	}
-	l.closed = true
-	close(l.done)
-	if l.sub != nil {
-		_ = l.sub.Close()
+	if !l.closed {
+		l.closed = true
+		close(l.done)
+		if l.sub != nil {
+			_ = l.sub.Close()
+		}
 	}
 	l.mu.Unlock()
-	l.wg.Wait()
+	if id := goid.ID(); id == 0 || l.runID.Load() != id {
+		l.wg.Wait()
+	}
 	return nil
 }

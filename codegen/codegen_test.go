@@ -8,9 +8,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"go/ast"
+	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -472,7 +478,8 @@ func TestNameCollisions(t *testing.T) {
 }
 
 // FuzzGenerate checks that Generate never panics and, whenever it accepts
-// a file, produces Go source that parses.
+// a file, produces Go source that parses and type-checks against this
+// module's packages (the golden files are the seeds).
 func FuzzGenerate(f *testing.F) {
 	for _, g := range goldens {
 		b, err := os.ReadFile(g.src)
@@ -480,6 +487,19 @@ func FuzzGenerate(f *testing.F) {
 			f.Fatal(err)
 		}
 		f.Add(b)
+	}
+	// The generated code is type-checked against the export data the go
+	// command builds for the packages it imports. Where that is not
+	// available (no go command, the module's dependencies not at hand),
+	// the generated code is only parsed.
+	fset := token.NewFileSet()
+	imp, err := exportImporter(fset, "context", "fmt", "math", "github.com/otfabric/go-canopen", "github.com/otfabric/go-canopen/od")
+	if err != nil {
+		f.Logf("generated code is not type-checked: %v", err)
+	}
+	dir, err := filepath.Abs(".")
+	if err != nil {
+		f.Fatal(err)
 	}
 	f.Fuzz(func(t *testing.T, b []byte) {
 		ef, err := eds.ParseBytes(b)
@@ -490,8 +510,42 @@ func FuzzGenerate(f *testing.F) {
 		if err != nil {
 			return
 		}
-		if _, err := parser.ParseFile(token.NewFileSet(), "fuzz.go", code, 0); err != nil {
+		file, err := parser.ParseFile(fset, filepath.Join(dir, "fuzz.go"), code, 0)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if imp == nil {
+			return
+		}
+		conf := types.Config{Importer: imp}
+		if _, err := conf.Check("fuzz", fset, []*ast.File{file}, nil); err != nil {
+			t.Fatalf("generated code does not type-check: %v", err)
+		}
 	})
+}
+
+// exportImporter returns an importer of the packages pkgs and their
+// dependencies from the export data the go command builds for them.
+func exportImporter(fset *token.FileSet, pkgs ...string) (types.Importer, error) {
+	out, err := exec.Command("go", append([]string{"list", "-export", "-deps", "-f", "{{.ImportPath}}\t{{.Export}}"}, pkgs...)...).Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return nil, fmt.Errorf("go list: %v: %s", err, ee.Stderr)
+		}
+		return nil, fmt.Errorf("go list: %v", err)
+	}
+	files := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if path, file, ok := strings.Cut(line, "\t"); ok && file != "" {
+			files[path] = file
+		}
+	}
+	return importer.ForCompiler(fset, "gc", func(path string) (io.ReadCloser, error) {
+		file, ok := files[path]
+		if !ok {
+			return nil, fmt.Errorf("no export data for %s", path)
+		}
+		return os.Open(file)
+	}), nil
 }

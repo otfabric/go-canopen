@@ -25,6 +25,9 @@ type mpdoServices struct {
 	started bool // the node's services run: new ones start at once
 	enabled bool // NMT operational
 	closed  bool
+	// closing holds the services once the node is closed: every Close
+	// waits for them.
+	closing []interface{ Close() error }
 }
 
 // installMPDO protects the object scanner and dispatcher lists, creates
@@ -156,14 +159,19 @@ func (s *mpdoServices) setEnabled(on bool) {
 
 func (s *mpdoServices) close() {
 	s.mu.Lock()
-	s.closed = true
-	prod, cons := s.prod, s.cons
-	s.prod, s.cons = nil, nil
-	s.mu.Unlock()
-	for _, p := range prod {
-		_ = p.Close()
+	if !s.closed {
+		s.closed = true
+		for _, i := range sortedKeys(s.prod) {
+			s.closing = append(s.closing, s.prod[i])
+		}
+		for _, i := range sortedKeys(s.cons) {
+			s.closing = append(s.closing, s.cons[i])
+		}
+		s.prod, s.cons = nil, nil
 	}
-	for _, c := range cons {
+	closing := s.closing
+	s.mu.Unlock()
+	for _, c := range closing {
 		_ = c.Close()
 	}
 }

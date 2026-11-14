@@ -65,7 +65,7 @@ Switch state global has no answer, so a slave that missed it can stay in the con
 
 #### Concurrency {#hdr-Concurrency}
 
-The master's services run on the caller's goroutine, one at a time. The slave runs one goroutine between Start and Close; its handlers run on it and must not block for long.
+The master's services run on the caller's goroutine, one at a time; a service made of several (Configure, ConfigureNodeID, AssignAll, InquireAddress) runs as a whole before a service of another goroutine. The slave runs one goroutine between Start and Close; its handlers run on it, one call at a time, and must not block for long. A handler may call the slave's methods, and Close, which then does not wait for the goroutine the handler runs on. A handler that does not return normally is logged with its stack, and the slave goes on (a request the handler was to accept is refused).
 
 ## Constants
 
@@ -231,7 +231,7 @@ AssignFastscan sets the Fastscan options (Max is ignored).
 func AssignHandler(h func(Assignment)) AssignOption
 ```
 
-AssignHandler calls h after each assignment, on the caller's goroutine.
+AssignHandler calls h after each assignment, on the caller's goroutine. A handler that does not return normally is logged, and the run goes on.
 
 #### func AssignMax
 
@@ -412,13 +412,19 @@ FastscanOptions tune a Fastscan.
 type Master struct {
 
 	// serialises services
+	// seq serialises sequences of services: a service made of several
+	// holds it from its first frame to its last, a single service for its
+	// own run. It is a channel so that waiting ends with the context.
+
+	// goroutine of the sequence that holds seq
+	// marks the context of that sequence
 
 	// 0 new, 1 started, 2 closed
 
 }
 ```
 
-Master is an LSS master (CiA 305). Its services run on the caller's goroutine and are serialised: one service at a time (CiA 305 allows one LSS master per network, and the LSS responses carry nothing that would tell concurrent requests apart). It keeps one subscription to 0x7E4 between Start and Close.
+Master is an LSS master (CiA 305). Its services run on the caller's goroutine and are serialised: one service at a time (CiA 305 allows one LSS master per network, and the LSS responses carry nothing that would tell concurrent requests apart). A service made of several ([Master.Configure](#func-master-configure), [Master.ConfigureNodeID](#func-master-configurenodeid), [Master.AssignAll](#func-master-assignall), [Master.InquireAddress](#func-master-inquireaddress)) is serialised as a whole: a service called from another goroutine waits until it has ended, or until its own context ends, so that it cannot change the selection in between. The services a Configure function or an [AssignHandler](#func-assignhandler) calls belong to that service; they run on its goroutine, or with the context it was given. The master keeps one subscription to 0x7E4 between Start and Close.
 
 #### func NewMaster
 
@@ -448,13 +454,15 @@ A device that keeps answering Fastscan with a pending node-ID (Lely lely-core's 
 
 A node-ID is never offered twice: once a configure node-ID request is sent, the node-ID counts as used even when no confirmation arrives (the call then fails with an [\*AssignError](#type-assignerror) naming it). Before each identification the master switches every slave to waiting and checks with "inquire node-ID" that none stayed in the configuration state, and again when the acknowledgement of the selection is lost; after it, it inquires the whole address and requires answers from the identified device only. An answer lost on the bus cannot be told from no answer, so these checks do not exclude two slaves in the configuration state on a link that loses frames (LIMITATIONS.md). The assignments made are returned also when an error ends the run.
 
+AssignAll is one sequence: from its first frame to its last no service called from another goroutine runs (it waits).
+
 #### func (Master) Close
 
 ```go
 func (m *Master) Close() error
 ```
 
-Close ends the subscription; a running service fails with canopen.ErrClosed. It is idempotent.
+Close ends the subscription; a running service fails with canopen.ErrClosed, and so does a service started afterwards. It is safe to call more than once and from several goroutines. The master has no goroutine to wait for.
 
 #### func (Master) Configure
 
@@ -463,6 +471,8 @@ func (m *Master) Configure(ctx context.Context, a Address, fn func(ctx context.C
 ```
 
 Configure runs fn with the slave of address a selected, and that slave alone: it switches every slave to waiting and checks that none stayed in the configuration state (switch state global is unconfirmed: a lost frame would leave a slave selected, which then took the next configuration too), selects a with switch state selective, checks by inquiring the whole address that a answers alone, runs fn (which calls SetNodeID, SetBitTiming, Store, ...) and switches every slave back to waiting with the same check, also when fn fails. A selection that is not confirmed fails with ErrConflict before fn runs; the checks take a few Fastscan listening windows ([WithFastscanTimeout](#func-withfastscantimeout)).
+
+Configure is one sequence: from its first frame to its last no service called from another goroutine runs (it waits). fn runs on Configure's goroutine and calls the master with the context it is given.
 
 #### func (Master) ConfigureNodeID
 
@@ -753,7 +763,7 @@ Address returns the slave's LSS address.
 func (s *Slave) Close() error
 ```
 
-Close stops the slave and waits for it. It is idempotent.
+Close stops the slave and waits for it. It is safe to call more than once and from several goroutines: every call returns only when the slave's goroutine has ended. Called from a handler of the slave it does not wait for that goroutine, which ends when the handler returns.
 
 #### func (Slave) NodeID
 
@@ -858,6 +868,8 @@ func WithStateHandler(h func(State)) SlaveOption
 ```
 
 WithStateHandler calls h with every change of the LSS state.
+
+Like every handler of the slave, h runs on the slave's goroutine, one call at a time, and must not block for long: no request is answered while it runs. It may call the slave's methods, and [Slave.Close](#func-slave-close), which then does not wait for that goroutine. A handler that does not return normally is logged with its stack; a request it was to accept is refused.
 
 #### func WithStoreHandler
 

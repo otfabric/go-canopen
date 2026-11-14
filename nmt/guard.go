@@ -11,6 +11,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -84,7 +86,7 @@ type GuardStats struct {
 type GuardMaster struct {
 	bus  canopen.Bus
 	cfg  config
-	lc   lifecycle
+	lc   lifecycle.Service
 	wake chan struct{}
 
 	mu    sync.Mutex
@@ -151,7 +153,7 @@ func (g *GuardMaster) State(node canopen.NodeID) canopen.NMTState {
 
 // Start subscribes to the responses and starts guarding.
 func (g *GuardMaster) Start() error {
-	return g.lc.start(func(context.Context) (func(context.Context), error) {
+	return g.lc.Start(func(context.Context) (func(context.Context), error) {
 		sub, err := g.bus.Subscribe(errorControlFilter())
 		if err != nil {
 			return nil, fmt.Errorf("nmt: subscribe: %w", err)
@@ -309,14 +311,16 @@ func emitGuard(cfg config, evs []GuardEvent) {
 			cfg.log.Debug("node guarding", "kind", e.Kind.String(), "node", int(e.Node), "state", e.State.String())
 		}
 		if h := cfg.onGuard; h != nil {
-			h(e)
+			callback.Do(cfg.log, "guard handler", func() { h(e) })
 		}
 	}
 }
 
-// Close stops guarding and waits for the goroutine.
+// Close stops guarding and waits for the goroutine. It is safe to call
+// more than once and from several goroutines; called from the guard
+// handler it does not wait for the goroutine that handler runs on.
 func (g *GuardMaster) Close() error {
-	g.lc.close()
+	g.lc.Close()
 	return nil
 }
 
@@ -338,12 +342,16 @@ func (g *GuardMaster) Stats() GuardStats {
 // time factor is a life guarding event ([GuardTimeout]), reported once
 // until the next request ([GuardResumed]).
 //
+// The state comes from a function, usually [Slave.State], called on the
+// responder's goroutine: it must not call [GuardResponder.Close], and one
+// that does not return normally counts as Unknown (no answer).
+//
 // CiA 301 does not allow node guarding and the heartbeat at once: run the
 // responder only while the producer heartbeat time is 0.
 type GuardResponder struct {
 	bus   canopen.Bus
 	cfg   config
-	lc    lifecycle
+	lc    lifecycle.Service
 	state func() canopen.NMTState
 	wake  chan struct{}
 
@@ -427,7 +435,7 @@ func (r *GuardResponder) SetNodeID(node canopen.NodeID) error {
 // Start subscribes to the guard requests and starts answering; with a
 // dictionary it follows writes of 0x100C and 0x100D from then on.
 func (r *GuardResponder) Start() error {
-	return r.lc.start(func(context.Context) (func(context.Context), error) {
+	return r.lc.Start(func(context.Context) (func(context.Context), error) {
 		sub, err := r.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: []canbus.Filter{{
 			ID: canopen.FuncHeartbeat, Mask: 0x780, Format: canbus.FormatStandard, Remote: canbus.RemoteOnly,
 		}}}))
@@ -480,6 +488,7 @@ func (r *GuardResponder) run(ctx context.Context, sub *canbus.Subscription) {
 }
 
 func (r *GuardResponder) checkLife(now time.Time) []GuardEvent {
+	st := stateOf(r.cfg.log, r.state)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.armed || r.lost || r.lifeTimeLocked() == 0 || now.Before(r.deadline) {
@@ -487,19 +496,22 @@ func (r *GuardResponder) checkLife(now time.Time) []GuardEvent {
 	}
 	r.lost = true
 	r.stats.Timeouts++
-	return []GuardEvent{{Kind: GuardTimeout, Node: r.node, State: r.state(), Time: now}}
+	return []GuardEvent{{Kind: GuardTimeout, Node: r.node, State: st, Time: now}}
 }
 
 func (r *GuardResponder) answer(ctx context.Context, f *canbus.Frame) {
 	r.mu.Lock()
 	node := r.node
+	r.mu.Unlock()
 	if f.ID != canopen.FuncHeartbeat+canbus.ID(node) {
-		r.mu.Unlock()
 		return
 	}
+	// The state source is the application's: it is called without the
+	// lock.
+	st := stateOf(r.cfg.log, r.state)
+	r.mu.Lock()
 	now := time.Now()
 	var evs []GuardEvent
-	st := r.state()
 	if r.lost {
 		r.lost = false
 		evs = append(evs, GuardEvent{Kind: GuardResumed, Node: node, State: st, Time: now})
@@ -530,9 +542,11 @@ func (r *GuardResponder) answer(ctx context.Context, f *canbus.Frame) {
 	}
 }
 
-// Close stops answering and waits for the goroutine.
+// Close stops answering and waits for the goroutine. It is safe to call
+// more than once and from several goroutines; called from the guard
+// handler it does not wait for the goroutine that handler runs on.
 func (r *GuardResponder) Close() error {
-	r.lc.close()
+	r.lc.Close()
 	return nil
 }
 

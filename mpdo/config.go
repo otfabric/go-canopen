@@ -157,10 +157,12 @@ func load(d *od.Dictionary, transmit bool, n int) config {
 //     is an MPDO: [canopen.AbortInvalidValue] (MPDOs are event-driven
 //     only).
 //
-// Note that pdo.Protect itself (v0.2.0) refuses 0xFE/0xFF in sub 00h with
-// [canopen.AbortPDOLength]; where both are installed, a PDO can only be
-// made an MPDO by a local write until pdo accepts the two values. The
-// returned function removes the hooks (later calls do nothing).
+// pdo.Protect accepts 0xFE and 0xFF in sub 00h as it accepts 0, while
+// the PDO is inactive and without checking entries, so both can be
+// installed on one PDO: pdo.Protect's rules for the communication
+// parameter and the mapping entries still apply, and a PDO is made an
+// MPDO by a remote write of sub 00h. The returned function removes the
+// hooks (later calls do nothing).
 func ProtectPDO(d *od.Dictionary, transmit bool, n int) (unprotect func(), err error) {
 	if err := checkPDO(d, transmit, n); err != nil {
 		return nil, err

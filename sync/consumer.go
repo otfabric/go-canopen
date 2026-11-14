@@ -10,6 +10,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -45,7 +47,7 @@ type ConsumerStats struct {
 type Consumer struct {
 	bus  canopen.Bus
 	cfg  config
-	lc   lifecycle
+	lc   lifecycle.Service
 	wake chan struct{}
 
 	mu          sync.Mutex
@@ -111,7 +113,7 @@ func (c *Consumer) subscribe() (*canbus.Subscription, canopen.COBID, error) {
 // dictionary it follows writes of 0x1005, 0x1007 and 0x1019 from then on
 // (a new COB-ID re-subscribes).
 func (c *Consumer) Start() error {
-	return c.lc.start(func(context.Context) (func(context.Context), error) {
+	return c.lc.Start(func(context.Context) (func(context.Context), error) {
 		sub, cob, err := c.subscribe()
 		if err != nil {
 			return nil, err
@@ -177,7 +179,7 @@ func (c *Consumer) run(ctx context.Context, sub *canbus.Subscription, cob canope
 		case f := <-sub.Frames():
 			if e, ok := c.receive(&f, cob); ok {
 				if h := c.cfg.handler; h != nil {
-					h(e)
+					callback.Do(c.cfg.log, "sync handler", func() { h(e) })
 				}
 			}
 		}
@@ -255,9 +257,11 @@ func (c *Consumer) Window() time.Duration {
 }
 
 // Close stops the consumer and waits for it. It removes the write hooks
-// the consumer installed on the dictionary.
+// the consumer installed on the dictionary. It is safe to call more than
+// once and from several goroutines; called from the handler it does not
+// wait for the goroutine the handler runs on.
 func (c *Consumer) Close() error {
-	c.lc.close()
+	c.lc.Close()
 	c.hooks.remove()
 	return nil
 }

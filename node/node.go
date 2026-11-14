@@ -16,6 +16,8 @@ import (
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/cia402"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/goid"
 	"github.com/otfabric/go-canopen/lss"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/od"
@@ -77,11 +79,18 @@ type Node struct {
 	mp      mpdoServices  // the MPDO producers and consumers
 	lssSet  *lss.Settings // LSS settings found in the store at New
 
-	lcMu    sync.Mutex // serialises Start and Close
-	started bool
-	closed  atomic.Bool
+	lcMu     sync.Mutex // serialises Start and the closing of the node
+	started  bool
+	closed   atomic.Bool
+	starting atomic.Uint64 // identifier of the goroutine inside Start
+	driveID  atomic.Uint64 // identifier of the goroutine that steps the drive
 
-	mu   sync.Mutex // guards srv, stop and deferred
+	// stMu serialises the enabling and disabling of the services for the
+	// NMT state: they follow the state the slave is in, whichever state
+	// change's handler runs last.
+	stMu sync.Mutex
+
+	mu   sync.Mutex // guards srv, stop, deferred and unhook
 	srv  *sdo.Server
 	stop context.CancelFunc
 	wg   sync.WaitGroup
@@ -198,7 +207,12 @@ func (n *Node) build(id canopen.NodeID) error {
 		dc.OnError = func(code uint16) {
 			n.onDriveError(code)
 			if user != nil {
-				user(code)
+				callback.Do(n.log, "drive error handler", func() { user(code) })
+			}
+		}
+		if tr := dc.OnTransition; tr != nil {
+			dc.OnTransition = func(from, to cia402.State, t int) {
+				callback.Do(n.log, "drive transition handler", func() { tr(from, to, t) })
 			}
 		}
 		if n.drive, err = cia402.NewDrive(n.d, dc); err != nil {
@@ -260,6 +274,9 @@ func (n *Node) build(id canopen.NodeID) error {
 		if n.usdoS, err = usdo.NewServer(n.bus, n.d, uopts...); err != nil {
 			return err
 		}
+		// Silent until the boot-up message: the node is Initialising
+		// until then (onBootUp).
+		n.usdoS.SetEnabled(false)
 	}
 	for i := 1; i <= od.MaxPDOs; i++ {
 		if n.has(pdo.CommIndex(false, i), pdo.MappingIndex(false, i)) {
@@ -305,7 +322,8 @@ type starter interface{ Start() error }
 
 // Start starts the services, sends the boot-up message and enters
 // Pre-operational. It fails when a service cannot start (the node is then
-// closed) and after Close.
+// closed) and after Close, also when a handler that Start called closed
+// the node.
 func (n *Node) Start() error {
 	n.lcMu.Lock()
 	defer n.lcMu.Unlock()
@@ -316,7 +334,15 @@ func (n *Node) Start() error {
 		return fmt.Errorf("node: %w: already started", canopen.ErrBusy)
 	}
 	n.started = true
-	if err := n.startServices(); err != nil {
+	n.starting.Store(goid.ID())
+	err := n.startServices()
+	n.starting.Store(0)
+	if err == nil && n.closed.Load() {
+		// A handler that Start called (the state handler of the boot-up)
+		// closed the node.
+		err = canopen.ErrClosed
+	}
+	if err != nil {
 		n.closed.Store(true)
 		n.shutdown()
 		return err
@@ -401,6 +427,7 @@ func (n *Node) startProtocol() error {
 		n.stop = cancel
 		n.mu.Unlock()
 		n.wg.Go(func() {
+			n.driveID.Store(goid.ID())
 			_ = n.drive.Run(ctx, n.cfg.drivePer)
 		})
 	}
@@ -408,19 +435,32 @@ func (n *Node) startProtocol() error {
 }
 
 // Close stops the node and its services and waits for them. The node
-// sends nothing more (in particular no state change is announced).
+// sends nothing more (in particular no state change is announced). It is
+// safe to call more than once and from several goroutines: every call
+// returns only when the services have stopped.
+//
+// A handler of the node, and a dictionary hook the node's services call,
+// may call Close: Close then does not wait for the goroutine that handler
+// runs on, which ends when the handler returns; a Close on another
+// goroutine still waits for it. From a handler called by Start, Start
+// returns [canopen.ErrClosed].
 func (n *Node) Close() error {
-	n.lcMu.Lock()
-	if n.closed.Load() {
-		n.lcMu.Unlock()
+	if id := goid.ID(); id != 0 && n.starting.Load() == id {
+		// From a handler that Start called: Start holds the node, and
+		// closes it before it returns.
+		n.closed.Store(true)
 		return nil
 	}
+	n.lcMu.Lock()
 	n.closed.Store(true)
 	n.lcMu.Unlock()
 	n.shutdown()
 	return nil
 }
 
+// shutdown stops every service and waits for it. Every Close runs it:
+// each service's Close waits for its goroutine, unless it is called on
+// that goroutine.
 func (n *Node) shutdown() {
 	if n.lssS != nil {
 		_ = n.lssS.Close()
@@ -428,12 +468,13 @@ func (n *Node) shutdown() {
 	_ = n.slave.Close()
 	n.mu.Lock()
 	stop, srv := n.stop, n.srv
-	n.srv = nil
 	n.mu.Unlock()
 	if stop != nil {
 		stop()
 	}
-	n.wg.Wait()
+	if id := goid.ID(); id == 0 || n.driveID.Load() != id {
+		n.wg.Wait()
+	}
 	if srv != nil {
 		_ = srv.Close()
 	}
@@ -442,14 +483,18 @@ func (n *Node) shutdown() {
 
 // removeHooks removes the dictionary hooks the node registered.
 func (n *Node) removeHooks() {
-	for _, f := range n.unhook {
+	n.mu.Lock()
+	unhook := n.unhook
+	n.unhook = nil
+	n.mu.Unlock()
+	for _, f := range unhook {
 		f()
 	}
-	n.unhook = nil
 }
 
 // closeServices closes every service but the slave and the SDO server,
-// and removes the node's dictionary hooks.
+// and removes the node's dictionary hooks. The SYNC services are closed
+// before the PDOs, so that no SYNC reaches a PDO that is being closed.
 func (n *Node) closeServices() {
 	n.removeHooks()
 	n.mp.close()
@@ -458,6 +503,12 @@ func (n *Node) closeServices() {
 	}
 	if n.usdoS != nil {
 		_ = n.usdoS.Close()
+	}
+	if n.syncP != nil {
+		_ = n.syncP.Close()
+	}
+	if n.syncC != nil {
+		_ = n.syncC.Close()
 	}
 	for _, t := range n.tpdos {
 		_ = t.Close()
@@ -474,12 +525,6 @@ func (n *Node) closeServices() {
 	if n.guard != nil {
 		_ = n.guard.Close()
 	}
-	if n.syncP != nil {
-		_ = n.syncP.Close()
-	}
-	if n.syncC != nil {
-		_ = n.syncC.Close()
-	}
 	if n.timeP != nil {
 		_ = n.timeP.Close()
 	}
@@ -494,12 +539,21 @@ func (n *Node) closeServices() {
 	}
 }
 
-// onState enables and disables the services for a new NMT state (CiA
-// 301 table 79): SDO in Pre-operational and Operational, PDOs in
-// Operational only.
-func (n *Node) onState(sc nmt.StateChange) {
-	sdoOn := sc.To == canopen.StatePreOperational || sc.To == canopen.StateOperational
-	pdoOn := sc.To == canopen.StateOperational
+// applyState enables and disables the services for the NMT state the
+// slave is in (CiA 301 table 79): SDO in Pre-operational and Operational,
+// PDOs in Operational only. It reports whether the PDOs are enabled.
+//
+// The state is read from the slave under stMu, not taken from the state
+// change that called: several goroutines change the state (NMT commands,
+// the error behaviour of 0x1029, the application), and their handlers run
+// in any order. Whichever runs last, the services follow the state that
+// holds.
+func (n *Node) applyState() (pdoOn bool) {
+	n.stMu.Lock()
+	defer n.stMu.Unlock()
+	st := n.slave.State()
+	sdoOn := st == canopen.StatePreOperational || st == canopen.StateOperational
+	pdoOn = st == canopen.StateOperational
 	n.mu.Lock()
 	srv := n.srv
 	n.mu.Unlock()
@@ -516,6 +570,14 @@ func (n *Node) onState(sc nmt.StateChange) {
 		t.SetEnabled(pdoOn)
 	}
 	n.mp.setEnabled(pdoOn)
+	return pdoOn
+}
+
+// onState follows an NMT state change of the slave: the services are
+// enabled and disabled for the state that holds now (applyState), then
+// the application's state handler is called.
+func (n *Node) onState(sc nmt.StateChange) {
+	pdoOn := n.applyState()
 	if !pdoOn {
 		// Disabled RPDOs forget their errors: clear their emergencies.
 		n.clearPDOErrors()
@@ -527,7 +589,7 @@ func (n *Node) onState(sc nmt.StateChange) {
 		}
 	}
 	if h := n.cfg.onState; h != nil {
-		h(sc)
+		callback.Do(n.log, "state handler", func() { h(sc) })
 	}
 	if bootUp && n.cfg.autoStart {
 		_ = n.slave.SetState(canopen.StateOperational)
@@ -537,13 +599,18 @@ func (n *Node) onState(sc nmt.StateChange) {
 // onBootUp fences the SDO server just before the boot-up message: the
 // node was Initialising until then, and a request received meanwhile is
 // not answered (the server is started before the boot-up message so that
-// a master reacting to it at once finds it ready).
+// a master reacting to it at once finds it ready). The USDO server of a
+// CANopen FD node, disabled while the node is Initialising, is enabled
+// here for the same reason.
 func (n *Node) onBootUp() {
 	n.mu.Lock()
 	srv := n.srv
 	n.mu.Unlock()
 	if srv != nil {
 		srv.Fence()
+	}
+	if n.usdoS != nil && !n.closed.Load() {
+		n.usdoS.SetEnabled(true)
 	}
 }
 
@@ -559,9 +626,11 @@ func (n *Node) onReset(kind nmt.ResetKind) {
 	// The dictionary holds the defaults of the reset areas: the saved
 	// parameters of those areas replace them before the services read
 	// their configuration.
-	if err := n.loadStored(kind); err != nil {
-		n.log.Warn("node reset: stored parameters", "error", err)
-	}
+	callback.Do(n.log, "store", func() {
+		if err := n.loadStored(kind); err != nil {
+			n.log.Warn("node reset: stored parameters", "error", err)
+		}
+	})
 	configured := id != lss.Unconfigured
 	if configured {
 		if n.hbProd != nil {
@@ -653,7 +722,7 @@ func (n *Node) onHeartbeat(ev nmt.HeartbeatEvent) {
 	default: // no special case
 	}
 	if h := n.cfg.onHB; h != nil {
-		h(ev)
+		callback.Do(n.log, "heartbeat handler", func() { h(ev) })
 	}
 }
 
@@ -698,7 +767,11 @@ func (n *Node) commBack(key canopen.NodeID) {
 }
 
 // errorBehaviour applies 0x1029 sub-index 1 to a communication error.
-// Without the object the state does not change.
+// Without the object the state does not change. The behaviour applies in
+// Pre-operational and Operational only (to Pre-operational: from
+// Operational only): a node that is Initialising (resetting, or waiting
+// for its node-ID) or Stopped stays as it is, since CiA 301 has no
+// transition from Initialising to Stopped.
 func (n *Node) errorBehaviour() {
 	v, err := n.d.GetUint(IndexErrorBehaviour, 1)
 	if err != nil {
@@ -707,13 +780,16 @@ func (n *Node) errorBehaviour() {
 	if v > 0xFF { // not an UNSIGNED8 behaviour code: no change
 		return
 	}
+	st := n.slave.State()
 	switch uint8(v) {
 	case ErrorBehaviourPreOperational:
-		if n.slave.State() == canopen.StateOperational {
+		if st == canopen.StateOperational {
 			_ = n.slave.SetState(canopen.StatePreOperational)
 		}
 	case ErrorBehaviourStopped:
-		_ = n.slave.SetState(canopen.StateStopped)
+		if st == canopen.StatePreOperational || st == canopen.StateOperational {
+			_ = n.slave.SetState(canopen.StateStopped)
+		}
 	}
 }
 
@@ -821,7 +897,7 @@ func (n *Node) syncPDOs(counter uint8, windowEnd time.Time, received bool) {
 // onTime delivers a TIME message to the application.
 func (n *Node) onTime(ev timestamp.Event) {
 	if h := n.cfg.onTime; h != nil && n.mayProduce() {
-		h(ev)
+		callback.Do(n.log, "time handler", func() { h(ev) })
 	}
 }
 
@@ -850,11 +926,23 @@ func (n *Node) State() canopen.NMTState { return n.slave.State() }
 
 // SetState changes the NMT state locally: Operational, Pre-operational or
 // Stopped (an application that starts on its own, or stops after a fatal
-// error).
-func (n *Node) SetState(st canopen.NMTState) error { return n.slave.SetState(st) }
+// error). After Close it fails with [canopen.ErrClosed].
+func (n *Node) SetState(st canopen.NMTState) error {
+	if n.closed.Load() {
+		return canopen.ErrClosed
+	}
+	return n.slave.SetState(st)
+}
 
 // Reset does an NMT reset locally, as the command from the bus does.
-func (n *Node) Reset(ctx context.Context, kind nmt.ResetKind) error { return n.slave.Reset(ctx, kind) }
+// After Close it fails with [canopen.ErrClosed]; a reset in progress when
+// the node is closed sends no boot-up message.
+func (n *Node) Reset(ctx context.Context, kind nmt.ResetKind) error {
+	if n.closed.Load() {
+		return canopen.ErrClosed
+	}
+	return n.slave.Reset(ctx, kind)
+}
 
 // SetNodeID sets a pending node-ID (as LSS configures one), which becomes
 // active at the next reset communication or reset node: the services then

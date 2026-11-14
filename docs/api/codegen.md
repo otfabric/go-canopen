@@ -58,7 +58,9 @@ type Options struct {
 	Package string
 	// Source names the EDS file in the provenance header.
 	Source string
-	// SourceSHA256 is the hex SHA-256 of the EDS file, if known.
+	// SourceSHA256 is the hex SHA-256 of the EDS file, if known. Like
+	// Source, it goes into a line comment: control characters become
+	// spaces.
 	SourceSHA256 string
 }
 ```

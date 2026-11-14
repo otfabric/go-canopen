@@ -133,7 +133,7 @@ DefaultTPDO returns the default CAN identifier of TPDO n (1..4) of a node; 0 whe
 func Encode(t DataType, v any) ([]byte, error)
 ```
 
-Encode converts a Go value to the bus encoding of t. Integers accept any Go integer type (range-checked), floats float32/float64, BOOLEAN bool or an integer 0/1, strings string, OCTET\_STRING and DOMAIN \[]byte or a string. A \[]byte is accepted for every type when its length matches.
+Encode converts a Go value to the bus encoding of t. Integers accept any Go integer type (range-checked), floats float32/float64 (a finite float64 beyond the range of REAL32 is refused; NaN and ±Inf are encoded as they are), BOOLEAN bool or an integer 0/1, strings string, OCTET\_STRING and DOMAIN \[]byte or a string. A \[]byte is accepted for every type when its length matches.
 
 ### func EncodeInt
 
@@ -173,7 +173,7 @@ ParseUint parses an unsigned integer literal as EDS files write them: decimal, h
 func ParseValue(t DataType, s string, node NodeID) ([]byte, error)
 ```
 
-ParseValue parses a value literal of type t as EDS and DCF files write them (CiA 306): integers in decimal, 0x hexadecimal or octal, optionally with $NODEID added ("$NODEID+0x180", "0x180+$NODEID"), which evaluates to node; floats in decimal notation; VISIBLE\_STRING as the text itself; OCTET\_STRING and DOMAIN as hexadecimal digit pairs (spaces allowed); UNICODE\_STRING as text. An empty literal of an integer or float type is zero.
+ParseValue parses a value literal of type t as EDS and DCF files write them (CiA 306): integers in decimal, 0x hexadecimal or octal, optionally with $NODEID added ("$NODEID+0x180", "0x180+$NODEID"), which evaluates to node; floats in decimal notation; VISIBLE\_STRING as the text itself; OCTET\_STRING and DOMAIN as hexadecimal digit pairs (spaces allowed); UNICODE\_STRING as text. An empty literal of an integer or float type is zero. A float literal may be NaN or ±Inf; a finite REAL32 literal beyond the range of REAL32 is refused with ErrDataType.
 
 ## Types
 

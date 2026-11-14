@@ -53,7 +53,17 @@ type NodeInfo struct {
 // repeated once. A node that does not answer 0x1000 is absent; one that answers 0x1000 but fails on 0x1018 sub 1
 // (mandatory) is reported with that error in the joined error, as are
 // invalid node-IDs. Scan uses its own SDO clients ([WithScanOptions]).
+// After Close it fails with [canopen.ErrClosed] and sends nothing; a scan
+// in progress when the master is closed ends with it, with the nodes
+// found so far.
 func (m *Master) Scan(ctx context.Context, nodes []canopen.NodeID) ([]NodeInfo, error) {
+	if m.isClosed() {
+		return nil, canopen.ErrClosed
+	}
+	// Close ends the scan.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(m.bootCtx, cancel)()
 	if len(nodes) == 0 {
 		for i := canopen.NodeID(1); i <= canopen.MaxNodeID; i++ {
 			nodes = append(nodes, i)
@@ -93,7 +103,10 @@ func (m *Master) Scan(ctx context.Context, nodes []canopen.NodeID) ([]NodeInfo, 
 	}
 	wg.Wait()
 	sort.Slice(found, func(i, j int) bool { return found[i].Node < found[j].Node })
-	if ctx.Err() != nil {
+	switch {
+	case m.bootCtx.Err() != nil:
+		errs = append(errs, errClosed)
+	case ctx.Err() != nil:
 		errs = append(errs, ctx.Err())
 	}
 	return found, errors.Join(errs...)

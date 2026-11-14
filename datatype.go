@@ -154,7 +154,9 @@ func (t DataType) IsVariable() bool {
 }
 
 // Encode converts a Go value to the bus encoding of t. Integers accept any
-// Go integer type (range-checked), floats float32/float64, BOOLEAN bool or
+// Go integer type (range-checked), floats float32/float64 (a finite
+// float64 beyond the range of REAL32 is refused; NaN and ±Inf are
+// encoded as they are), BOOLEAN bool or
 // an integer 0/1, strings string, OCTET_STRING and DOMAIN []byte or a
 // string. A []byte is accepted for every type when its length matches.
 func Encode(t DataType, v any) ([]byte, error) {
@@ -195,7 +197,11 @@ func Encode(t DataType, v any) ([]byte, error) {
 		case float32:
 			return binary.LittleEndian.AppendUint32(nil, math.Float32bits(x)), nil
 		case float64:
-			return binary.LittleEndian.AppendUint32(nil, math.Float32bits(float32(x))), nil
+			f := float32(x)
+			if math.IsInf(float64(f), 0) && !math.IsInf(x, 0) {
+				return nil, fmt.Errorf("%w: %v does not fit %s", ErrDataType, x, t)
+			}
+			return binary.LittleEndian.AppendUint32(nil, math.Float32bits(f)), nil
 		}
 	case Real64:
 		switch x := v.(type) {
@@ -410,7 +416,8 @@ func ParseInt(s string, bits int) (int64, error) {
 // to node; floats in decimal notation; VISIBLE_STRING as the text itself;
 // OCTET_STRING and DOMAIN as hexadecimal digit pairs (spaces allowed);
 // UNICODE_STRING as text. An empty literal of an integer or float type is
-// zero.
+// zero. A float literal may be NaN or ±Inf; a finite REAL32 literal
+// beyond the range of REAL32 is refused with [ErrDataType].
 func ParseValue(t DataType, s string, node NodeID) ([]byte, error) {
 	switch t {
 	case VisibleString, UnicodeString:

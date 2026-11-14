@@ -14,6 +14,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/goid"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/od"
 )
@@ -50,6 +52,13 @@ type serverStats struct {
 // [od.Dictionary.Write], so access rights, limits and hooks apply, and a
 // refusal reaches the client as the dictionary's abort code. Segmented
 // and block downloads are buffered and written once, when complete.
+//
+// The hooks and watchers of the dictionary run on the server's
+// goroutine: while one runs the server answers nothing. A hook may call
+// the server's methods and [Server.Close] (see there). A hook or watcher
+// that does not return normally is logged with its stack ("callback did
+// not return normally"), the transfer is aborted with
+// [canopen.AbortGeneral], and the server goes on.
 type Server struct {
 	bus canopen.Bus
 	d   *od.Dictionary
@@ -68,6 +77,7 @@ type Server struct {
 	sub      *canbus.Subscription
 	cancel   context.CancelFunc
 	done     chan struct{}
+	runID    atomic.Uint64 // identifier of the server goroutine
 }
 
 // NewServer returns a server for d on bus. It does not receive until
@@ -162,19 +172,22 @@ func (s *Server) Start() error {
 }
 
 // Close stops the server and waits for it. It is safe to call more than
-// once.
+// once and from several goroutines: every call returns only when the
+// server's goroutine has ended, that is, when a dictionary hook the
+// server was running has returned. Called from such a hook (on the
+// server's goroutine) it does not wait for that goroutine, which ends
+// when the hook returns.
 func (s *Server) Close() error {
 	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		return nil
-	}
 	s.closed = true
 	started := s.started
 	s.mu.Unlock()
-	if started {
-		s.cancel()
-		_ = s.sub.Close()
+	if !started {
+		return nil
+	}
+	s.cancel()
+	_ = s.sub.Close()
+	if id := goid.ID(); id == 0 || s.runID.Load() != id {
 		<-s.done
 	}
 	return nil
@@ -212,12 +225,14 @@ func (s *Server) newMachine(send func(frame)) *machine {
 	return &machine{
 		d: s.d, out: send, maxSize: s.cfg.maxSize, blkSize: u8(s.cfg.blkSize),
 		crcOK: s.cfg.crc, st: &s.st,
+		guard: func(access func()) { callback.Do(s.log, "dictionary hook", access) },
 	}
 }
 
 // run receives requests until the context ends. It owns the machine.
 func (s *Server) run(ctx context.Context) {
 	defer close(s.done)
+	s.runID.Store(goid.ID())
 	m := s.newMachine(func(f frame) {
 		cf := canFrame(s.s2c, f)
 		sctx, cancel := context.WithTimeout(ctx, s.cfg.timeout)

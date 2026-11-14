@@ -9,6 +9,7 @@ import (
 
 	"github.com/otfabric/go-canopen/cia402"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/internal/callback"
 	"github.com/otfabric/go-canopen/lss"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/program"
@@ -46,6 +47,7 @@ func newConfig(opts []Option) config {
 	for _, o := range opts {
 		o(&c)
 	}
+	c.log = callback.Logger(c.log)
 	return c
 }
 
@@ -60,22 +62,33 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 // WithStateHandler calls h after every NMT state change of the node, once
-// the node's services have been enabled or disabled for the new state.
-// It runs on the goroutine that changed the state (usually the NMT
-// slave's) and must not block for long; it must not call [Node.Reset].
+// the node's services have been enabled or disabled for the state the
+// node is in. It runs on the goroutine that changed the state (the NMT
+// slave's for an NMT command; the heartbeat consumer's or the guarding
+// responder's for the error behaviour of 0x1029; the caller's for Start,
+// [Node.SetState] and [Node.Reset]) and must not block for long. Changes
+// made by different goroutines call it concurrently, in either order:
+// read [Node.State] for the state that holds.
+//
+// Like every handler of the node, it may call the node's methods other
+// than [Node.Reset], and [Node.Close] (see there). A handler that does
+// not return normally is logged with its stack ("callback did not return
+// normally") and the node goes on.
 func WithStateHandler(h func(nmt.StateChange)) Option {
 	return func(c *config) { c.onState = h }
 }
 
 // WithHeartbeatHandler calls h with every event of the node's heartbeat
 // consumer (0x1016): boot-ups, state changes, losses and resumptions of
-// the nodes it hears. It runs on the consumer's goroutine.
+// the nodes it hears. It runs on the consumer's goroutine, one event at a
+// time, and must not block for long.
 func WithHeartbeatHandler(h func(nmt.HeartbeatEvent)) Option {
 	return func(c *config) { c.onHB = h }
 }
 
 // WithTimeHandler calls h with every TIME message the node consumes
-// (0x1012 bit 31 set) while it is pre-operational or operational.
+// (0x1012 bit 31 set) while it is pre-operational or operational. It
+// runs on the TIME consumer's goroutine and must not block for long.
 func WithTimeHandler(h func(timestamp.Event)) Option {
 	return func(c *config) { c.onTime = h }
 }

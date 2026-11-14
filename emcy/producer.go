@@ -12,6 +12,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/timestamp"
 )
@@ -48,6 +50,7 @@ func newConfig(opts []Option) config {
 	if c.log == nil {
 		c.log = discard
 	}
+	c.log = callback.Logger(c.log)
 	return c
 }
 
@@ -79,7 +82,11 @@ func WithInhibit(d time.Duration) Option { return func(c *config) { c.inhibit, c
 func WithHistory(n int) Option { return func(c *config) { c.history, c.histSet = n, true } }
 
 // WithHandler calls h for every emergency message a [Consumer] receives,
-// on its goroutine; h must not block for long.
+// on its goroutine, one call at a time; h must not block for long. The
+// event is the handler's own (its FD message is a copy). The handler may
+// call the consumer's methods, and [Consumer.Close], which then does not
+// wait for that goroutine. A handler that does not return normally is
+// logged with its stack, and the next message is delivered.
 func WithHandler(h func(Event)) Option { return func(c *config) { c.handler = h } }
 
 // WithProducer makes a [Consumer] receive the emergency messages of a node
@@ -144,22 +151,24 @@ type ProducerStats struct {
 type Producer struct {
 	bus  canopen.Bus
 	cfg  config
-	lc   lifecycle
+	lc   lifecycle.Service
 	wake chan struct{}
 
-	syncMu sync.Mutex // orders dictionary updates
-	mu     sync.Mutex
-	node   canopen.NodeID
-	cob    canopen.COBID
-	inh    time.Duration
-	last   time.Time
-	queue  []outMsg
-	active map[uint16]ErrorRegister
-	hist   []uint32
-	histN  int
-	dictH  bool // the dictionary has 0x1003
-	stats  ProducerStats
-	unhook []func() // removes the dictionary hooks
+	syncMu  sync.Mutex // orders dictionary updates
+	mu      sync.Mutex
+	node    canopen.NodeID
+	cob     canopen.COBID
+	inh     time.Duration
+	last    time.Time
+	queue   []outMsg
+	closed  bool // Close was called: nothing more is sent or queued
+	started bool // Start ran: the goroutine drops the queue at Close
+	active  map[uint16]ErrorRegister
+	hist    []uint32
+	histN   int
+	dictH   bool // the dictionary has 0x1003
+	stats   ProducerStats
+	unhook  []func() // removes the dictionary hooks
 }
 
 // NewProducer returns the emergency producer of a node. Options:
@@ -230,7 +239,7 @@ func NewProducer(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Produce
 // Start runs the inhibit queue; with a dictionary it follows writes of
 // 0x1014 and 0x1015 from then on.
 func (p *Producer) Start() error {
-	return p.lc.start(func(context.Context) (func(context.Context), error) {
+	return p.lc.Start(func(context.Context) (func(context.Context), error) {
 		var unwatch func()
 		if d := p.cfg.dict; d != nil {
 			unwatch = d.Watch(func(v *od.Variable, data []byte) {
@@ -244,6 +253,9 @@ func (p *Producer) Start() error {
 				}
 			})
 		}
+		p.mu.Lock()
+		p.started = true
+		p.mu.Unlock()
 		return func(ctx context.Context) {
 			if unwatch != nil {
 				defer unwatch()
@@ -320,8 +332,13 @@ func (p *Producer) frame(cob canopen.COBID, o outMsg) canbus.Frame {
 	fm := o.fd
 	if fm == nil {
 		fm = &FDMessage{LogicalDevice: p.cfg.ldev, CiASpec: p.cfg.ciaSpec, Code: o.m.Code, Register: o.m.Register, Specific: o.m.MSEF}
-		if p.cfg.clock != nil {
-			fm.Time, _ = timestamp.FromTime(p.cfg.clock())
+		if clock := p.cfg.clock; clock != nil {
+			// The clock is the application's: when it does not return
+			// normally the time is 0.
+			var now time.Time
+			if callback.Do(p.cfg.log, "clock", func() { now = clock() }) {
+				fm.Time, _ = timestamp.FromTime(now)
+			}
 		}
 	}
 	return fm.Frame(cob, p.cfg.brs, p.cfg.layout)
@@ -358,7 +375,10 @@ func (p *Producer) transmit(ctx context.Context, cob canopen.COBID, m outMsg) er
 // errors, the register or the history. It is queued when the inhibit time
 // has not passed since the previous message, and sent at once (returning
 // the bus error) otherwise. A COB-ID with the invalid bit set suppresses
-// it. A producer made [WithFD] sends it as a CANopen FD message.
+// it. A producer made [WithFD] sends it as a CANopen FD message. After
+// Close it fails with [canopen.ErrClosed], as [Producer.SendFD],
+// [Producer.Raise], [Producer.Clear] and [Producer.ClearAll] do: nothing
+// is sent, queued or recorded.
 func (p *Producer) Send(ctx context.Context, m Message) error {
 	return p.send(ctx, outMsg{m: m})
 }
@@ -372,6 +392,10 @@ func (p *Producer) SendFD(ctx context.Context, m FDMessage) error {
 
 func (p *Producer) send(ctx context.Context, m outMsg) error {
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return canopen.ErrClosed
+	}
 	if !p.cob.Valid() {
 		p.stats.Suppressed++
 		p.mu.Unlock()
@@ -423,6 +447,10 @@ func (p *Producer) Raise(ctx context.Context, code uint16, reg ErrorRegister, ms
 		return fmt.Errorf("emcy: cannot raise error code 0x0000")
 	}
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return canopen.ErrClosed
+	}
 	old, dup := p.active[code]
 	p.active[code] = old | reg
 	r := p.registerLocked()
@@ -447,6 +475,10 @@ func (p *Producer) Raise(ctx context.Context, code uint16, reg ErrorRegister, ms
 // nothing.
 func (p *Producer) Clear(ctx context.Context, code uint16) error {
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return canopen.ErrClosed
+	}
 	if _, ok := p.active[code]; !ok {
 		p.mu.Unlock()
 		return nil
@@ -465,6 +497,10 @@ func (p *Producer) Clear(ctx context.Context, code uint16) error {
 // any was active.
 func (p *Producer) ClearAll(ctx context.Context) error {
 	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return canopen.ErrClosed
+	}
 	n := len(p.active)
 	clear(p.active)
 	p.mu.Unlock()
@@ -561,10 +597,20 @@ func (p *Producer) History() []uint32 {
 	return slices.Clone(p.hist)
 }
 
-// Close stops the queue and waits for it; queued messages are dropped.
-// It removes the write hooks the producer installed on the dictionary.
+// Close stops the queue and waits for it; queued messages are dropped
+// and counted in [ProducerStats.Dropped]. It removes the write hooks the
+// producer installed on the dictionary. It is safe to call more than
+// once and from several goroutines.
 func (p *Producer) Close() error {
-	p.lc.close()
+	p.mu.Lock()
+	p.closed = true
+	// Messages queued on a producer that was never started.
+	if !p.started {
+		p.stats.Dropped += uint64(len(p.queue))
+		p.queue = nil
+	}
+	p.mu.Unlock()
+	p.lc.Close()
 	p.removeHooks()
 	return nil
 }

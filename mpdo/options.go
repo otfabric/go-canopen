@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/otfabric/go-canopen/internal/callback"
 	"github.com/otfabric/go-canopen/pdo"
 )
 
@@ -56,13 +57,19 @@ func WithLogger(l *slog.Logger) Option {
 // WithErrorHandler sets the function a [Consumer] reports the emergencies
 // 0x8230 ([EMCYDAMNoObject]) and 0x8210 (pdo.EMCYPDOLength) to, once when
 // one appears (Active true) and once when it is resolved. The PDO field is
-// the RPDO number. It is called from the service goroutine.
+// the RPDO number. It is called from the service goroutine, one call at a
+// time, and must not block for long: no MPDO is received while it runs.
+// It may call the consumer's methods, and [Consumer.Close], which then
+// does not wait for that goroutine. A handler that does not return
+// normally is logged with its stack, and the consumer goes on.
 func WithErrorHandler(f func(pdo.ErrorEvent)) Option {
 	return func(o *options) { o.onError = f }
 }
 
 // WithReceiveHandler sets a function a [Consumer] calls, from its
 // goroutine, after it has written a received value to the dictionary.
+// The rules of [WithErrorHandler] apply; the event's Data is the
+// handler's own.
 func WithReceiveHandler(f func(Event)) Option {
 	return func(o *options) { o.onRx = f }
 }
@@ -72,6 +79,7 @@ func buildOptions(opts []Option) options {
 	for _, f := range opts {
 		f(&o)
 	}
+	o.log = callback.Logger(o.log)
 	return o
 }
 

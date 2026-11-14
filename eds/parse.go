@@ -32,27 +32,42 @@ func (e *SyntaxError) Error() string { return fmt.Sprintf("eds: line %d: %s", e.
 // Unwrap returns [ErrSyntax].
 func (e *SyntaxError) Unwrap() error { return ErrSyntax }
 
-// ParseFile parses an EDS or DCF file.
+// maxFileSize bounds the files Parse, ParseFile and ParseBytes read: 16
+// MiB, more than a hundred times the largest device description seen in
+// practice.
+const maxFileSize = 16 << 20
+
+// errFileSize reports a file larger than maxFileSize.
+var errFileSize = fmt.Errorf("eds: file larger than %d bytes", maxFileSize)
+
+// ParseFile parses an EDS or DCF file. A file larger than 16 MiB is
+// refused without being read.
 func ParseFile(path string) (*File, error) {
-	b, err := os.ReadFile(filepath.Clean(path))
+	fh, err := os.Open(filepath.Clean(path))
 	if err != nil {
 		return nil, err
 	}
-	return ParseBytes(b)
+	defer func() { _ = fh.Close() }()
+	return Parse(fh)
 }
 
-// Parse parses an EDS or DCF file. It fails only on lines it cannot read;
+// Parse parses an EDS or DCF file. It fails only on lines it cannot read,
+// and on a file larger than 16 MiB, which it stops reading at that size;
 // use [File.Validate] for the consistency checks.
 func Parse(r io.Reader) (*File, error) {
-	b, err := io.ReadAll(r)
+	b, err := io.ReadAll(io.LimitReader(r, maxFileSize+1))
 	if err != nil {
 		return nil, err
 	}
 	return ParseBytes(b)
 }
 
-// ParseBytes parses an EDS or DCF file held in memory.
+// ParseBytes parses an EDS or DCF file held in memory. A file larger than
+// 16 MiB is refused.
 func ParseBytes(b []byte) (*File, error) {
+	if len(b) > maxFileSize {
+		return nil, errFileSize
+	}
 	secs, dups, err := scan(b)
 	if err != nil {
 		return nil, err

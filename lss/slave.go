@@ -13,6 +13,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 )
 
 // Settings are the pending layer settings of a [Slave]: what "configure
@@ -61,6 +63,13 @@ type slaveConfig struct {
 func WithSlaveLogger(l *slog.Logger) SlaveOption { return func(c *slaveConfig) { c.log = l } }
 
 // WithStateHandler calls h with every change of the LSS state.
+//
+// Like every handler of the slave, h runs on the slave's goroutine, one
+// call at a time, and must not block for long: no request is answered
+// while it runs. It may call the slave's methods, and [Slave.Close],
+// which then does not wait for that goroutine. A handler that does not
+// return normally is logged with its stack; a request it was to accept
+// is refused.
 func WithStateHandler(h func(State)) SlaveOption { return func(c *slaveConfig) { c.state = h } }
 
 // WithNodeIDHandler calls h when the master configures a node-ID (1..127
@@ -117,7 +126,7 @@ func WithStoreHandler(h func(Settings) error) SlaveOption {
 type Slave struct {
 	bus canopen.Bus
 	cfg slaveConfig
-	lc  lifecycle
+	lc  lifecycle.Service
 
 	mu      sync.Mutex
 	addr    Address
@@ -148,6 +157,7 @@ func NewSlave(bus canopen.Bus, addr Address, node canopen.NodeID, opts ...SlaveO
 	if s.cfg.log == nil {
 		s.cfg.log = discard
 	}
+	s.cfg.log = callback.Logger(s.cfg.log)
 	return s, nil
 }
 
@@ -156,7 +166,7 @@ func validNodeID(n canopen.NodeID) bool { return n.Valid() || n == Unconfigured 
 // Start subscribes to the LSS master identifier (before it returns) and
 // starts answering.
 func (s *Slave) Start() error {
-	return s.lc.start(func(context.Context) (func(context.Context), error) {
+	return s.lc.Start(func(context.Context) (func(context.Context), error) {
 		flt := canbus.ExactStandard(MasterID)
 		flt.Remote = canbus.RemoteDataOnly
 		sub, err := s.bus.Subscribe(canbus.WithFilters(canbus.FilterSet{Filters: []canbus.Filter{flt}}))
@@ -197,10 +207,30 @@ func (s *Slave) send(ctx context.Context, f *canbus.Frame) {
 	}
 }
 
-// Close stops the slave and waits for it. It is idempotent.
+// Close stops the slave and waits for it. It is safe to call more than
+// once and from several goroutines: every call returns only when the
+// slave's goroutine has ended. Called from a handler of the slave it does
+// not wait for that goroutine, which ends when the handler returns.
 func (s *Slave) Close() error {
-	s.lc.close()
+	s.lc.Close()
 	return nil
+}
+
+// call calls a handler of the application; one that does not return
+// normally is logged and reported as false.
+func (s *Slave) call(name string, f func()) bool {
+	return callback.Do(s.cfg.log, name, f)
+}
+
+// errHandler is the error of a handler that did not return normally: the
+// request is refused with the default code of its service.
+var errHandler = errors.New("lss: the handler did not return normally")
+
+// callErr is call for a handler that returns an error.
+func (s *Slave) callErr(name string, f func() error) error {
+	err := errHandler
+	s.call(name, func() { err = f() })
+	return err
 }
 
 // State returns the LSS state.
@@ -339,13 +369,13 @@ func (s *Slave) switchGlobal(f *canbus.Frame) bool {
 	if changed {
 		s.cfg.log.Debug("lss state", "state", to)
 		if h := s.cfg.state; h != nil {
-			h(to)
+			s.call("state handler", func() { h(to) })
 		}
 	}
 	if reset {
 		s.cfg.log.Info("lss node-ID configured, reset communication", "node", pending)
 		if h := s.cfg.reset; h != nil {
-			h(pending)
+			s.call("reset handler", func() { h(pending) })
 		}
 		s.mu.Lock()
 		if s.active == Unconfigured {
@@ -402,7 +432,7 @@ func (s *Slave) selective(f *canbus.Frame, cs Command) (canbus.Frame, bool) {
 	if changed {
 		s.cfg.log.Debug("lss state", "state", Configuration, "by", "switch state selective")
 		if h := s.cfg.state; h != nil {
-			h(Configuration)
+			s.call("state handler", func() { h(Configuration) })
 		}
 	}
 	return frame(SlaveID, CmdSelectResponse), complete
@@ -475,7 +505,7 @@ func (s *Slave) fastscan(f *canbus.Frame) (canbus.Frame, bool) {
 	if changed {
 		s.cfg.log.Debug("lss state", "state", Configuration, "by", "fastscan")
 		if h := s.cfg.state; h != nil {
-			h(Configuration)
+			s.call("state handler", func() { h(Configuration) })
 		}
 	}
 	return frame(SlaveID, CmdIdentifySlave), ack
@@ -506,7 +536,7 @@ func (s *Slave) configure(f *canbus.Frame, cs Command) (canbus.Frame, bool) {
 		if !validNodeID(node) {
 			code = CodeOutOfRange
 		} else if h := s.cfg.nodeID; h != nil {
-			if err := h(node); err != nil {
+			if err := s.callErr("node-ID handler", func() error { return h(node) }); err != nil {
 				code, spec = refusal(err, CodeOutOfRange)
 			}
 		}
@@ -531,7 +561,7 @@ func (s *Slave) configure(f *canbus.Frame, cs Command) (canbus.Frame, bool) {
 		case h == nil, sel == 0 && !idx.Valid():
 			code = CodeOutOfRange
 		default:
-			if err := h(sel, idx); err != nil {
+			if err := s.callErr("bit timing handler", func() error { return h(sel, idx) }); err != nil {
 				code, spec = refusal(err, CodeOutOfRange)
 			}
 		}
@@ -551,14 +581,14 @@ func (s *Slave) configure(f *canbus.Frame, cs Command) (canbus.Frame, bool) {
 		delay := time.Duration(binary.LittleEndian.Uint16(f.Data[1:3])) * time.Millisecond
 		s.count(true)
 		if h := s.cfg.activate; h != nil {
-			h(pending, delay)
+			s.call("activate handler", func() { h(pending, delay) })
 		}
 		return canbus.Frame{}, false
 	case CmdStore:
 		code, spec := CodeOK, uint8(0)
 		if h := s.cfg.store; h == nil {
 			code = CodeOutOfRange
-		} else if err := h(pending); err != nil {
+		} else if err := s.callErr("store handler", func() error { return h(pending) }); err != nil {
 			code, spec = refusal(err, CodeStoreFailed)
 		}
 		s.mu.Lock()

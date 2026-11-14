@@ -124,7 +124,8 @@ type Variable struct {
 	Default        []byte
 	NodeIDRelative bool
 	// Low and High are optional encoded inclusive limits for numeric
-	// types; nil means no limit.
+	// types; nil means no limit. A float limit is not NaN (Add refuses
+	// it), and a limited float variable refuses a NaN value.
 	Low, High []byte
 	// MaxSize bounds the length of a variable-length value (strings,
 	// DOMAIN); 0 means unbounded.
@@ -159,14 +160,47 @@ func (o *Object) Sub(sub uint8) *Variable {
 // value; it returns the value to deliver (e.g. a value computed on
 // demand). Returning an error (preferably an [canopen.AbortCode]) refuses
 // the read.
+//
+// stored is the hook's own copy of the stored value, or the value the
+// previous hook returned. The slice the hook returns is passed on without
+// a copy, to the next hook and then to the caller of [Dictionary.Read].
+// The SDO and USDO servers keep it for the whole of a segmented or block
+// upload: the hook must not modify it afterwards, nor return a buffer
+// that other code modifies.
+//
+// Hooks and watchers run on the goroutine that accesses the dictionary:
+// the application's own for its calls, and for a remote access the
+// goroutine of the service that makes it (the SDO or USDO server, an
+// RPDO, an MPDO consumer, the caller of a TPDO's OnSync or Transmit, the
+// NMT slave for the restore of a reset). The dictionary holds no lock
+// while they run: they may call the dictionary, and the service, whose
+// other work waits until they return, so they must not block for long.
+// A hook may close the service that runs it, or its node (see the Close
+// of that service). A hook or watcher that does not return normally
+// ends the application's own call as it would end any call; when a
+// service made the access, the service logs it with its stack
+// ("callback did not return normally"), treats the access as refused
+// with [canopen.AbortGeneral], and goes on.
 type ReadHook func(v *Variable, stored []byte) ([]byte, error)
 
 // WriteHook is called on a remote write of a sub-object before the value
 // is stored, after the access, length and limit checks. Returning an
 // error (preferably an [canopen.AbortCode]) refuses the write.
+//
+// data is the slice the caller passed to [Dictionary.Write] (for the SDO
+// and USDO servers, the data received), and the value then stored is a
+// copy of it. It is valid until the hook returns: the hook must not
+// modify it, and must copy what it keeps. The goroutine it runs on, what
+// it may call and what happens when it does not return normally are as
+// for a [ReadHook].
 type WriteHook func(v *Variable, data []byte) error
 
 // Watcher is called after a value changed, by a remote or a local write.
+// data is the watcher's own copy of the new value. The goroutine it runs
+// on, what it may call and what happens when it does not return normally
+// are as for a [ReadHook]; the value is stored by then, and a watcher
+// that does not return normally keeps the watchers registered after it
+// from seeing that change.
 type Watcher func(v *Variable, data []byte)
 
 // hookKey addresses a sub-object (sub ≥ 0) or every sub-object of an
@@ -220,7 +254,8 @@ func (d *Dictionary) SetNodeID(node canopen.NodeID) {
 
 // Add adds an object and sets its values to their defaults. It checks the
 // object: sub-objects sorted and unique, a VAR with exactly sub-index 0,
-// known data types, defaults and limits of the right size.
+// known data types, defaults and limits of the right size, no NaN limit
+// of a float type.
 func (d *Dictionary) Add(o *Object) error {
 	if err := check(o); err != nil {
 		return err
@@ -269,6 +304,13 @@ func check(o *Object) error {
 		for what, b := range map[string][]byte{"default": v.Default, "low limit": v.Low, "high limit": v.High} {
 			if b != nil && n != 0 && len(b) != n {
 				return fmt.Errorf("od: %s: %s has %d bytes, %s needs %d", v.Key(), what, len(b), v.DataType, n)
+			}
+		}
+		if v.DataType.IsFloat() {
+			for what, b := range map[string][]byte{"low limit": v.Low, "high limit": v.High} {
+				if b != nil && isNaN(v.DataType, b) {
+					return fmt.Errorf("od: %s: %s is NaN", v.Key(), what)
+				}
 			}
 		}
 		if v.NodeIDRelative && !v.DataType.IsInteger() {
@@ -377,7 +419,8 @@ func (d *Dictionary) variableLocked(index uint16, sub uint8) (*Variable, error) 
 }
 
 // Read is a remote read: it checks the access right, calls the read hooks
-// and returns a copy of the value.
+// and returns the value: a copy of the stored value, or, when read hooks
+// are registered, the slice the last hook returned ([ReadHook]).
 func (d *Dictionary) Read(index uint16, sub uint8) ([]byte, error) {
 	d.mu.RLock()
 	v, err := d.variableLocked(index, sub)
@@ -428,7 +471,9 @@ func (d *Dictionary) Write(index uint16, sub uint8, data []byte) error {
 }
 
 // Validate checks data against v's data type, size and limits, and
-// returns the abort code a write of it gets.
+// returns the abort code a write of it gets. A float value that is NaN is
+// refused with [canopen.AbortInvalidValue] when v has a limit; ±Inf is
+// compared with the limits like any other value.
 func Validate(v *Variable, data []byte) error {
 	t := v.DataType
 	if n := t.Size(); n != 0 {
@@ -444,6 +489,11 @@ func Validate(v *Variable, data []byte) error {
 	if t == canopen.Boolean && data[0] > 1 {
 		return canopen.AbortInvalidValue
 	}
+	if t.IsFloat() && (v.Low != nil || v.High != nil) && isNaN(t, data) {
+		// NaN is neither below nor above a limit: a limited float
+		// refuses it.
+		return canopen.AbortInvalidValue
+	}
 	if v.Low != nil && compare(t, data, v.Low) < 0 {
 		return canopen.AbortValueLow
 	}
@@ -451,6 +501,17 @@ func Validate(v *Variable, data []byte) error {
 		return canopen.AbortValueHigh
 	}
 	return nil
+}
+
+// isNaN reports whether b, an encoded value of the float type t, is NaN.
+func isNaN(t canopen.DataType, b []byte) bool {
+	switch x, _ := canopen.Decode(t, b); f := x.(type) {
+	case float32:
+		return math.IsNaN(float64(f))
+	case float64:
+		return math.IsNaN(f)
+	}
+	return false
 }
 
 // compare orders two encoded numeric values of type t.

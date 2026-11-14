@@ -284,7 +284,8 @@ func Attach(d *od.Dictionary, cfg Config) (*Device, error) {
 	return dev, nil
 }
 
-// Close removes the device's hooks from the dictionary.
+// Close removes the device's hooks from the dictionary. It is safe to
+// call more than once and from several goroutines.
 func (dev *Device) Close() {
 	dev.mu.Lock()
 	hooks := dev.unhook
@@ -370,6 +371,15 @@ func (dev *Device) writeControl(v *od.Variable, data []byte) error {
 	n := v.SubIndex
 	if st := dev.cfg.State; st != nil && st() != canopen.StatePreOperational {
 		return canopen.AbortDeviceState
+	}
+	// The command is an UNSIGNED8. The dictionary checks the length of a
+	// fixed-size type; a value of a type without fixed size (a dictionary
+	// that declares the object otherwise) must be one byte.
+	switch {
+	case len(data) == 0:
+		return canopen.AbortLengthLow
+	case len(data) > 1 && v.DataType.Size() == 0:
+		return canopen.AbortLengthHigh
 	}
 	cmd := Command(data[0])
 	next := Stopped

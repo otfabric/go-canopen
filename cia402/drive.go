@@ -201,7 +201,8 @@ func (d *Drive) Dictionary() *od.Dictionary { return d.dict }
 
 // Close detaches the drive from the dictionary: its write hooks and its
 // watcher are removed, so writes are no longer checked or processed, and
-// Step does nothing.
+// Step does nothing. It is safe to call more than once and from several
+// goroutines.
 func (d *Drive) Close() {
 	d.mu.Lock()
 	hs := d.unhook
@@ -599,8 +600,11 @@ func (d *Drive) setFlag(f *bool, on bool) {
 }
 
 // Run calls Step(period) every period until ctx ends; it returns ctx's
-// error.
+// error. A period that is not positive is refused with an error at once.
 func (d *Drive) Run(ctx context.Context, period time.Duration) error {
+	if period <= 0 {
+		return fmt.Errorf("cia402: Run period %v is not positive", period)
+	}
 	t := time.NewTicker(period)
 	defer t.Stop()
 	for {
@@ -613,8 +617,12 @@ func (d *Drive) Run(ctx context.Context, period time.Duration) error {
 	}
 }
 
-// Step advances the simulation by dt.
+// Step advances the simulation by dt. A negative dt is ignored: the
+// simulation does not run backwards.
 func (d *Drive) Step(dt time.Duration) {
+	if dt < 0 {
+		return
+	}
 	d.mu.Lock()
 	if d.closed {
 		d.mu.Unlock()
@@ -881,11 +889,21 @@ func (d *Drive) statuswordLocked() uint16 {
 	return sw
 }
 
+// toInt32 rounds x to the nearest int32, saturating at the limits of the
+// type; NaN is 0.
 func toInt32(x float64) int32 {
+	if math.IsNaN(x) {
+		return 0
+	}
 	return int32(math.Max(math.MinInt32, math.Min(math.MaxInt32, math.Round(x))))
 }
 
+// toInt16 rounds x to the nearest int16, saturating at the limits of the
+// type; NaN is 0.
 func toInt16(x float64) int16 {
+	if math.IsNaN(x) {
+		return 0
+	}
 	return int16(math.Max(math.MinInt16, math.Min(math.MaxInt16, math.Round(x))))
 }
 

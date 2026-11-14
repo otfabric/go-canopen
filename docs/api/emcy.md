@@ -18,7 +18,7 @@ CiA 1301 replaces the 8-byte message by a 20-byte one ([FDMessage](#type-fdmessa
 
 [CodeText](#func-codetext) describes the error codes of CiA 301 table 21, and [ErrorRegister](#type-errorregister) names the error register bits.
 
-Long-running services have Start, which subscribes before it returns, and Close, which stops them and waits for their goroutine. Callbacks run on the service's goroutine and must not block for long.
+Long-running services have Start, which subscribes before it returns, and Close, which stops them and waits for their goroutine; Close is safe to call more than once and from several goroutines, and after it the services send nothing ([canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed)). Callbacks run on the service's goroutine, one call at a time, and must not block for long. A callback may call the service's methods, and its Close, which then does not wait for the goroutine the callback runs on. A callback that does not return normally is logged with its stack ("callback did not return normally"), and the service goes on.
 
 ## Constants
 
@@ -114,7 +114,7 @@ NewConsumer returns an emergency consumer. Options: [WithLogger](#func-withlogge
 func (c *Consumer) Close() error
 ```
 
-Close stops the consumer and waits for it.
+Close stops the consumer and waits for it. It is safe to call more than once and from several goroutines; called from the handler it does not wait for the goroutine the handler runs on.
 
 #### func (Consumer) Last
 
@@ -122,7 +122,7 @@ Close stops the consumer and waits for it.
 func (c *Consumer) Last(node canopen.NodeID) (Event, bool)
 ```
 
-Last returns the last emergency message received from a node.
+Last returns the last emergency message received from a node. The event is the caller's own: its FD message is a copy.
 
 #### func (Consumer) Start
 
@@ -211,7 +211,8 @@ type Event struct {
 	Time time.Time // the frame's receive timestamp, or the time it was processed
 	// FD is the CANopen FD message (a consumer made [WithFD] receiving a
 	// 20-byte CAN FD emergency); nil for a classical one. Message holds its
-	// classical part.
+	// classical part. Every event a consumer hands out (to its handler,
+	// from [Consumer.Last]) has an FD message of its own.
 	FD *FDMessage `json:"fd,omitempty"`
 }
 ```
@@ -258,7 +259,11 @@ type FDMessage struct {
 	Register      ErrorRegister
 	Specific      [5]byte
 	Status        uint8
-	Time          timestamp.TimeOfDay
+	// Time is the TIME_OF_DAY of the message. A decoded message carries
+	// the time as received: check [timestamp.TimeOfDay.Valid] before
+	// using [timestamp.TimeOfDay.Time], which rolls a millisecond count
+	// of a day or more over into the following days.
+	Time timestamp.TimeOfDay
 }
 ```
 
@@ -291,7 +296,7 @@ ParseFDMessage decodes a CANopen FD emergency payload in the FDLayoutCiA layout.
 func ParseFDMessageLayout(data []byte, l FDLayout) (FDMessage, error)
 ```
 
-ParseFDMessageLayout decodes a CANopen FD emergency payload: at least FDSize bytes (more, CAN FD padding, are ignored); fewer are an [canopen.ErrProtocol](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrProtocol) error. Reserved bytes are not checked, and the reserved bits of the time are ignored.
+ParseFDMessageLayout decodes a CANopen FD emergency payload: at least FDSize bytes (more, CAN FD padding, are ignored); fewer are an [canopen.ErrProtocol](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrProtocol) error. Reserved bytes are not checked, and the reserved bits of the time are ignored. The time is not checked either: a millisecond count of a day or more is decoded as it is, and [timestamp.TimeOfDay.Valid](https://pkg.go.dev/github.com/otfabric/go-canopen/timestamp#TimeOfDay.Valid) reports it.
 
 #### func (FDMessage) Bytes
 
@@ -463,7 +468,7 @@ WithFDLayout selects the CANopen FD emergency layout (both services; default FDL
 func WithHandler(h func(Event)) Option
 ```
 
-WithHandler calls h for every emergency message a [Consumer](#type-consumer) receives, on its goroutine; h must not block for long.
+WithHandler calls h for every emergency message a [Consumer](#type-consumer) receives, on its goroutine, one call at a time; h must not block for long. The event is the handler's own (its FD message is a copy). The handler may call the consumer's methods, and [Consumer.Close](#func-consumer-close), which then does not wait for that goroutine. A handler that does not return normally is logged with its stack, and the next message is delivered.
 
 #### func WithHistory
 
@@ -503,6 +508,9 @@ WithProducer makes a [Consumer](#type-consumer) receive the emergency messages o
 type Producer struct {
 
 	// orders dictionary updates
+
+	// Close was called: nothing more is sent or queued
+	// Start ran: the goroutine drops the queue at Close
 
 	// the dictionary has 0x1003
 
@@ -561,7 +569,7 @@ ClearHistory empties the error history, as writing 0 to 0x1003:0 does.
 func (p *Producer) Close() error
 ```
 
-Close stops the queue and waits for it; queued messages are dropped. It removes the write hooks the producer installed on the dictionary.
+Close stops the queue and waits for it; queued messages are dropped and counted in [ProducerStats.Dropped](#func-producerstats-dropped). It removes the write hooks the producer installed on the dictionary. It is safe to call more than once and from several goroutines.
 
 #### func (Producer) History
 
@@ -593,7 +601,7 @@ Register returns the error register.
 func (p *Producer) Send(ctx context.Context, m Message) error
 ```
 
-Send sends an emergency message as it is, without changing the active errors, the register or the history. It is queued when the inhibit time has not passed since the previous message, and sent at once (returning the bus error) otherwise. A COB-ID with the invalid bit set suppresses it. A producer made [WithFD](#func-withfd) sends it as a CANopen FD message.
+Send sends an emergency message as it is, without changing the active errors, the register or the history. It is queued when the inhibit time has not passed since the previous message, and sent at once (returning the bus error) otherwise. A COB-ID with the invalid bit set suppresses it. A producer made [WithFD](#func-withfd) sends it as a CANopen FD message. After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed), as [Producer.SendFD](#func-producer-sendfd), [Producer.Raise](#func-producer-raise), [Producer.Clear](#func-producer-clear) and [Producer.ClearAll](#func-producer-clearall) do: nothing is sent, queued or recorded.
 
 #### func (Producer) SendFD
 

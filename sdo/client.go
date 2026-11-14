@@ -48,7 +48,10 @@ type clientStats struct {
 // [canopen.ErrTimeout] (errors.Is) and *[canopen.AbortError] (errors.As,
 // Remote false). A protocol violation by the server makes the client
 // abort with the matching code and return an error matching
-// [canopen.ErrProtocol] and *[canopen.AbortError] (Remote false). When the
+// [canopen.ErrProtocol] and *[canopen.AbortError] (Remote false); so do
+// more than four responses in a row that move the transfer no further
+// (upload segments without data that are not the last, block
+// acknowledgements of no segment). When the
 // context ends during a transfer, the client aborts it with
 // [canopen.AbortGeneral] and returns the context's error.
 //
@@ -108,8 +111,9 @@ func (c *Client) COBIDs() (clientToServer, serverToClient canopen.COBID) { retur
 
 // Close aborts a transfer in progress, waits for it to end, releases the
 // client's subscription and makes later transfers fail with
-// [canopen.ErrClosed]. It is safe to call more
-// than once.
+// [canopen.ErrClosed]. It is safe to call more than once and from
+// several goroutines: every call returns only when the transfer has
+// ended.
 func (c *Client) Close() error {
 	c.once.Do(func() {
 		c.cancel()
@@ -329,6 +333,15 @@ func (l *busLink) drain() {
 	}
 }
 
+// maxNoProgress bounds the consecutive responses that move a transfer no
+// further: upload segments without data that are not the last, and block
+// acknowledgements of no segment. Each such response is answered with
+// the next request, which restarts the response timeout: the bound is
+// what ends such a transfer. The client aborts after it (upload:
+// [canopen.AbortGeneral], block download: [canopen.AbortSequence]) and
+// the transfer fails with [canopen.ErrProtocol].
+const maxNoProgress = 4
+
 // xfer is one transfer attempt.
 type xfer struct {
 	c        *Client
@@ -502,6 +515,7 @@ func (x *xfer) uploadFrom(f frame) ([]byte, error) {
 	if sized {
 		data = make([]byte, 0, min(size, 64<<10))
 	}
+	idle := 0 // consecutive segments without data
 	for t := byte(0); ; t ^= 1 {
 		if err := x.sendSegment(frame{ccsUploadSegment<<5 | t<<4}); err != nil {
 			return nil, err
@@ -519,6 +533,13 @@ func (x *xfer) uploadFrom(f frame) ([]byte, error) {
 		seg := f[1 : 8-int(f[0]>>1&7)]
 		if int64(len(data)+len(seg)) > limit {
 			return nil, protoErr(code)
+		}
+		if len(seg) == 0 && f[0]&1 == 0 {
+			if idle++; idle > maxNoProgress {
+				return nil, protoErr(canopen.AbortGeneral)
+			}
+		} else {
+			idle = 0
 		}
 		data = append(data, seg...)
 		if f[0]&1 != 0 {
@@ -609,6 +630,7 @@ func (x *xfer) blockDownload(data []byte) error {
 	useCRC := x.c.cfg.crc && f[0]&4 != 0
 	x.c.st.blocks.Add(1)
 	pos, lastLen := 0, 0
+	idle := 0 // consecutive acknowledgements of no segment
 	for {
 		x.l.drain() // stale acknowledgements of earlier blocks
 		seq, final, p := byte(0), false, pos
@@ -642,6 +664,13 @@ func (x *xfer) blockDownload(data []byte) error {
 		}
 		if final && ack[1] == seq {
 			break
+		}
+		if ack[1] == 0 {
+			if idle++; idle > maxNoProgress {
+				return protoErr(canopen.AbortSequence)
+			}
+		} else {
+			idle = 0
 		}
 		pos += int(ack[1]) * segData
 		blk = ack[2]
