@@ -1,2 +1,2 @@
-github.com/otfabric/go-canbus v0.9.1 h1:fQ9t4HAc0cYlATyidi0g8NFpXhR4X0drjeDgvNSEdE4=
-github.com/otfabric/go-canbus v0.9.1/go.mod h1:6++FXYLk7/3z755xzfjoDrhKZYrwRg6GLOmo3AUCb3w=
+github.com/otfabric/go-canbus v0.10.0 h1:CFhbeVFSlMCefAg2HOXgaEjTRktPIfHo2rNDtT9Rfok=
+github.com/otfabric/go-canbus v0.10.0/go.mod h1:HhWgnZ6lM3XKvjN8g/1nM7JaXE9JQ9goFhhnVOXC26s=
