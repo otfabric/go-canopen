@@ -2,6 +2,13 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.5.2 (2026-11-14)
+
+`sdo`: an abort for another object (a server's answer to a repeated or
+late frame of an earlier transfer) no longer ends a transfer that waits
+for its initiate response; on a bus that repeats or delays frames it
+could fail several transfers in a row (go-canopen#26).
+
 ## v0.5.0 (2026-11-08)
 
 Tested against recorded traffic of real Copley Controls drives and their
