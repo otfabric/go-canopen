@@ -5,6 +5,25 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.5.3
+
+**Date:** 2026-11-14
+**Previous release:** v0.5.2
+
+### Summary
+
+Dependency update; no change to go-canopen's own code.
+
+### Dependencies
+
+- go-canbus v0.10.0: input bounds and output encoding in its database,
+  capture and transport packages. go-canopen uses its `socketcan`,
+  `virtual`, `chaos` and `capture` packages; the changes that reach it are
+  `chaos` corruption clamped to the frame payload and the candump writer
+  refusing interface names with spaces or control bytes.
+
+---
+
 ## v0.5.2
 
 **Date:** 2026-11-14
