@@ -5,6 +5,19 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.6.2
+
+**Date:** 2026-11-15
+**Previous release:** v0.6.1
+
+No library code changes.
+
+### Changed
+
+- Built on go-canbus v0.10.1 (was v0.10.0) and go-serial v0.4.1 (was v0.4.0) (go-canbus RELEASE.md, v0.10.1; go-serial RELEASE.md, v0.4.1). A `Send` on a bus that waits for another `Send` follows its context and `Close`; metrics callbacks of the bus that do not return normally are logged and the bus goes on; message databases and captures are read within size bounds.
+
+---
+
 ## v0.6.1
 
 **Date:** 2026-11-14
