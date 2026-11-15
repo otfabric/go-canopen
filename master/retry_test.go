@@ -509,7 +509,12 @@ func TestManagerUintLength(t *testing.T) {
 	bad.Store(uint16(0))
 	var writes atomic.Int32
 	d5.OnWrite(nettest.IdxParam, 0, func(*od.Variable, []byte) error { writes.Add(1); return nil })
+	ups := bootUps(t, buses[0], 5)
 	startNode(t, buses[1], d5, node.WithProgram(program.Config{Handler: &flasher{image: []byte("v1")}}))
+	// The boot-up must not start a process before the reset of the
+	// network boot-up: its result would let the BootSlave calls below
+	// start while that boot-up runs, which cancels them.
+	ups()
 	// After the node's own hooks (0x1F56), which run first.
 	for _, idx := range []uint16{od.IndexDeviceType, program.IndexIdentification, cdcf.IndexVerifyConfiguration} {
 		d5.OnRead(idx, -1, func(v *od.Variable, stored []byte) ([]byte, error) {

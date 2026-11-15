@@ -88,7 +88,7 @@ Excluded reports objects that are never saved although writable: 0x1010 and 0x10
 func Merge(saved, current []cdcf.Entry, first, last uint16) []cdcf.Entry
 ```
 
-Merge returns saved with the entries in \[first, last] replaced by current (which should only hold entries in that range).
+Merge returns saved with the entries in \[first, last] replaced by current (which should only hold entries in that range). The slice is new; the entries share their Data with saved and current.
 
 ### func Parameter
 
@@ -120,7 +120,7 @@ Snapshot returns the current values of the parameters ([Parameter](#func-paramet
 func Without(entries []cdcf.Entry, first, last uint16) []cdcf.Entry
 ```
 
-Without returns the entries outside \[first, last].
+Without returns the entries outside \[first, last]. The slice is new; the entries share their Data with entries.
 
 ## Types
 

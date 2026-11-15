@@ -61,15 +61,17 @@ Synchronous PDOs are bound to the synchronous window 0x1007, measured from the r
 
 #### CANopen FD {#hdr-CANopen_FD}
 
-With [WithFD](#func-withfd) the node is a CANopen FD device (CiA 1301): PDOs of up to 64 bytes, SYNC, EMCY (20 bytes), boot-up and heartbeat in CAN FD frames, and a USDO server (package usdo) in place of the SDO server. Node guarding is left out (CAN FD has no remote frames).
+With [WithFD](#func-withfd) the node is a CANopen FD device (CiA 1301): PDOs of up to 64 bytes, SYNC, EMCY (20 bytes), boot-up and heartbeat in CAN FD frames, and a USDO server (package usdo) in place of the SDO server, which like it answers nothing before the node's boot-up message. Node guarding is left out (CAN FD has no remote frames).
 
 #### Program download {#hdr-Program_download}
 
 With [WithProgram](#func-withprogram) the node serves the program download objects of CiA 302-3 (0x1F50 program data, 0x1F51 program control, 0x1F56 application software identification, 0x1F57 flash status) and leaves the flashing to a program.Handler; see package program.
 
-[Node.Close](#func-node-close) closes every service, and the services remove the hooks and watchers they installed on the dictionary: a dictionary may be given to successive nodes (see [od.Dictionary.HookCount](https://pkg.go.dev/github.com/otfabric/go-canopen/od#Dictionary.HookCount)).
+#### Close and callbacks {#hdr-Close_and_callbacks}
 
-Callbacks (the options' handlers) run on the goroutines of the services and must not block for long.
+[Node.Close](#func-node-close) closes every service, and the services remove the hooks and watchers they installed on the dictionary: a dictionary may be given to successive nodes (see [od.Dictionary.HookCount](https://pkg.go.dev/github.com/otfabric/go-canopen/od#Dictionary.HookCount)). Close is safe to call more than once and from several goroutines; every call returns only when the node's goroutines have ended. After it the node sends nothing: [Node.SetState](#func-node-setstate), [Node.Reset](#func-node-reset) and [Node.SendTime](#func-node-sendtime) fail with canopen.ErrClosed, as the methods of its services do, and a reset in progress sends no boot-up message.
+
+Callbacks (the options' handlers, and the dictionary's hooks and watchers when a service accesses the dictionary) run on the goroutines of the services, one call at a time per service, and must not block for long: the service does nothing else meanwhile. A callback may call the node's methods, and Close: Close then does not wait for the goroutine the callback runs on, which ends when the callback returns. A callback that does not return normally is logged at error level with its stack ("callback did not return normally", [WithLogger](#func-withlogger)), and the node goes on: a request whose hook did so is refused with canopen.AbortGeneral.
 
 ## Constants
 
@@ -117,9 +119,16 @@ type Node struct {
 	// the MPDO producers and consumers
 	// LSS settings found in the store at New
 
-	// serialises Start and Close
+	// serialises Start and the closing of the node
 
-	// guards srv, stop and deferred
+	// identifier of the goroutine inside Start
+	// identifier of the goroutine that steps the drive
+
+	// stMu serialises the enabling and disabling of the services for the
+	// NMT state: they follow the state the slave is in, whichever state
+	// change's handler runs last.
+
+	// guards srv, stop, deferred and unhook
 
 	// deferred is set while the services wait for a node-ID (started
 	// unconfigured): the reset that applies one starts them.
@@ -158,7 +167,9 @@ The node does nothing on the bus until [Node.Start](#func-node-start).
 func (n *Node) Close() error
 ```
 
-Close stops the node and its services and waits for them. The node sends nothing more (in particular no state change is announced).
+Close stops the node and its services and waits for them. The node sends nothing more (in particular no state change is announced). It is safe to call more than once and from several goroutines: every call returns only when the services have stopped.
+
+A handler of the node, and a dictionary hook the node's services call, may call Close: Close then does not wait for the goroutine that handler runs on, which ends when the handler returns; a Close on another goroutine still waits for it. From a handler called by Start, Start returns [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 #### func (Node) Dictionary
 
@@ -246,7 +257,7 @@ RPDO returns receive PDO number i (1..512), or nil when the dictionary lacks it.
 func (n *Node) Reset(ctx context.Context, kind nmt.ResetKind) error
 ```
 
-Reset does an NMT reset locally, as the command from the bus does.
+Reset does an NMT reset locally, as the command from the bus does. After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed); a reset in progress when the node is closed sends no boot-up message.
 
 #### func (Node) RestoreDefaults
 
@@ -294,7 +305,7 @@ SetNodeID sets a pending node-ID (as LSS configures one), which becomes active a
 func (n *Node) SetState(st canopen.NMTState) error
 ```
 
-SetState changes the NMT state locally: Operational, Pre-operational or Stopped (an application that starts on its own, or stops after a fatal error).
+SetState changes the NMT state locally: Operational, Pre-operational or Stopped (an application that starts on its own, or stops after a fatal error). After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 #### func (Node) Start
 
@@ -302,7 +313,7 @@ SetState changes the NMT state locally: Operational, Pre-operational or Stopped 
 func (n *Node) Start() error
 ```
 
-Start starts the services, sends the boot-up message and enters Pre-operational. It fails when a service cannot start (the node is then closed) and after Close.
+Start starts the services, sends the boot-up message and enters Pre-operational. It fails when a service cannot start (the node is then closed) and after Close, also when a handler that Start called closed the node.
 
 #### func (Node) State
 
@@ -390,7 +401,7 @@ WithFD makes the node a CANopen FD device (CiA 1301), with bit rate switching wh
 func WithHeartbeatHandler(h func(nmt.HeartbeatEvent)) Option
 ```
 
-WithHeartbeatHandler calls h with every event of the node's heartbeat consumer (0x1016): boot-ups, state changes, losses and resumptions of the nodes it hears. It runs on the consumer's goroutine.
+WithHeartbeatHandler calls h with every event of the node's heartbeat consumer (0x1016): boot-ups, state changes, losses and resumptions of the nodes it hears. It runs on the consumer's goroutine, one event at a time, and must not block for long.
 
 #### func WithLSS
 
@@ -436,7 +447,9 @@ WithSDOServerOptions passes options (timeout, block size, maximum size...) to th
 func WithStateHandler(h func(nmt.StateChange)) Option
 ```
 
-WithStateHandler calls h after every NMT state change of the node, once the node's services have been enabled or disabled for the new state. It runs on the goroutine that changed the state (usually the NMT slave's) and must not block for long; it must not call [Node.Reset](#func-node-reset).
+WithStateHandler calls h after every NMT state change of the node, once the node's services have been enabled or disabled for the state the node is in. It runs on the goroutine that changed the state (the NMT slave's for an NMT command; the heartbeat consumer's or the guarding responder's for the error behaviour of 0x1029; the caller's for Start, [Node.SetState](#func-node-setstate) and [Node.Reset](#func-node-reset)) and must not block for long. Changes made by different goroutines call it concurrently, in either order: read [Node.State](#func-node-state) for the state that holds.
+
+Like every handler of the node, it may call the node's methods other than [Node.Reset](#func-node-reset), and [Node.Close](#func-node-close) (see there). A handler that does not return normally is logged with its stack ("callback did not return normally") and the node goes on.
 
 #### func WithStore
 
@@ -452,7 +465,7 @@ WithStore keeps the node's parameters in s (CiA 301 store and restore, see packa
 func WithTimeHandler(h func(timestamp.Event)) Option
 ```
 
-WithTimeHandler calls h with every TIME message the node consumes (0x1012 bit 31 set) while it is pre-operational or operational.
+WithTimeHandler calls h with every TIME message the node consumes (0x1012 bit 31 set) while it is pre-operational or operational. It runs on the TIME consumer's goroutine and must not block for long.
 
 #### func WithTimePeriod
 

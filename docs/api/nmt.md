@@ -19,7 +19,7 @@ Error control:
   - [HeartbeatConsumer](#type-heartbeatconsumer) tracks the state of every node, supervises the configured ones (explicitly, or from the consumer heartbeat time entries of 0x1016) and reports boot-ups, state changes, timeouts (once per loss) and resumption. [HeartbeatConsumer.WaitState](#func-heartbeatconsumer-waitstate) and [HeartbeatConsumer.WaitBootUp](#func-heartbeatconsumer-waitbootup) help an NMT master sequence its commands.
   - [GuardMaster](#type-guardmaster) and [GuardResponder](#type-guardresponder) implement the legacy node guarding and life guarding protocol (remote frames with a toggling state response).
 
-Every long-running service has Start, which subscribes before it returns so that no frame is missed afterwards, and Close, which stops it and waits for its goroutine. Callbacks (handler options) run on the service's goroutine and must not block for long. Services configured [WithDictionary](#func-withdictionary) read their parameters from the standard objects and follow writes of them, as an SDO server makes them, while running.
+Every long-running service has Start, which subscribes before it returns so that no frame is missed afterwards, and Close, which stops it and waits for its goroutine; Close is safe to call more than once and from several goroutines. Callbacks (handler options) run on the service's goroutine, one call at a time (the state, reset and boot-up handlers of a [Slave](#type-slave) on the goroutine that caused the change), and must not block for long. A callback may call the service's methods, and its Close, which then does not wait for the goroutine the callback runs on. A callback that does not return normally is logged with its stack ("callback did not return normally"), and the service goes on. Services configured [WithDictionary](#func-withdictionary) read their parameters from the standard objects and follow writes of them, as an SDO server makes them, while running.
 
 ## Constants
 
@@ -201,7 +201,7 @@ NewGuardMaster returns a node guarding master. Options: [WithLogger](#func-withl
 func (g *GuardMaster) Close() error
 ```
 
-Close stops guarding and waits for the goroutine.
+Close stops guarding and waits for the goroutine. It is safe to call more than once and from several goroutines; called from the guard handler it does not wait for the goroutine that handler runs on.
 
 #### func (GuardMaster) Guard
 
@@ -247,6 +247,8 @@ GuardResponder answers the node guarding requests of an NMT master for its node:
 
 With a guard time and a life time factor configured it also does life guarding: after the first request, no request within guard time × life time factor is a life guarding event (GuardTimeout), reported once until the next request (GuardResumed).
 
+The state comes from a function, usually [Slave.State](#func-slave-state), called on the responder's goroutine: it must not call [GuardResponder.Close](#func-guardresponder-close), and one that does not return normally counts as Unknown (no answer).
+
 CiA 301 does not allow node guarding and the heartbeat at once: run the responder only while the producer heartbeat time is 0.
 
 #### func NewGuardResponder
@@ -263,7 +265,7 @@ NewGuardResponder returns the node guarding responder of a node. Options: [WithL
 func (r *GuardResponder) Close() error
 ```
 
-Close stops answering and waits for the goroutine.
+Close stops answering and waits for the goroutine. It is safe to call more than once and from several goroutines; called from the guard handler it does not wait for the goroutine that handler runs on.
 
 #### func (GuardResponder) ResetToggle
 
@@ -351,7 +353,7 @@ NewHeartbeatConsumer returns a heartbeat consumer. Options: [WithLogger](#func-w
 func (c *HeartbeatConsumer) Close() error
 ```
 
-Close stops the consumer and waits for it. Pending waits return [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed). It removes the 0x1016 write hook the consumer installed on the dictionary.
+Close stops the consumer and waits for it. Pending waits return [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed). It removes the 0x1016 write hook the consumer installed on the dictionary. It is safe to call more than once and from several goroutines; called from the heartbeat handler it does not wait for the goroutine that handler runs on.
 
 #### func (HeartbeatConsumer) Monitor
 
@@ -502,7 +504,7 @@ type HeartbeatProducer struct {
 
 HeartbeatProducer sends a node's heartbeat (CiA 301 7.2.8.3.2.2): its NMT state on 0x700 + node-ID every period. A period of 0 produces nothing. A new period takes effect at once: the next heartbeat follows the change by the new period.
 
-The state comes from a function, usually [Slave.State](#func-slave-state); no heartbeat is sent while it returns Initialising (the slave is resetting and will send a boot-up message) or Unknown.
+The state comes from a function, usually [Slave.State](#func-slave-state); no heartbeat is sent while it returns Initialising (the slave is resetting and will send a boot-up message) or Unknown. The function is called on the producer's goroutine and must not call [HeartbeatProducer.Close](#func-heartbeatproducer-close); one that does not return normally counts as Unknown.
 
 Periods are kept by a time.Ticker: heartbeats do not drift, but each one may be late by the scheduling latency of the Go runtime (typically well below a millisecond, more on a loaded system).
 
@@ -520,7 +522,7 @@ NewHeartbeatProducer returns the heartbeat producer of a node. Options: [WithLog
 func (p *HeartbeatProducer) Close() error
 ```
 
-Close stops producing and waits for the goroutine.
+Close stops producing and waits for the goroutine. It is safe to call more than once and from several goroutines.
 
 #### func (HeartbeatProducer) Period
 
@@ -656,7 +658,7 @@ Option configures the services of this package. Each option names the services i
 func WithBootUpHandler(h func()) Option
 ```
 
-WithBootUpHandler calls h just before a [Slave](#type-slave) sends its boot-up message (at Start and after every reset), on the goroutine that sends it: the moment the node stops being Initialising, for services that must not act on frames received earlier. It must not block.
+WithBootUpHandler calls h just before a [Slave](#type-slave) sends its boot-up message (at Start and after every reset), on the goroutine that sends it: the moment the node stops being Initialising, for services that must not act on frames received earlier. It must not block. It may call [Slave.Close](#func-slave-close): the boot-up message is then not sent.
 
 #### func WithDictionary
 
@@ -685,7 +687,7 @@ WithFD selects CANopen FD (CiA 1301), which carries every protocol in CAN FD fra
 func WithGuardHandler(h func(GuardEvent)) Option
 ```
 
-WithGuardHandler calls h for the events of a [GuardMaster](#type-guardmaster) or a [GuardResponder](#type-guardresponder), on its goroutine; h must not block for long.
+WithGuardHandler calls h for the events of a [GuardMaster](#type-guardmaster) or a [GuardResponder](#type-guardresponder), on its goroutine, one at a time; h must not block for long. It may call the service's methods, and its Close, which then does not wait for the goroutine the handler runs on.
 
 #### func WithHeartbeatHandler
 
@@ -693,7 +695,7 @@ WithGuardHandler calls h for the events of a [GuardMaster](#type-guardmaster) or
 func WithHeartbeatHandler(h func(HeartbeatEvent)) Option
 ```
 
-WithHeartbeatHandler calls h for the events of a [HeartbeatConsumer](#type-heartbeatconsumer), on its goroutine; h must not block for long.
+WithHeartbeatHandler calls h for the events of a [HeartbeatConsumer](#type-heartbeatconsumer), on its goroutine, one at a time; h must not block for long: while it runs no heartbeat is processed. It may call the consumer's methods, and [HeartbeatConsumer.Close](#func-heartbeatconsumer-close), which then does not wait for the goroutine the handler runs on.
 
 #### func WithHeartbeatPeriod
 
@@ -725,7 +727,7 @@ WithLogger logs service events to l (all services). The default logs nothing.
 func WithResetHandler(h func(ResetKind)) Option
 ```
 
-WithResetHandler calls h during an NMT reset of a [Slave](#type-slave), after the dictionary areas were restored (see [WithDictionary](#func-withdictionary)) and before the boot-up message: the place to reload stored parameters or reinitialise the application. It must not call [Slave.Reset](#func-slave-reset).
+WithResetHandler calls h during an NMT reset of a [Slave](#type-slave), after the dictionary areas were restored (see [WithDictionary](#func-withdictionary)) and before the boot-up message: the place to reload stored parameters or reinitialise the application. It runs on the goroutine that does the reset (the slave's for an NMT command, the caller's for [Slave.Reset](#func-slave-reset)), may call [Slave.Close](#func-slave-close) and must not call [Slave.Reset](#func-slave-reset).
 
 #### func WithStateHandler
 
@@ -733,7 +735,7 @@ WithResetHandler calls h during an NMT reset of a [Slave](#type-slave), after th
 func WithStateHandler(h func(StateChange)) Option
 ```
 
-WithStateHandler calls h for every NMT state change of a [Slave](#type-slave). It runs on the goroutine that caused the change (the slave's for NMT commands, the caller's for Start, SetState and Reset) and must not block for long.
+WithStateHandler calls h for every NMT state change of a [Slave](#type-slave). It runs on the goroutine that caused the change (the slave's for NMT commands, the caller's for Start, SetState and Reset) and must not block for long. Two changes made by different goroutines call it concurrently, in either order: read [Slave.State](#func-slave-state) for the state that holds. It may call the slave's methods, [Slave.Close](#func-slave-close) included (see there). A handler that does not return normally is logged and the slave goes on, as for every handler of this package.
 
 ### type ResetKind
 
@@ -769,7 +771,13 @@ String names the reset.
 ```go
 type Slave struct {
 
-	// serialises resets
+	// ctx ends at Close: a closed slave changes no state, does no reset
+	// and sends no boot-up message.
+
+	// resetSem serialises resets. It is a channel so that a reset
+	// waiting for its turn ends at Close.
+
+	// identifier of the goroutine inside a reset
 
 	// 0: none
 
@@ -794,7 +802,9 @@ NewSlave returns the NMT slave of a node, in state Initialising until Start. nod
 func (s *Slave) Close() error
 ```
 
-Close stops the slave and waits for it. It does not change the state.
+Close stops the slave and waits for its goroutine and for a reset in progress, which then sends no boot-up message. It does not change the state. It is safe to call more than once and from several goroutines.
+
+A handler of the slave may call Close: Close then does not wait for the goroutine or the reset the handler runs in, which end when the handler returns. From a handler called by Start, Start returns [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 #### func (Slave) NodeID
 
@@ -810,7 +820,7 @@ NodeID returns the active node-ID.
 func (s *Slave) Reset(ctx context.Context, kind ResetKind) error
 ```
 
-Reset does an NMT reset locally, as the command from the bus would: state Initialising, dictionary restore, reset handler, boot-up message, Pre-operational. It returns the error of sending the boot-up message (the slave then stays in Initialising) and [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed) after Close. A reset that leaves the node-ID Unconfigured ends in Initialising without boot-up message.
+Reset does an NMT reset locally, as the command from the bus would: state Initialising, dictionary restore, reset handler, boot-up message, Pre-operational. It returns the error of sending the boot-up message (the slave then stays in Initialising) and [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed) after Close. A reset that leaves the node-ID Unconfigured ends in Initialising without boot-up message. A reset in progress when the slave is closed sends no boot-up message and returns [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 #### func (Slave) SetNodeID
 
@@ -826,7 +836,7 @@ SetNodeID sets a pending node-ID (as LSS configures one): it becomes active at t
 func (s *Slave) SetState(st canopen.NMTState) error
 ```
 
-SetState changes the state locally (an application that enters Operational on its own, or stops after a fatal error). Only Stopped, Operational and Pre-operational can be set; use Reset for the others.
+SetState changes the state locally (an application that enters Operational on its own, or stops after a fatal error). Only Stopped, Operational and Pre-operational can be set; use Reset for the others. After Close it fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 #### func (Slave) Start
 

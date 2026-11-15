@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -24,7 +25,12 @@ func clean(err error) bool {
 
 // TestChaos runs transfers through a lossy, duplicating, reordering CAN
 // FD bridge: every transfer either succeeds with the right data or fails
-// with an abort, and no session or goroutine is left behind.
+// with an abort, and no session or goroutine is left behind. The one
+// exception is the bus reordering of LIMITATIONS.md: the last request of
+// a download that failed on the client, held back by the bus while its
+// abort was lost, can reach the server after the next download and
+// store the failed download's data again. An upload may then return
+// that data, and only that data.
 func TestChaos(t *testing.T) {
 	cfgs := []chaos.Config{
 		{Seed: 1, Drop: 0.03},
@@ -39,6 +45,7 @@ func TestChaos(t *testing.T) {
 			srv, d := startServer(t, a, 5, WithTimeout(100*time.Millisecond))
 			c := startClient(t, b, 1, WithTimeout(50*time.Millisecond))
 			ok, failed := 0, 0
+			var lost [][]byte // data of the downloads that failed
 			for i := range 40 {
 				data := pattern(1+i*37%700, byte(i))
 				err := c.Download(tctx(t), 5, idxDomain, 0, data, UseBulk(i%3 == 0))
@@ -47,6 +54,7 @@ func TestChaos(t *testing.T) {
 				}
 				if err != nil {
 					failed++
+					lost = append(lost, data)
 					continue
 				}
 				got, err := c.Upload(tctx(t), 5, idxDomain, 0)
@@ -58,12 +66,17 @@ func TestChaos(t *testing.T) {
 					continue
 				}
 				if !equal(got, data) {
-					// a lost bulk segment after a duplicate can only be
-					// detected by size: compare what the server stored
+					// Only a request of a failed download, applied late,
+					// stores other data: the upload returns what the server
+					// stored, and that is the data of a failed download.
 					stored, _ := d.Get(idxDomain, 0)
 					if !equal(got, stored) {
 						t.Fatalf("transfer %d: uploaded data differs from the stored data", i)
 					}
+					if !slices.ContainsFunc(lost, func(b []byte) bool { return equal(b, got) }) {
+						t.Fatalf("transfer %d: uploaded %d bytes, neither the %d bytes downloaded nor the data of a failed download", i, len(got), len(data))
+					}
+					t.Logf("transfer %d: the data of a failed download was stored after it", i)
 				}
 				ok++
 			}

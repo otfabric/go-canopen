@@ -121,6 +121,8 @@ PDOSequence returns entries with the PDO parameters (0x1400..0x1BFF) rewritten a
  3. when the entries set the number of mapped objects: 0, the mapping entries 1..n, then n (mapping entries above n are dropped); otherwise the mapping entries given;
  4. the COB-ID as given.
 
+The entries returned share their Data with the entries given, except the COB-ID written with bit 31 set and the 0 written to the number of mapped objects, which are new: a caller that modifies the Data of one also modifies the other.
+
 #### func (Entry) String
 
 ```go

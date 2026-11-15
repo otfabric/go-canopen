@@ -5,6 +5,194 @@ it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
 `## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.6.1
+
+**Date:** 2026-11-14
+**Previous release:** v0.6.0
+
+### Summary
+
+Fixes from the policy 1.6 review of the library, on top of the bounds of
+v0.6.0: further input bounds for transfers, files and values, NMT state
+and service handling in `node`, the Close contract of every service, and
+the callbacks the library calls. No exported identifier is added, removed
+or changed. Some calls now return an error, or another error, where they
+did something else before: see "Changed".
+
+### Changed
+
+- `usdo.Client`: a transfer on a closed client fails with
+  `canopen.ErrClosed`, not `ErrNotStarted` (which remains for a client
+  that was never started).
+- `master.BootNetwork`, `BootSlave` and `Scan` in progress at `Close`
+  return an error that matches `canopen.ErrClosed`; it still matches
+  `context.Canceled`, which `BootNetwork` returned before.
+- `master.BootSlave` can return an error that matches `context.Canceled`
+  without its own context having ended (a network boot-up started).
+- `lss.Master`: a service called while `Configure`, `ConfigureNodeID`,
+  `AssignAll` or `InquireAddress` runs on another goroutine waits for it,
+  or for its own context. The services a `Configure` function calls
+  belong to it when they run on its goroutine or with its context.
+- A callback that does not return normally no longer ends the process.
+- `nmt.Slave.Start` and `Node.Start` return `ErrClosed` when a handler
+  they called closed the slave or node.
+- The inputs listed under "Input bounds" below are refused.
+
+### Fixed
+
+Input bounds:
+
+- `sdo` client: more than four responses in a row that move a transfer no
+  further (upload segments without data that are not the last, block
+  acknowledgements of no segment) end it with `canopen.ErrProtocol`.
+- `usdo` client: a bulk download waits at most the response timeout
+  between two segments, whatever processing time (t_proc) a server
+  reports (`DownloadMulti` included).
+- `od`: `Dictionary.Add` refuses a NaN limit of a float object;
+  `canopen.Encode` and `ParseValue` refuse a finite value beyond the
+  range of REAL32; `eds` reports a NaN limit as an error (the build
+  skips the sub-object with a warning in lenient mode).
+- `sdo` server: the buffer of a download is sized from the indicated
+  size alone, whatever `WithMaxSize` allows, on 32-bit platforms too.
+- `eds`: `Parse`, `ParseFile` and `ParseBytes` refuse a file larger than
+  16 MiB, and a dictionary is built with at most 65536 sub-objects,
+  compact storage counted expanded (`BuildDictionary`, `cdcf.Entries`,
+  `cdcf.FromFile`, `codegen.Generate`), in lenient mode too. Both bounds
+  are fixed; `BuildOptions.MaxCompactBytes` is unchanged.
+- `master` request objects 0x1F82 and 0x1F83 and the `program` control
+  0x1F51: a dictionary that declares them with a type without fixed size
+  gets `AbortLengthLow` or `AbortLengthHigh` for a value that is not one
+  byte.
+- `master.Overlay` refuses a base mapping of more than 64 entries
+  (`AbortPDOLength`); `cia402.Drive.Run` refuses a period that is not
+  positive, `Drive.Step` ignores a negative time step, and the drive's
+  outputs are 0 for a value that is not a number; `codegen` writes
+  `Options.SourceSHA256` into the header comment as it writes `Source`
+  (control characters become spaces, Unicode format characters are
+  removed).
+
+NMT state of a node:
+
+- `node`: the SDO or USDO server and the PDOs are enabled for the NMT
+  state the node is in. When two goroutines changed the state (an NMT
+  command and the error behaviour of 0x1029, or `SetState`), the services
+  followed whichever state handler ran last, so a node could be Stopped
+  and still answer SDO, or Operational with its PDOs off.
+- `node`: the error behaviour of 0x1029 changes the state from
+  Pre-operational or Operational only. A node that was Initialising
+  (waiting for a node-ID after LSS removed it, or resetting) went to
+  Stopped when a supervised node was lost, and its heartbeat producer
+  then sent on its former node-ID.
+- `node` with `WithFD`: the USDO server answers nothing before the node's
+  boot-up message, as the SDO server of a classical node.
+
+LSS:
+
+- `lss.Master`: `Configure`, `ConfigureNodeID`, `AssignAll` and
+  `InquireAddress` are one sequence each. A service called from another
+  goroutine could run between their steps, switch the selection, and a
+  node-ID then went to another device than the one `Configure` named,
+  with no error.
+
+Close:
+
+- Every `Close` returns only when the service's goroutine has ended, on
+  every call: a second `Close`, concurrent or later, used to return at
+  once while the first was still waiting for a handler or hook (`node`,
+  `master`, `sdo.Server`, `usdo`, `lss.Slave`, `emcy`, `sync`,
+  `timestamp`, `nmt`, `pdo`, `mpdo`).
+- A handler, or a dictionary hook run by a service, may call the `Close`
+  of that service, of its node or of the master: `Close` returns, and
+  the goroutine ends when the callback has returned. It used to wait for
+  itself. A `Close` on another goroutine still waits for the callback.
+- After `Close` the services send nothing and their operations fail with
+  `canopen.ErrClosed`: `Node.SetState`, `Node.Reset` and `nmt.Slave` (a
+  reset in progress sends no boot-up message any more); `pdo.TPDO`
+  (`Transmit`, SYNC, events) and `RPDO` (a buffered PDO is dropped), also
+  when `SetEnabled` is called afterwards; `emcy.Producer` (`Raise`,
+  `Clear`, `ClearAll`, `Send`, `SendFD`: nothing is queued or recorded);
+  `syncobj.Producer.Send` and `timestamp.Producer.Send`;
+  `mpdo.Producer` (an MPDO waiting for its inhibit time or for its turn
+  is not sent; one waiting for its turn also ends with its context);
+  `usdo.Client` (transfers in progress end at once instead of timing
+  out); `pdo.Listener.Request`; `master`: `NMT` and the commands built on
+  it, `Scan`, `Sender` and the senders it returned, `BootSlave`.
+- `master.BootNetwork` after `Close` did reset every node on the bus and
+  then waited for its context; it now fails with `ErrClosed` and sends
+  nothing. One in progress when the master is closed ends with
+  `ErrClosed`.
+- `master.BootSlave` is cancelled by a network boot-up that starts while
+  it runs, which then boots the slave again. Before, the reset of that
+  boot-up undid the configuration `BootSlave` was writing, and both
+  reported the slave as booted.
+- `node.Close` closes the SYNC services before the PDOs, so no SYNC
+  reaches a PDO that is being closed.
+- `pdo.TPDO`: when a mapped object cannot be read at an event timer
+  expiry, the event timer starts again. It used to stay stopped, and a
+  cyclic PDO whose value did not change was not sent any more.
+
+Callbacks:
+
+- Application code the library calls is stopped where it is called when
+  it does not return normally, logged at error level with its stack
+  (`callback did not return normally`, fields `callback`, `value`,
+  `stack`), and the service goes on: the handlers of every service,
+  `node` and `master`; the dictionary's hooks and watchers when a service
+  accesses the dictionary (SDO and USDO servers: the transfer is aborted
+  with `AbortGeneral`; RPDO, MPDO consumer: a write error; TPDO: a read
+  error; the restore of an NMT reset); state sources and clocks given to
+  `nmt`, `emcy` and `timestamp`; the log handler (the entry is lost).
+  Before, the process ended. LIMITATIONS.md lists what is not covered.
+- `emcy.Consumer`: the event given to the handler and the one `Last`
+  returns each have a CANopen FD message of their own; they shared one.
+
+### Documentation
+
+- Every handler option, the dictionary hooks (`od.ReadHook`, `WriteHook`,
+  `Watcher`) and every `Close` state their contract: the goroutine,
+  what a callback may call, `Close` from a callback, a callback that
+  does not return normally, and "safe to call more than once and from
+  several goroutines". The ownership of hook data, and of the entries
+  `cdcf.PDOSequence`, `store.Merge` and `store.Without` return, is
+  stated.
+- TESTING.md lists the long-lived types and the lifecycle contract tests
+  (L1–L16) that cover them.
+- `master` events go through a bounded queue for the bus-driven events
+  (the package documentation said "unbounded"); a second `Start` of a
+  `pdo` TPDO, RPDO or Listener returns nil (ARCHITECTURE.md said
+  `ErrBusy`); `pdo.Protect` accepts 0xFE and 0xFF in a mapping's
+  sub-index 0 (`mpdo.ProtectPDO` said it refused them).
+- LIMITATIONS.md: a failed SDO or USDO download can still be applied
+  later on a bus that reorders frames; a node answers node guarding
+  while it produces a heartbeat; what `Close` does not stop.
+
+### Tests
+
+- A regression test for every fix, with `testing/synctest` where the
+  test must show that something does not happen while a callback runs;
+  617 `Test` functions (512 in v0.6.0).
+- Aliasing tests for the values the library hands out or keeps (`od`,
+  `pdo`, `mpdo`, `usdo`, `master`, `cdcf`), and an allocation budget for
+  `cdcf.Decode`.
+- `usdo` `TestChaos` accepts only the data of an earlier, failed download
+  in place of the data just downloaded; `pdo` `FuzzUnpack` compares the
+  repacked bits; `codegen` `FuzzGenerate` type-checks the generated code.
+- `internal/callback`, `internal/goid` and `internal/lifecycle` count
+  towards the coverage gate.
+
+### Deferred to a later release
+
+- `Done()`/`Err()` on the node and the services that read the bus.
+- Options for the bounds above (`eds` file size and sub-objects, the USDO
+  pace), and an SDO-retry setting for the boot slave process that turns
+  the retries off.
+- The guarding responder silent while 0x1017 is not 0; the data-type
+  check of existing request objects in `master.New` and `program.Attach`.
+- The lifecycle tests that still wait with sleeps, one leak helper for
+  every package, a nightly job with long fuzzing and linux/386 tests.
+
+---
+
 ## v0.6.0
 
 **Date:** 2026-11-14

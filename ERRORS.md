@@ -9,7 +9,7 @@ structure with `errors.As`.
 |-------|---------|------|
 | `ErrInvalidNodeID` | canopen | Node-ID outside 1..127 |
 | `ErrTimeout` | canopen | A protocol timeout: an SDO response that did not come, a CiA 402 step that did not complete. A context deadline is reported as the context's error instead |
-| `ErrClosed` | canopen | Operation on a closed service, client, node or master; ends pending waits on Close |
+| `ErrClosed` | canopen | Operation on a closed service, client, node or master (also `Start`); ends what was in progress at Close: pending waits, SDO and USDO transfers, a TPDO `Transmit`, an MPDO waiting for its inhibit time, an NMT reset, and the master's `BootNetwork`, `BootSlave` and `Scan`, whose error also matches `context.Canceled` |
 | `ErrDataType` | canopen | A value that does not fit its data type (encoding, local `Set` with a wrong length) |
 | `ErrProtocol` | canopen | A message that violates the protocol: an unexpected SDO command specifier or toggle bit from the server, a malformed EMCY or TIME frame |
 | `ErrBusy` | canopen | `Start` on a running service; the EMCY inhibit queue (256 messages) full |
@@ -28,7 +28,7 @@ structure with `errors.As`.
 | `ErrNoStore` | node | `SaveParameters` / `RestoreDefaults` without `WithStore` |
 | `ErrNumber`, `ErrDisabled`, `ErrInactive`, `ErrMode`, `ErrNotScanned`, `ErrNotStarted`, `ErrLength` | mpdo | No such PDO; MPDO sent while not operational; TPDO not an active MPDO; SAM call on a DAM producer (or the reverse); SAM object not in a scanner list; not started; MPDO shorter than 8 bytes |
 | `ErrNoNodeID`, `ErrConflict`, `ErrFastscan`, `*AssignError`, `*ConfigError` | lss | No free node-ID for `AssignAll`; more than one slave (or the wrong one) selected; Fastscan did not converge, or a listing answered for more than 127 devices or more than 127 values of one address part (a slave acknowledging every query); an assignment that failed after the configure request (names the node-ID, which is never offered again); a slave's refusal of a configuration service (error code and implementation-specific code) |
-| `ErrCommand`, `ErrSessions`, `ErrNotStarted`, `*AbortError` | usdo | Unknown command specifier; no free session-ID; client not started; a USDO abort (below) |
+| `ErrCommand`, `ErrSessions`, `ErrNotStarted`, `*AbortError` | usdo | Unknown command specifier; no free session-ID; client not started (a closed client fails with `canopen.ErrClosed`); a USDO abort (below) |
 | `ErrFormat` | cdcf | Malformed concise DCF |
 | `ErrPending`, `FlashError` | program | A program handler that finishes programming later; the flash status error codes of 0x1F57 |
 | `ErrFault`, `ErrNotEnabled`, `ErrHoming`, `ErrUnreachable`, `ErrStatusword` | cia402 | Controller failures, carried by `*cia402.Error` (operation, last state and statusword, fault code 0x603F) |
@@ -57,6 +57,7 @@ if errors.Is(err, canopen.AbortReadOnly) { /* ... */ }
 | The server aborts | `*AbortError{Remote: true}` | none |
 | No response within the timeout (after `WithRetries` attempts) | matches `ErrTimeout` and `*AbortError{Code: AbortTimeout, Remote: false}` | `AbortTimeout` |
 | The server violates the protocol | matches `ErrProtocol` and `*AbortError{Remote: false}` with the specific code (`AbortCommand`, `AbortToggle`, `AbortCRC`, `AbortSequence`, ...) | that code |
+| More than four responses in a row move the transfer no further (upload segments without data that are not the last; block acknowledgements of no segment) | matches `ErrProtocol` and `*AbortError{Remote: false}` | `AbortGeneral` (upload), `AbortSequence` (block download) |
 | The caller's context ends | the context's error | `AbortGeneral` |
 | The client is closed | `ErrClosed` | — |
 

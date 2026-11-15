@@ -31,11 +31,20 @@ with fields:
 | `lss response` | warn | lss: a response that could not be sent |
 | `master: network boot-up`, `master: mandatory slaves booted`, `master: slave booted`, `master: LSS node-ID assigned`, `master: updating the software of a slave` | info | master (CiA 302 manager): slaves, node, status, address |
 | `master: network boot-up halted`, `master: boot slave failed`, `master: error control event of a slave`, `master: LSS Fastscan`, `master: LSS: configure node-ID`, `master: LSS: no single slave of the network list for an unconfigured device` | warn | master (CiA 302 manager) |
+| `callback did not return normally` | error | every service: application code the library called (a handler, a dictionary hook or watcher, a clock, the log handler) did not return normally. Fields: `callback` (`state handler`, `dictionary hook`, `event handler`, `log handler`, ...), `value` (what it ended with), `stack`. The service goes on |
 | `usdo server: subscription ended`, `resubscribe`, `subscription ended` | error | usdo, mpdo: a service that cannot receive |
 | `subscribe`, `subscription ended` | error | pdo: the PDO cannot receive |
 | `nmt command`, `nmt command sent`, `nmt invalid command frame`, `heartbeat event`, `emcy sent`, `emcy invalid frame` | debug | nmt, emcy |
 | `sdo: server started`, `sdo: server abort`, `sdo: server aborted`, `sdo: client aborted`, `sdo: retrying after timeout` | debug | sdo |
 | `write mapped object`, `decode PDO`, `send` | debug | pdo |
+
+A log handler that does not return normally loses that entry; the
+failure is reported once more through the same handler (`callback did not
+return normally`, `callback="log handler"`), and dropped when that fails
+too. Callbacks are called, and their entry is written, with none of the
+service's state locks held, so a callback and a log handler may call the
+service; a handler called by `Start` or during an NMT reset runs while
+that `Start` or reset is in progress (it must not start another).
 
 ## Counters
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -97,7 +98,12 @@ func (r *RPDO) Number() int { return r.n }
 // Start subscribes to the COB-ID and starts the service goroutine.
 func (r *RPDO) Start() error { return r.start(r.run) }
 
-// Close stops the service and waits for its goroutine. It is idempotent.
+// Close disables the RPDO, stops the service and waits for its
+// goroutine: a buffered synchronous PDO is dropped, and nothing is
+// written to the dictionary after it. It is safe to call more than once
+// and from several goroutines; called from a handler of the RPDO on its
+// service goroutine it does not wait for that goroutine, which ends when
+// the handler returns.
 func (r *RPDO) Close() error { return r.close() }
 
 // Config returns the current configuration.
@@ -156,14 +162,18 @@ func (r *RPDO) apply(m Mapping, data []byte) {
 		if e.IsDummy() {
 			continue
 		}
-		if err := r.d.Write(e.Index, e.SubIndex, vals[i]); err != nil {
+		// The write runs the dictionary's write hooks and watchers,
+		// which are the application's code.
+		err := error(canopen.AbortGeneral)
+		callback.Do(r.log, "dictionary hook", func() { err = r.d.Write(e.Index, e.SubIndex, vals[i]) })
+		if err != nil {
 			r.st.writeErrors.Add(1)
 			r.log.Debug("write mapped object", "object", e, "err", err)
 		}
 	}
 	r.st.applied.Add(1)
-	if r.opt.onRx != nil {
-		r.opt.onRx(data)
+	if h := r.opt.onRx; h != nil {
+		callback.Do(r.log, "receive handler", func() { h(data) })
 	}
 }
 
@@ -213,7 +223,7 @@ func (r *RPDO) report() {
 		return
 	}
 	for _, ev := range evs {
-		r.opt.onError(ev)
+		callback.Do(r.log, "error handler", func() { r.opt.onError(ev) })
 	}
 }
 

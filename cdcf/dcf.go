@@ -139,6 +139,11 @@ func FromFile(f *eds.File, node canopen.NodeID) ([]Entry, error) {
 //     entries 1..n, then n (mapping entries above n are dropped);
 //     otherwise the mapping entries given;
 //  4. the COB-ID as given.
+//
+// The entries returned share their Data with the entries given, except
+// the COB-ID written with bit 31 set and the 0 written to the number of
+// mapped objects, which are new: a caller that modifies the Data of one
+// also modifies the other.
 func PDOSequence(entries []Entry) []Entry {
 	type group struct {
 		comm    map[uint8][]byte

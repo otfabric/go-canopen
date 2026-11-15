@@ -12,6 +12,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -46,6 +48,7 @@ func newConfig(opts []Option) config {
 	if c.clock == nil {
 		c.clock = time.Now
 	}
+	c.log = callback.Logger(c.log)
 	return c
 }
 
@@ -69,11 +72,15 @@ func WithCOBID(cob canopen.COBID) Option { return func(c *config) { c.cob, c.cob
 func WithPeriod(d time.Duration) Option { return func(c *config) { c.period = d } }
 
 // WithClock sets the time source of a [Producer]'s periodic messages
-// (default time.Now).
+// (default time.Now). It is called on the producer's goroutine; when it
+// does not return normally, that message is not sent.
 func WithClock(clock func() time.Time) Option { return func(c *config) { c.clock = clock } }
 
 // WithHandler calls h for every TIME message a [Consumer] receives, on its
-// goroutine; h must not block for long.
+// goroutine, one call at a time; h must not block for long. It may call
+// the consumer's methods, and [Consumer.Close], which then does not wait
+// for that goroutine. A handler that does not return normally is logged
+// with its stack, and the next message is delivered.
 func WithHandler(h func(Event)) Option { return func(c *config) { c.handler = h } }
 
 // installHook refuses CAN-ID changes of 0x1012 while it is in use; the
@@ -148,7 +155,7 @@ type ProducerStats struct {
 type Producer struct {
 	bus canopen.Bus
 	cfg config
-	lc  lifecycle
+	lc  lifecycle.Service
 
 	mu    sync.Mutex
 	cob   canopen.COBID
@@ -183,8 +190,11 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 }
 
 // Send sends a TIME message with t. It returns [ErrNotProducer] when the
-// COB-ID's produce bit is clear.
+// COB-ID's produce bit is clear, and [canopen.ErrClosed] after Close.
 func (p *Producer) Send(ctx context.Context, t time.Time) error {
+	if p.lc.Closed() {
+		return canopen.ErrClosed
+	}
 	td, err := FromTime(t)
 	if err != nil {
 		return err
@@ -215,7 +225,7 @@ func (p *Producer) Send(ctx context.Context, t time.Time) error {
 // Start sends the time every period (when one is set); with a dictionary
 // it follows writes of 0x1012 from then on.
 func (p *Producer) Start() error {
-	return p.lc.start(func(context.Context) (func(context.Context), error) {
+	return p.lc.Start(func(context.Context) (func(context.Context), error) {
 		var unwatch func()
 		if d := p.cfg.dict; d != nil {
 			unwatch = d.Watch(func(v *od.Variable, data []byte) {
@@ -241,7 +251,11 @@ func (p *Producer) Start() error {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					err := p.Send(ctx, p.cfg.clock())
+					var now time.Time
+					if !callback.Do(p.cfg.log, "clock", func() { now = p.cfg.clock() }) {
+						continue
+					}
+					err := p.Send(ctx, now)
 					if err != nil && !errors.Is(err, ErrNotProducer) && ctx.Err() == nil {
 						p.cfg.log.Warn("time send", "error", err)
 					}
@@ -252,9 +266,10 @@ func (p *Producer) Start() error {
 }
 
 // Close stops the periodic messages and waits for the goroutine. It
-// removes the write hook the producer installed on the dictionary.
+// removes the write hook the producer installed on the dictionary. It is
+// safe to call more than once and from several goroutines.
 func (p *Producer) Close() error {
-	p.lc.close()
+	p.lc.Close()
 	p.hooks.remove()
 	return nil
 }
@@ -287,7 +302,7 @@ type ConsumerStats struct {
 type Consumer struct {
 	bus  canopen.Bus
 	cfg  config
-	lc   lifecycle
+	lc   lifecycle.Service
 	wake chan struct{}
 
 	mu    sync.Mutex
@@ -335,7 +350,7 @@ func (c *Consumer) subscribe() (*canbus.Subscription, canopen.COBID, error) {
 // dictionary it follows writes of 0x1012 from then on (a new CAN-ID
 // re-subscribes).
 func (c *Consumer) Start() error {
-	return c.lc.start(func(context.Context) (func(context.Context), error) {
+	return c.lc.Start(func(context.Context) (func(context.Context), error) {
 		sub, cob, err := c.subscribe()
 		if err != nil {
 			return nil, err
@@ -389,7 +404,7 @@ func (c *Consumer) run(ctx context.Context, sub *canbus.Subscription, cob canope
 		case f := <-sub.Frames():
 			if e, ok := c.receive(&f); ok {
 				if h := c.cfg.handler; h != nil {
-					h(e)
+					callback.Do(c.cfg.log, "time handler", func() { h(e) })
 				}
 			}
 		}
@@ -430,9 +445,11 @@ func (c *Consumer) Last() (e Event, ok bool) {
 }
 
 // Close stops the consumer and waits for it. It removes the write hook
-// the consumer installed on the dictionary.
+// the consumer installed on the dictionary. It is safe to call more than
+// once and from several goroutines; called from the handler it does not
+// wait for the goroutine the handler runs on.
 func (c *Consumer) Close() error {
-	c.lc.close()
+	c.lc.Close()
 	c.hooks.remove()
 	return nil
 }

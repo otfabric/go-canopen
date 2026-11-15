@@ -24,9 +24,11 @@ TEST_PKGS := $(shell go list ./... | grep -v '/examples')
 # Packages whose coverage counts. Excluded, by policy (TESTING.md): the
 # examples, the generator of the golden files (internal/cmd), the
 # generated golden code (internal/golden, verified by the differential
-# test), the test helpers (internal/testbus), the end-to-end suite and the
-# interop suite (build tag interop).
-COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -v '/internal/' | grep -v '/e2e' | grep -v '/interop' | paste -sd, -)
+# test), the test helpers (internal/capture, internal/nettest,
+# internal/testbus), the end-to-end suite and the interop suite (build
+# tag interop). The internal packages the library itself runs on
+# (internal/callback, internal/goid, internal/lifecycle) count.
+COVER_PKGS := $(shell go list ./... | grep -v '/examples' | grep -Ev '/internal/(cmd|golden|capture|nettest|testbus)' | grep -v '/e2e' | grep -v '/interop' | paste -sd, -)
 COVER_MIN := 90
 # Per-package floor (TEST-012), checked by coverage-pkg-check in the job that
 # has the prerequisites. Lowest package measured in CI: 92.7 % (node). See TESTING.md.

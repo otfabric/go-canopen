@@ -10,6 +10,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 )
 
 // Event is an emergency message a [Consumer] received.
@@ -22,7 +24,8 @@ type Event struct {
 	Time time.Time // the frame's receive timestamp, or the time it was processed
 	// FD is the CANopen FD message (a consumer made [WithFD] receiving a
 	// 20-byte CAN FD emergency); nil for a classical one. Message holds its
-	// classical part.
+	// classical part. Every event a consumer hands out (to its handler,
+	// from [Consumer.Last]) has an FD message of its own.
 	FD *FDMessage `json:"fd,omitempty"`
 }
 
@@ -39,7 +42,7 @@ type ConsumerStats struct {
 type Consumer struct {
 	bus canopen.Bus
 	cfg config
-	lc  lifecycle
+	lc  lifecycle.Service
 
 	mu    sync.Mutex
 	stats ConsumerStats
@@ -54,7 +57,7 @@ func NewConsumer(bus canopen.Bus, opts ...Option) *Consumer {
 
 // Start subscribes to the emergency identifiers and starts delivering.
 func (c *Consumer) Start() error {
-	return c.lc.start(func(context.Context) (func(context.Context), error) {
+	return c.lc.Start(func(context.Context) (func(context.Context), error) {
 		var fs canbus.FilterSet
 		if len(c.cfg.producers) == 0 {
 			fs.Filters = []canbus.Filter{{ID: canopen.FuncEMCY, Mask: 0x780, Format: canbus.FormatStandard, Remote: canbus.RemoteDataOnly}}
@@ -132,21 +135,36 @@ func (c *Consumer) receive(f *canbus.Frame) {
 	c.mu.Unlock()
 	c.cfg.log.Info("emcy", "node", int(node), "message", m.String())
 	if h := c.cfg.handler; h != nil {
-		h(e)
+		ev := own(e)
+		callback.Do(c.cfg.log, "emcy handler", func() { h(ev) })
 	}
 }
 
-// Last returns the last emergency message received from a node.
+// own returns e with a CANopen FD message of its own: the consumer keeps
+// the one it decoded, and every event it hands out has a copy, so that a
+// receiver that modifies its event changes no other.
+func own(e Event) Event {
+	if e.FD != nil {
+		fd := *e.FD
+		e.FD = &fd
+	}
+	return e
+}
+
+// Last returns the last emergency message received from a node. The
+// event is the caller's own: its FD message is a copy.
 func (c *Consumer) Last(node canopen.NodeID) (Event, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.last[node]
-	return e, ok
+	return own(e), ok
 }
 
-// Close stops the consumer and waits for it.
+// Close stops the consumer and waits for it. It is safe to call more
+// than once and from several goroutines; called from the handler it does
+// not wait for the goroutine the handler runs on.
 func (c *Consumer) Close() error {
-	c.lc.close()
+	c.lc.Close()
 	return nil
 }
 

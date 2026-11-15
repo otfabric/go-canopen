@@ -192,9 +192,14 @@ func pdoName(k pdoKey) string {
 // type), 3 (inhibit time), 5 (event timer) and 6 (SYNC start value) of
 // the communication parameter; sub-index 0 (number of entries) and 1..64
 // (entries) of the mapping. Entries of other objects, and sub-indices 0
-// and 4 of the communication parameter, are ignored.
+// and 4 of the communication parameter, are ignored. A base mapping of
+// more than [pdo.MaxEntries] entries is refused with
+// [canopen.AbortPDOLength].
 func Overlay(base pdo.Config, entries []Entry) (pdo.Config, error) {
 	cfg := base
+	if len(base.Mapping) > pdo.MaxEntries {
+		return cfg, fmt.Errorf("base mapping of %d entries: %w", len(base.Mapping), canopen.AbortPDOLength)
+	}
 	var raw [pdo.MaxEntries]uint32
 	for i, e := range base.Mapping {
 		raw[i] = e.Uint32()

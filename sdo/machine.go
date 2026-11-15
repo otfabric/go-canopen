@@ -29,7 +29,11 @@ const (
 // the transfer was idle for the timeout and reack when a block receiver
 // should repeat its acknowledgement. Messages to send go to out.
 type machine struct {
-	d       *od.Dictionary
+	d *od.Dictionary
+	// guard, when set, runs the dictionary accesses, which call the
+	// application's hooks and watchers: it stops one that does not
+	// return normally (the access then fails with AbortGeneral).
+	guard   func(access func())
 	out     func(frame)
 	maxSize int
 	blkSize uint8 // block size asked for in block downloads
@@ -303,13 +307,35 @@ func (m *machine) initDownloadSize(sized bool, size uint32) bool {
 		return false
 	}
 	if sized {
-		m.buf = make([]byte, 0, min(m.size+segData, 64<<10))
+		// The capacity is computed without adding to the size, which may
+		// be as large as the largest int.
+		m.buf = make([]byte, 0, min(m.size, 64<<10))
 	}
 	return true
 }
 
+// dictRead is a remote read of the object of the transfer.
+func (m *machine) dictRead() (data []byte, err error) {
+	if m.guard == nil {
+		return m.d.Read(m.index, m.sub)
+	}
+	err = canopen.AbortGeneral
+	m.guard(func() { data, err = m.d.Read(m.index, m.sub) })
+	return data, err
+}
+
+// dictWrite is a remote write of the object of the transfer.
+func (m *machine) dictWrite(data []byte) (err error) {
+	if m.guard == nil {
+		return m.d.Write(m.index, m.sub, data)
+	}
+	err = canopen.AbortGeneral
+	m.guard(func() { err = m.d.Write(m.index, m.sub, data) })
+	return err
+}
+
 func (m *machine) read() ([]byte, bool) {
-	data, err := m.d.Read(m.index, m.sub)
+	data, err := m.dictRead()
 	if err != nil {
 		m.abortCurrent(abortCodeOf(err))
 		return nil, false
@@ -320,7 +346,7 @@ func (m *machine) read() ([]byte, bool) {
 // store writes downloaded data and confirms (expedited and segmented
 // download, whose confirmation is the initiate response).
 func (m *machine) store(data []byte) bool {
-	if err := m.d.Write(m.index, m.sub, data); err != nil {
+	if err := m.dictWrite(data); err != nil {
 		m.abortCurrent(abortCodeOf(err))
 		return false
 	}
@@ -420,7 +446,7 @@ func (m *machine) downloadSegment(f frame) bool {
 	if !m.checkSize(len(m.buf)) {
 		return false
 	}
-	if err := m.d.Write(m.index, m.sub, m.buf); err != nil {
+	if err := m.dictWrite(m.buf); err != nil {
 		m.abortCurrent(abortCodeOf(err))
 		return false
 	}
@@ -502,7 +528,7 @@ func (m *machine) blockDownloadEnd(f frame) bool {
 		m.abortCurrent(canopen.AbortCRC)
 		return false
 	}
-	if err := m.d.Write(m.index, m.sub, data); err != nil {
+	if err := m.dictWrite(data); err != nil {
 		m.abortCurrent(abortCodeOf(err))
 		return false
 	}

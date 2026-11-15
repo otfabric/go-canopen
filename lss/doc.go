@@ -130,7 +130,13 @@
 //
 // # Concurrency
 //
-// The master's services run on the caller's goroutine, one at a time. The
-// slave runs one goroutine between Start and Close; its handlers run on it
-// and must not block for long.
+// The master's services run on the caller's goroutine, one at a time; a
+// service made of several (Configure, ConfigureNodeID, AssignAll,
+// InquireAddress) runs as a whole before a service of another goroutine.
+// The slave runs one goroutine between Start and Close; its handlers run
+// on it, one call at a time, and must not block for long. A handler may
+// call the slave's methods, and Close, which then does not wait for the
+// goroutine the handler runs on. A handler that does not return normally
+// is logged with its stack, and the slave goes on (a request the handler
+// was to accept is refused).
 package lss

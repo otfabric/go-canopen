@@ -462,6 +462,14 @@ func (v *validator) variable(sec string, e *Entry, ot od.ObjectType) {
 	}
 	lo, _ := v.literal(sec, "LowLimit", t, e.LowLimit)
 	hi, _ := v.literal(sec, "HighLimit", t, e.HighLimit)
+	for _, l := range []struct {
+		key string
+		b   []byte
+	}{{"LowLimit", lo}, {"HighLimit", hi}} {
+		if t.IsFloat() && l.b != nil && math.IsNaN(toFloat(t, l.b)) {
+			v.add(Error, sec, l.key, "a limit cannot be NaN")
+		}
+	}
 	if e.LowLimit != "" && e.HighLimit != "" && lo != nil && hi != nil && cmp(t, lo, hi) > 0 {
 		v.add(Error, sec, "LowLimit", "%s is above HighLimit %s", e.LowLimit, e.HighLimit)
 	}

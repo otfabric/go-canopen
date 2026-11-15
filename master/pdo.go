@@ -48,13 +48,18 @@ func (m *Master) ListenTPDO(ctx context.Context, node canopen.NodeID, n int, des
 }
 
 // Sender returns a sender of PDOs on a COB-ID with a known mapping, whose
-// objects desc describes; with [WithFD] it sends CANopen FD PDOs.
+// objects desc describes; with [WithFD] it sends CANopen FD PDOs. After
+// Close it fails with [canopen.ErrClosed], and so does the Send of a
+// sender returned earlier.
 func (m *Master) Sender(cob canopen.COBID, mapping pdo.Mapping, desc *od.Dictionary) (*pdo.Sender, error) {
+	if m.isClosed() {
+		return nil, canopen.ErrClosed
+	}
 	enc, err := pdo.NewEncoder(mapping, desc, m.pdoOpts()...)
 	if err != nil {
 		return nil, err
 	}
-	return pdo.NewSender(m.bus, cob, enc), nil
+	return pdo.NewSender(closedBus{Bus: m.bus, m: m}, cob, enc), nil
 }
 
 // RPDOSender reads the configuration of RPDO n of a node over SDO and

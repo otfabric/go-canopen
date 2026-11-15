@@ -11,6 +11,7 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
 )
 
 // Errors of the PDO services.
@@ -70,7 +71,11 @@ func WithLogger(l *slog.Logger) Option {
 }
 
 // WithErrorHandler sets the function an [RPDO] reports receive errors to.
-// It is called from the service goroutine.
+// It is called from the service goroutine, one call at a time, and must
+// not block for long: no PDO is received while it runs. It may call the
+// RPDO's methods, and [RPDO.Close], which then does not wait for that
+// goroutine. A handler that does not return normally is logged with its
+// stack, and the service goes on.
 func WithErrorHandler(f func(ErrorEvent)) Option {
 	return func(o *options) { o.onError = f }
 }
@@ -79,7 +84,8 @@ func WithErrorHandler(f func(ErrorEvent)) Option {
 // the data of a received PDO to the dictionary (for synchronous types, on
 // the SYNC that applies it), with the PDO data. It is called from the
 // goroutine that wrote the dictionary: the service goroutine, or the
-// caller of [RPDO.OnSync].
+// caller of [RPDO.OnSync]. The same rules as for [WithErrorHandler]
+// apply; the data is the handler's own copy.
 func WithReceiveHandler(f func(data []byte)) Option {
 	return func(o *options) { o.onRx = f }
 }
@@ -117,6 +123,7 @@ func buildOptions(opts []Option) options {
 	for _, f := range opts {
 		f(&o)
 	}
+	o.log = callback.Logger(o.log)
 	return o
 }
 

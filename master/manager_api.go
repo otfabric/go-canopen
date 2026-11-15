@@ -37,7 +37,9 @@ func (m *Master) Node() *node.Node {
 // call, or the automatic one at a boot-up of the master's node) cancels
 // the one in progress, and a call whose boot-up was replaced waits for the
 // newer one and returns its result; it returns ctx's error only when ctx
-// ends, and the cancellation when the master is closed.
+// ends. When the master is closed it returns an error that matches
+// [canopen.ErrClosed] (and, for one that was in progress,
+// context.Canceled); after Close it sends nothing.
 func (m *Master) BootNetwork(ctx context.Context) error {
 	if m.mgr == nil {
 		return ErrNoDictionary
@@ -53,6 +55,13 @@ func (m *Master) BootNetwork(ctx context.Context) error {
 // fails with canopen.ErrBusy while one runs for the node, and with a
 // *BootError when the process fails; it is not repeated when the node
 // does not answer.
+//
+// A network boot-up ([Master.BootNetwork], or the automatic one) that
+// starts while the process runs cancels it before it resets the slaves:
+// BootSlave then returns an error that matches context.Canceled, no
+// result is recorded, and the network boot-up boots the node again. When
+// the master is closed BootSlave fails with an error that matches
+// [canopen.ErrClosed].
 func (m *Master) BootSlave(ctx context.Context, id canopen.NodeID) error {
 	g := m.mgr
 	if g == nil {
@@ -61,15 +70,35 @@ func (m *Master) BootSlave(ctx context.Context, id canopen.NodeID) error {
 	if err := id.Check(); err != nil {
 		return err
 	}
+	if m.isClosed() {
+		return canopen.ErrClosed
+	}
+	// The process is registered like one the manager starts, so that a
+	// network boot-up can cancel it and wait for its end.
+	pctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	done := make(chan struct{})
 	g.mu.Lock()
 	s := g.slave(id)
 	if s.booting {
 		g.mu.Unlock()
 		return fmt.Errorf("master: boot slave %d: %w", id, canopen.ErrBusy)
 	}
-	s.booting = true
+	s.booting, s.cancel, s.done = true, cancel, done
 	g.mu.Unlock()
-	st, status, err := g.bootSlave(ctx, id)
+	defer close(done)
+	defer context.AfterFunc(m.bootCtx, cancel)() // Close cancels it too
+	st, status, err := g.bootSlave(pctx, id)
+	switch {
+	case m.isClosed():
+		// Closed while the process ran: whatever ended it (the context
+		// above, a closed SDO client), no result is recorded.
+		g.bootCancelled(id)
+		return errClosed
+	case pctx.Err() != nil && ctx.Err() == nil:
+		g.bootCancelled(id)
+		return fmt.Errorf("master: boot slave %d: cancelled by a network boot-up: %w", id, context.Canceled)
+	}
 	g.bootDone(id, st, status, err)
 	if !status.OK() {
 		return &BootError{Node: id, Status: status, Err: err}

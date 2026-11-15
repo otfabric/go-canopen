@@ -12,6 +12,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -47,6 +49,7 @@ func newConfig(opts []Option) config {
 	if c.log == nil {
 		c.log = discard
 	}
+	c.log = callback.Logger(c.log)
 	return c
 }
 
@@ -89,7 +92,11 @@ func WithOverflow(n uint8) Option { return func(c *config) { c.overflow, c.overf
 func WithWindow(d time.Duration) Option { return func(c *config) { c.window, c.windowSet = d, true } }
 
 // WithHandler calls h for every SYNC a [Consumer] receives, on its
-// goroutine; h must not block for long (synchronous PDOs are due).
+// goroutine, one call at a time; h must not block for long (synchronous
+// PDOs are due, and no SYNC is received while it runs). It may call the
+// consumer's methods, and [Consumer.Close], which then does not wait for
+// that goroutine. A handler that does not return normally is logged with
+// its stack, and the next SYNC is delivered.
 func WithHandler(h func(Event)) Option { return func(c *config) { c.handler = h } }
 
 // WithFD selects CANopen FD (CiA 1301), which carries every protocol in
@@ -232,7 +239,7 @@ type ProducerStats struct {
 type Producer struct {
 	bus  canopen.Bus
 	cfg  config
-	lc   lifecycle
+	lc   lifecycle.Service
 	wake chan struct{}
 
 	mu       sync.Mutex
@@ -300,7 +307,7 @@ func NewProducer(bus canopen.Bus, opts ...Option) (*Producer, error) {
 // Start starts producing; with a dictionary it follows writes of 0x1005,
 // 0x1006 and 0x1019 from then on.
 func (p *Producer) Start() error {
-	return p.lc.start(func(context.Context) (func(context.Context), error) {
+	return p.lc.Start(func(context.Context) (func(context.Context), error) {
 		var unwatch func()
 		if d := p.cfg.dict; d != nil {
 			unwatch = d.Watch(func(v *od.Variable, data []byte) {
@@ -398,8 +405,12 @@ func (p *Producer) run(ctx context.Context) {
 }
 
 // Send sends one SYNC message now (with the next counter value), for
-// applications that drive the cycle themselves.
+// applications that drive the cycle themselves. After Close it fails
+// with [canopen.ErrClosed].
 func (p *Producer) Send(ctx context.Context) error {
+	if p.lc.Closed() {
+		return canopen.ErrClosed
+	}
 	p.mu.Lock()
 	var c uint8
 	if p.overflow != 0 {
@@ -464,9 +475,10 @@ func (p *Producer) Period() time.Duration {
 func (p *Producer) Producing() bool { return p.effective() > 0 }
 
 // Close stops producing and waits for the goroutine. It removes the
-// write hooks the producer installed on the dictionary.
+// write hooks the producer installed on the dictionary. It is safe to
+// call more than once and from several goroutines.
 func (p *Producer) Close() error {
-	p.lc.close()
+	p.lc.Close()
 	p.hooks.remove()
 	return nil
 }

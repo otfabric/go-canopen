@@ -12,6 +12,8 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/goid"
 	"github.com/otfabric/go-canopen/od"
 	"github.com/otfabric/go-canopen/pdo"
 )
@@ -74,6 +76,7 @@ type Consumer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+	runID  atomic.Uint64 // identifier of the service goroutine
 
 	st struct {
 		received, ignored, short, wrongMode, otherNode, notDispatched,
@@ -110,10 +113,11 @@ func (c *Consumer) Mode() Mode {
 	return c.cfg.mode
 }
 
-// SetEnabled enables (NMT operational) or disables the consumer.
+// SetEnabled enables (NMT operational) or disables the consumer. A
+// closed consumer stays disabled.
 func (c *Consumer) SetEnabled(on bool) {
 	c.mu.Lock()
-	c.enabled = on
+	c.enabled = on && !c.closed
 	c.mu.Unlock()
 }
 
@@ -146,32 +150,40 @@ func (c *Consumer) Start() error {
 	c.started = true
 	c.unwatch = c.d.Watch(c.watch)
 	c.wg.Go(func() {
+		c.runID.Store(goid.ID())
 		c.run()
 	})
 	return nil
 }
 
 // Close stops the goroutine, waits for it and removes the hooks and the
-// watcher. It is idempotent.
+// watcher. It is safe to call more than once and from several
+// goroutines: every call returns only when the goroutine has ended.
+// Called from a handler of the consumer it does not wait for that
+// goroutine, which ends when the handler returns.
 func (c *Consumer) Close() error {
 	c.mu.Lock()
-	if c.closed {
+	if !c.closed {
+		c.closed = true
+		c.enabled = false
+		c.cancel()
+		if c.sub != nil {
+			_ = c.sub.Close()
+			c.sub = nil
+		}
+		unwatch := c.unwatch
+		c.unwatch = nil
 		c.mu.Unlock()
-		return nil
+		if unwatch != nil {
+			unwatch()
+		}
+		c.unpro()
+	} else {
+		c.mu.Unlock()
 	}
-	c.closed = true
-	c.cancel()
-	if c.sub != nil {
-		_ = c.sub.Close()
-		c.sub = nil
+	if id := goid.ID(); id == 0 || c.runID.Load() != id {
+		c.wg.Wait()
 	}
-	unwatch := c.unwatch
-	c.mu.Unlock()
-	if unwatch != nil {
-		unwatch()
-	}
-	c.unpro()
-	c.wg.Wait()
 	return nil
 }
 
@@ -261,7 +273,7 @@ func (c *Consumer) report() {
 		return
 	}
 	for _, ev := range evs {
-		c.opt.onError(ev)
+		callback.Do(c.log, "error handler", func() { c.opt.onError(ev) })
 	}
 }
 
@@ -340,7 +352,11 @@ func (c *Consumer) handle(mode Mode, m Message) {
 		n = s
 	}
 	data := append([]byte(nil), m.Data[:n]...)
-	if err := c.d.Write(index, sub, data); err != nil {
+	// The write runs the dictionary's write hooks and watchers, which are
+	// the application's code.
+	err = canopen.AbortGeneral
+	callback.Do(c.log, "dictionary hook", func() { err = c.d.Write(index, sub, data) })
+	if err != nil {
 		c.st.writeErrors.Add(1)
 		c.log.Debug("write", "mpdo", m, "err", err)
 		return
@@ -351,7 +367,8 @@ func (c *Consumer) handle(mode Mode, m Message) {
 		c.setErrLocked(&c.objErr, false, EMCYDAMNoObject, nil)
 		c.mu.Unlock()
 	}
-	if c.opt.onRx != nil {
-		c.opt.onRx(Event{PDO: c.n, Message: m, Index: index, SubIndex: sub, Data: data})
+	if h := c.opt.onRx; h != nil {
+		ev := Event{PDO: c.n, Message: m, Index: index, SubIndex: sub, Data: data}
+		callback.Do(c.log, "receive handler", func() { h(ev) })
 	}
 }

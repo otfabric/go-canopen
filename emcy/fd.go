@@ -68,7 +68,11 @@ type FDMessage struct {
 	Register      ErrorRegister
 	Specific      [5]byte
 	Status        uint8
-	Time          timestamp.TimeOfDay
+	// Time is the TIME_OF_DAY of the message. A decoded message carries
+	// the time as received: check [timestamp.TimeOfDay.Valid] before
+	// using [timestamp.TimeOfDay.Time], which rolls a millisecond count
+	// of a day or more over into the following days.
+	Time timestamp.TimeOfDay
 }
 
 // Message returns the classical part: code, register and the
@@ -123,7 +127,9 @@ func ParseFDMessage(data []byte) (FDMessage, error) { return ParseFDMessageLayou
 // ParseFDMessageLayout decodes a CANopen FD emergency payload: at least
 // [FDSize] bytes (more, CAN FD padding, are ignored); fewer are an
 // [canopen.ErrProtocol] error. Reserved bytes are not checked, and the
-// reserved bits of the time are ignored.
+// reserved bits of the time are ignored. The time is not checked either:
+// a millisecond count of a day or more is decoded as it is, and
+// [timestamp.TimeOfDay.Valid] reports it.
 func ParseFDMessageLayout(data []byte, l FDLayout) (FDMessage, error) {
 	if len(data) < FDSize {
 		return FDMessage{}, fmt.Errorf("%w: CANopen FD emergency message with %d bytes", canopen.ErrProtocol, len(data))

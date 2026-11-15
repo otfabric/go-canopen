@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/goid"
 )
 
 // Sentinel errors of the master (see also canopen.ErrTimeout: no slave
@@ -123,13 +126,26 @@ func WithFastscanRetries(n int) MasterOption {
 // Master is an LSS master (CiA 305). Its services run on the caller's
 // goroutine and are serialised: one service at a time (CiA 305 allows one
 // LSS master per network, and the LSS responses carry nothing that would
-// tell concurrent requests apart). It keeps one subscription to 0x7E4
-// between Start and Close.
+// tell concurrent requests apart). A service made of several
+// ([Master.Configure], [Master.ConfigureNodeID], [Master.AssignAll],
+// [Master.InquireAddress]) is serialised as a whole: a service called
+// from another goroutine waits until it has ended, or until its own
+// context ends, so that it cannot change the selection in between. The
+// services a Configure function or an [AssignHandler] calls belong to
+// that service; they run on its goroutine, or with the context it was
+// given. The master keeps one subscription to 0x7E4 between Start and
+// Close.
 type Master struct {
 	bus canopen.Bus
 	cfg masterConfig
 
 	op sync.Mutex // serialises services
+	// seq serialises sequences of services: a service made of several
+	// holds it from its first frame to its last, a single service for its
+	// own run. It is a channel so that waiting ends with the context.
+	seq      chan struct{}
+	seqOwner atomic.Uint64            // goroutine of the sequence that holds seq
+	seqToken atomic.Pointer[seqToken] // marks the context of that sequence
 
 	mu       sync.Mutex
 	state    int // 0 new, 1 started, 2 closed
@@ -142,7 +158,7 @@ type Master struct {
 // [WithRetries], [WithInhibit], [WithFastscanTimeout],
 // [WithFastscanRetries].
 func NewMaster(bus canopen.Bus, opts ...MasterOption) *Master {
-	m := &Master{bus: bus, cfg: masterConfig{
+	m := &Master{bus: bus, seq: make(chan struct{}, 1), cfg: masterConfig{
 		log: discard, timeout: DefaultTimeout, retries: DefaultRetries,
 		fsTimeout: DefaultFastscanTimeout, fsRetries: DefaultFastscanRetries, fsAttempts: 3,
 	}}
@@ -154,6 +170,7 @@ func NewMaster(bus canopen.Bus, opts ...MasterOption) *Master {
 	if m.cfg.log == nil {
 		m.cfg.log = discard
 	}
+	m.cfg.log = callback.Logger(m.cfg.log)
 	return m
 }
 
@@ -179,7 +196,9 @@ func (m *Master) Start() error {
 }
 
 // Close ends the subscription; a running service fails with
-// canopen.ErrClosed. It is idempotent.
+// canopen.ErrClosed, and so does a service started afterwards. It is
+// safe to call more than once and from several goroutines. The master
+// has no goroutine to wait for.
 func (m *Master) Close() error {
 	m.mu.Lock()
 	sub := m.sub
@@ -206,29 +225,98 @@ func (m *Master) count(f func(*MasterStats)) {
 
 // session is one service in progress: the master's lock is held.
 type session struct {
-	m   *Master
-	ctx context.Context
-	sub *canbus.Subscription
+	m      *Master
+	ctx    context.Context
+	sub    *canbus.Subscription
+	nested bool // part of the sequence that holds seq
+}
+
+// seqKey is the context key of a sequence's token.
+type seqKey struct{}
+
+// seqToken identifies one sequence. It has a size, so that every
+// sequence gets a pointer of its own.
+type seqToken struct{ _ byte }
+
+// inSequence reports whether a call with ctx belongs to the sequence
+// that holds seq: it runs on that sequence's goroutine, or carries its
+// context.
+func (m *Master) inSequence(ctx context.Context) bool {
+	if id := goid.ID(); id != 0 && m.seqOwner.Load() == id {
+		return true
+	}
+	tok, _ := ctx.Value(seqKey{}).(*seqToken)
+	return tok != nil && m.seqToken.Load() == tok
+}
+
+// acquire takes seq, waiting for a sequence in progress until ctx ends.
+func (m *Master) acquire(ctx context.Context) error {
+	select {
+	case m.seq <- struct{}{}:
+		return nil
+	default:
+	}
+	select {
+	case m.seq <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// sequence starts a service made of several services: until done is
+// called no service of another caller runs. The services of the sequence
+// are called with the context returned. A sequence inside a sequence is
+// part of it.
+func (m *Master) sequence(ctx context.Context) (sctx context.Context, done func(), err error) {
+	if m.inSequence(ctx) {
+		return ctx, func() {}, nil
+	}
+	if err := m.acquire(ctx); err != nil {
+		return ctx, nil, err
+	}
+	t := new(seqToken)
+	m.seqOwner.Store(goid.ID())
+	m.seqToken.Store(t)
+	return context.WithValue(ctx, seqKey{}, t), func() {
+		m.seqToken.Store(nil)
+		m.seqOwner.Store(0)
+		<-m.seq
+	}, nil
 }
 
 // begin serialises a service and returns its session; end must be
 // called.
 func (m *Master) begin(ctx context.Context) (*session, error) {
+	nested := m.inSequence(ctx)
+	if !nested {
+		if err := m.acquire(ctx); err != nil {
+			return nil, err
+		}
+	}
 	m.op.Lock()
 	m.mu.Lock()
 	sub, st := m.sub, m.state
 	m.mu.Unlock()
 	if st != 1 {
 		m.op.Unlock()
+		if !nested {
+			<-m.seq
+		}
 		if st == 0 {
 			return nil, fmt.Errorf("%w: lss master not started", canopen.ErrClosed)
 		}
 		return nil, canopen.ErrClosed
 	}
-	return &session{m: m, ctx: ctx, sub: sub}, nil
+	return &session{m: m, ctx: ctx, sub: sub, nested: nested}, nil
 }
 
-func (s *session) end() { s.m.op.Unlock() }
+func (s *session) end() {
+	s.m.op.Unlock()
+	if !s.nested {
+		<-s.m.seq
+	}
+}
 
 // send sends frames, honouring the inhibit time.
 func (s *session) send(fs ...canbus.Frame) error {
@@ -502,6 +590,11 @@ func (m *Master) Inquire(ctx context.Context, p Part) (uint32, error) {
 // InquireAddress reads the whole LSS address of the slave in the
 // configuration state (four inquiries).
 func (m *Master) InquireAddress(ctx context.Context) (Address, error) {
+	ctx, done, err := m.sequence(ctx)
+	if err != nil {
+		return Address{}, err
+	}
+	defer done()
 	var a Address
 	for p := PartVendor; p <= PartSerial; p++ {
 		v, err := m.Inquire(ctx, p)
@@ -582,11 +675,20 @@ func (m *Master) identify(ctx context.Context, want Command, req ...canbus.Frame
 // waiting with the same check, also when fn fails. A selection that is
 // not confirmed fails with [ErrConflict] before fn runs; the checks take
 // a few Fastscan listening windows ([WithFastscanTimeout]).
+//
+// Configure is one sequence: from its first frame to its last no service
+// called from another goroutine runs (it waits). fn runs on Configure's
+// goroutine and calls the master with the context it is given.
 func (m *Master) Configure(ctx context.Context, a Address, fn func(ctx context.Context) error) error {
+	ctx, done, err := m.sequence(ctx)
+	if err != nil {
+		return err
+	}
+	defer done()
 	if err := m.leaveConfiguration(ctx, FastscanOptions{}); err != nil {
 		return err
 	}
-	err := m.SwitchStateSelective(ctx, a)
+	err = m.SwitchStateSelective(ctx, a)
 	if err == nil {
 		var alone bool
 		if alone, err = m.checkSelected(ctx, FastscanOptions{}, a); err == nil && !alone {

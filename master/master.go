@@ -12,8 +12,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
 	"github.com/otfabric/go-canopen/emcy"
+	"github.com/otfabric/go-canopen/internal/callback"
 	"github.com/otfabric/go-canopen/lss"
 	"github.com/otfabric/go-canopen/nmt"
 	"github.com/otfabric/go-canopen/node"
@@ -64,8 +66,11 @@ func WithLogger(l *slog.Logger) Option {
 // WithEventHandler sets the function every [Event] is delivered to. Events
 // are delivered one at a time, in the order they occurred, on a goroutine
 // of the master's own: the handler may call the master (SDO transfers, NMT
-// commands) but not [Master.Close]. A slow handler delays later events,
-// never the services. Events driven by bus frames (EventBootUp,
+// commands). It may call [Master.Close], which then does not wait for the
+// goroutine the handler runs on: the events still queued are delivered
+// after the handler returns. A handler that does not return normally is
+// logged with its stack, and the next event is delivered. A slow handler
+// delays later events, never the services. Events driven by bus frames (EventBootUp,
 // EventStateChange, EventEMCY) wait in a bounded queue ([WithEventQueue]):
 // when it is full the oldest of them is dropped and counted in
 // [Stats].EventsDropped. The results of the master's own processes (boot,
@@ -218,6 +223,9 @@ type Master struct {
 	mu      sync.Mutex
 	clients map[canopen.NodeID]*sdo.Client
 	closers []closer
+	// closing holds the clients and listeners once the master is closed:
+	// every Close waits for them.
+	closing []closer
 	boots   map[canopen.NodeID]*BootConfig
 	running map[canopen.NodeID]context.CancelFunc
 	bootCtx context.Context
@@ -237,6 +245,7 @@ func New(bus canopen.Bus, opts ...Option) (*Master, error) {
 	for _, o := range opts {
 		o(&c)
 	}
+	c.log = callback.Logger(c.log)
 	if c.parallel < 1 {
 		c.parallel = 1
 	}
@@ -251,7 +260,7 @@ func New(bus canopen.Bus, opts ...Option) (*Master, error) {
 		running: map[canopen.NodeID]context.CancelFunc{},
 	}
 	m.bootCtx, m.stopAll = context.WithCancel(context.Background())
-	m.disp = newDispatcher(c.handler, c.eventQueue)
+	m.disp = newDispatcher(c.handler, c.eventQueue, m.log)
 	nopts := []nmt.Option{nmt.WithLogger(m.log)}
 	eopts := []emcy.Option{emcy.WithLogger(m.log), emcy.WithHandler(m.onEMCY)}
 	sopts := []syncobj.Option{syncobj.WithLogger(m.log)}
@@ -388,13 +397,14 @@ func (m *Master) Start() error {
 
 // Close stops the services, the boot procedures in progress, the remote
 // PDO listeners and the SDO clients, and waits for them. Queued events are
-// delivered before it returns.
+// delivered before it returns. Operations in progress end with
+// [canopen.ErrClosed], and operations started afterwards fail with it.
+// Close is safe to call more than once and from several goroutines: every
+// call returns only when the master has stopped. Called from the event
+// handler, or from a handler of one of the master's services, it does not
+// wait for the goroutine that handler runs on.
 func (m *Master) Close() error {
 	m.lcMu.Lock()
-	if m.closed.Load() {
-		m.lcMu.Unlock()
-		return nil
-	}
 	m.closed.Store(true)
 	started := m.started
 	m.lcMu.Unlock()
@@ -415,15 +425,15 @@ func (m *Master) Close() error {
 	_ = m.syncP.Close()
 	_ = m.timeP.Close()
 	m.mu.Lock()
-	cl := m.closers
+	m.closing = append(m.closing, m.closers...)
+	for _, c := range m.clients {
+		m.closing = append(m.closing, c)
+	}
 	m.closers = nil
-	clients := m.clients
 	m.clients = map[canopen.NodeID]*sdo.Client{}
+	cl := m.closing
 	m.mu.Unlock()
 	for _, c := range cl {
-		_ = c.Close()
-	}
-	for _, c := range clients {
 		_ = c.Close()
 	}
 	if m.usdoC != nil {
@@ -498,8 +508,31 @@ func (m *Master) onEMCY(ev emcy.Event) {
 }
 
 // NMT sends an NMT command to a node, or to all nodes with node-ID 0.
+// After Close it fails with [canopen.ErrClosed].
 func (m *Master) NMT(ctx context.Context, node canopen.NodeID, cmd canopen.NMTCommand) error {
+	if m.isClosed() {
+		return canopen.ErrClosed
+	}
 	return m.nmt.Send(ctx, node, cmd)
+}
+
+// errClosed is the error of an operation that was in progress when the
+// master was closed: it matches [canopen.ErrClosed] and, as such an
+// operation ended before, context.Canceled.
+var errClosed = fmt.Errorf("%w (%w)", canopen.ErrClosed, context.Canceled)
+
+// closedBus is the bus of what the master hands out and cannot close (a
+// PDO sender): it sends nothing once the master is closed.
+type closedBus struct {
+	canopen.Bus
+	m *Master
+}
+
+func (b closedBus) Send(ctx context.Context, f *canbus.Frame) error {
+	if b.m.isClosed() {
+		return canopen.ErrClosed
+	}
+	return b.Bus.Send(ctx, f)
 }
 
 // StartNode sends NMT start (enter Operational) to a node (0: all).

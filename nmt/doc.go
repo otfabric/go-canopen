@@ -28,8 +28,14 @@
 //
 // Every long-running service has Start, which subscribes before it
 // returns so that no frame is missed afterwards, and Close, which stops it
-// and waits for its goroutine. Callbacks (handler options) run on the
-// service's goroutine and must not block for long. Services configured
+// and waits for its goroutine; Close is safe to call more than once and
+// from several goroutines. Callbacks (handler options) run on the
+// service's goroutine, one call at a time (the state, reset and boot-up
+// handlers of a [Slave] on the goroutine that caused the change), and
+// must not block for long. A callback may call the service's methods,
+// and its Close, which then does not wait for the goroutine the callback
+// runs on. A callback that does not return normally is logged with its
+// stack ("callback did not return normally"), and the service goes on. Services configured
 // [WithDictionary] read their parameters from the standard objects and
 // follow writes of them, as an SDO server makes them, while running.
 package nmt

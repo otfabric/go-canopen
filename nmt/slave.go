@@ -6,10 +6,15 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
+	"github.com/otfabric/go-canopen/internal/goid"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
+	"github.com/otfabric/go-canopen/od"
 )
 
 // ResetKind is the kind of an NMT reset.
@@ -76,9 +81,17 @@ type SlaveStats struct {
 type Slave struct {
 	bus canopen.Bus
 	cfg config
-	lc  lifecycle
+	lc  lifecycle.Service
 
-	resetMu sync.Mutex // serialises resets
+	// ctx ends at Close: a closed slave changes no state, does no reset
+	// and sends no boot-up message.
+	ctx    context.Context
+	cancel context.CancelFunc
+	// resetSem serialises resets. It is a channel so that a reset
+	// waiting for its turn ends at Close.
+	resetSem  chan struct{}
+	resetting atomic.Uint64 // identifier of the goroutine inside a reset
+
 	mu      sync.Mutex
 	node    canopen.NodeID
 	pending canopen.NodeID // 0: none
@@ -109,7 +122,9 @@ func NewSlave(bus canopen.Bus, node canopen.NodeID, opts ...Option) (*Slave, err
 	if err := checkNodeID(node); err != nil {
 		return nil, err
 	}
-	return &Slave{bus: bus, cfg: newConfig(opts), node: node, state: canopen.StateInitialising}, nil
+	s := &Slave{bus: bus, cfg: newConfig(opts), node: node, state: canopen.StateInitialising, resetSem: make(chan struct{}, 1)}
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	return s, nil
 }
 
 // nmtFilter returns a new option each time: canbus.WithFilters's option
@@ -128,7 +143,7 @@ func nmtFilter() canbus.SubscribeOption {
 // message and stays in Initialising; the reset that applies its node-ID
 // boots it.
 func (s *Slave) Start() error {
-	return s.lc.start(func(ctx context.Context) (func(context.Context), error) {
+	return s.lc.Start(func(ctx context.Context) (func(context.Context), error) {
 		sub, err := s.bus.Subscribe(nmtFilter())
 		if err != nil {
 			return nil, fmt.Errorf("nmt: subscribe: %w", err)
@@ -152,9 +167,22 @@ func (s *Slave) Start() error {
 	})
 }
 
-// Close stops the slave and waits for it. It does not change the state.
+// Close stops the slave and waits for its goroutine and for a reset in
+// progress, which then sends no boot-up message. It does not change the
+// state. It is safe to call more than once and from several goroutines.
+//
+// A handler of the slave may call Close: Close then does not wait for
+// the goroutine or the reset the handler runs in, which end when the
+// handler returns. From a handler called by Start, Start returns
+// [canopen.ErrClosed].
 func (s *Slave) Close() error {
-	s.lc.close()
+	s.cancel()
+	s.lc.Close()
+	if id := goid.ID(); id == 0 || s.resetting.Load() != id {
+		// A reset in progress on another goroutine: wait for it.
+		s.resetSem <- struct{}{}
+		<-s.resetSem
+	}
 	return nil
 }
 
@@ -164,10 +192,17 @@ func (s *Slave) bootUp(ctx context.Context) error {
 	f := s.cfg.frame(ErrorControlFrame(node, canopen.StateInitialising, false))
 	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
 	defer cancel()
+	defer context.AfterFunc(s.ctx, cancel)() // Close ends the send
 	if h := s.cfg.onBootUp; h != nil {
-		h()
+		callback.Do(s.cfg.log, "boot-up handler", h)
+	}
+	if s.ctx.Err() != nil {
+		return canopen.ErrClosed
 	}
 	if err := s.bus.Send(sctx, &f); err != nil {
+		if s.ctx.Err() != nil {
+			return canopen.ErrClosed
+		}
 		return fmt.Errorf("nmt: node %d boot-up: %w", node, err)
 	}
 	s.mu.Lock()
@@ -229,15 +264,25 @@ func (s *Slave) setState(to canopen.NMTState, cmd canopen.NMTCommand) {
 	}
 	s.cfg.log.Info("nmt state", "node", int(node), "from", from.String(), "to", to.String())
 	if h := s.cfg.onState; h != nil {
-		h(StateChange{Node: node, From: from, To: to, Command: cmd, Time: time.Now()})
+		sc := StateChange{Node: node, From: from, To: to, Command: cmd, Time: time.Now()}
+		callback.Do(s.cfg.log, "state handler", func() { h(sc) })
 	}
 }
 
 // reset runs an NMT reset: Initialising, dictionary restore, reset
 // handler, boot-up, Pre-operational.
 func (s *Slave) reset(ctx context.Context, kind ResetKind, cmd canopen.NMTCommand) error {
-	s.resetMu.Lock()
-	defer s.resetMu.Unlock()
+	select {
+	case s.resetSem <- struct{}{}:
+	case <-s.ctx.Done():
+		return canopen.ErrClosed
+	}
+	defer func() { <-s.resetSem }()
+	if s.ctx.Err() != nil {
+		return canopen.ErrClosed
+	}
+	s.resetting.Store(goid.ID())
+	defer s.resetting.Store(0)
 	s.setState(canopen.StateInitialising, cmd)
 	s.mu.Lock()
 	s.stats.Resets++
@@ -248,13 +293,17 @@ func (s *Slave) reset(ctx context.Context, kind ResetKind, cmd canopen.NMTComman
 	s.mu.Unlock()
 	if d := s.cfg.dict; d != nil {
 		if kind == ResetApplication {
-			d.Reset(ApplicationAreaFirst, ApplicationAreaLast)
+			s.restore(d, ApplicationAreaFirst, ApplicationAreaLast)
 		}
 		d.SetNodeID(node)
-		d.Reset(CommunicationAreaFirst, CommunicationAreaLast)
+		s.restore(d, CommunicationAreaFirst, CommunicationAreaLast)
 	}
 	if h := s.cfg.onReset; h != nil {
-		h(kind)
+		callback.Do(s.cfg.log, "reset handler", func() { h(kind) })
+	}
+	if s.ctx.Err() != nil {
+		// Closed meanwhile: no boot-up message.
+		return canopen.ErrClosed
 	}
 	if node == Unconfigured {
 		s.cfg.log.Info("nmt reset: node-ID unconfigured, no boot-up")
@@ -267,18 +316,27 @@ func (s *Slave) reset(ctx context.Context, kind ResetKind, cmd canopen.NMTComman
 	return err
 }
 
+// restore sets the objects of an area back to their defaults. That
+// notifies the dictionary's watchers, which are the application's code:
+// one that does not return normally ends that pass after its value was
+// restored, so the restore is taken up again until it is complete (each
+// pass restores at least one more value).
+func (s *Slave) restore(d *od.Dictionary, first, last uint16) {
+	for !callback.Do(s.cfg.log, "dictionary watcher", func() { d.Reset(first, last) }) {
+	}
+}
+
 // Reset does an NMT reset locally, as the command from the bus would:
 // state Initialising, dictionary restore, reset handler, boot-up message,
 // Pre-operational. It returns the error of sending the boot-up message
 // (the slave then stays in Initialising) and [canopen.ErrClosed] after
 // Close. A reset that leaves the node-ID [Unconfigured] ends in
-// Initialising without boot-up message.
+// Initialising without boot-up message. A reset in progress when the
+// slave is closed sends no boot-up message and returns
+// [canopen.ErrClosed].
 func (s *Slave) Reset(ctx context.Context, kind ResetKind) error {
 	if kind != ResetApplication && kind != ResetCommunication {
 		return fmt.Errorf("nmt: invalid reset kind %d", kind)
-	}
-	if s.lc.closed() {
-		return canopen.ErrClosed
 	}
 	return s.reset(ctx, kind, 0)
 }
@@ -293,11 +351,15 @@ func (s *Slave) State() canopen.NMTState {
 // SetState changes the state locally (an application that enters
 // Operational on its own, or stops after a fatal error). Only Stopped,
 // Operational and Pre-operational can be set; use Reset for the others.
+// After Close it fails with [canopen.ErrClosed].
 func (s *Slave) SetState(st canopen.NMTState) error {
 	switch st {
 	case canopen.StateStopped, canopen.StateOperational, canopen.StatePreOperational:
 	default:
 		return fmt.Errorf("nmt: cannot set state %s", st)
+	}
+	if s.ctx.Err() != nil {
+		return canopen.ErrClosed
 	}
 	s.setState(st, 0)
 	return nil

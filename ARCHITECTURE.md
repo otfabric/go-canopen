@@ -109,12 +109,28 @@ Every long-running service follows one pattern:
   options, or from the dictionary with `WithDictionary`), installs its
   write hooks, and does nothing on the bus.
 - `Start()` subscribes **before it returns** (no frame is missed after
-  it) and runs one goroutine. A second `Start` fails with `ErrBusy`;
-  `Start` after `Close` with `ErrClosed`.
+  it) and runs one goroutine. A second `Start` fails with `ErrBusy`,
+  except for the `pdo` TPDO, RPDO and Listener, where it does nothing and
+  returns nil; `Start` after `Close` fails with `ErrClosed`.
 - `Close()` stops the goroutine, waits for it, and removes the hooks and
-  watchers. It is idempotent.
+  watchers. It is safe to call more than once and from several
+  goroutines: every call returns only when the goroutine has ended. After
+  it the service sends nothing and its operations fail with `ErrClosed`;
+  what was in progress ends with `ErrClosed` (LIMITATIONS.md lists the
+  single frames that are still sent).
 - Handlers (`WithHandler`, `WithHeartbeatHandler`, ...) run on the
-  service's goroutine and must not block for long.
+  service's goroutine, one call at a time, and must not block for long.
+  A handler may call the service's methods, and `Close`: a `Close`
+  called on the service's own goroutine does not wait for it (the
+  goroutine is recognised by its identifier, `internal/goid`), while a
+  `Close` on any other goroutine waits until the handler has returned.
+- Application code the library calls (handlers, dictionary hooks and
+  watchers run by a service, the logger) is called through
+  `internal/callback`: when it does not return normally it is stopped
+  there and logged with its stack, with none of the service's state
+  locks held, and the service goes on.
+- The services with one goroutine share their Start/Close state
+  (`internal/lifecycle`).
 - `Stats()` returns a JSON-taggable snapshot of counters
   ([OBSERVABILITY.md](OBSERVABILITY.md)).
 
