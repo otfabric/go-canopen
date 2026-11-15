@@ -22,9 +22,15 @@
 // and resumptions (of nodes supervised with [Master.Monitor] or a boot
 // configuration), emergency messages and the end of boot procedures.
 // Events are delivered in order, one at a time, on a goroutine of the
-// master's own through an unbounded queue, so the handler may use the
-// master (SDO, NMT) without stalling the network services; it must not
-// call [Master.Close].
+// master's own through a queue, so the handler may use the master (SDO,
+// NMT) without stalling the network services. It may call
+// [Master.Close], which then does not wait for that goroutine; a handler
+// that does not return normally is logged with its stack, and the next
+// event is delivered. The bus-driven events (EventBootUp, EventStateChange,
+// EventEMCY) are bounded ([WithEventQueue]): when the handler does not
+// keep up the oldest of them is dropped and counted in
+// [Stats].EventsDropped. The results of the master's own processes and
+// the supervision events are never dropped.
 //
 // # SDO
 //
@@ -172,4 +178,15 @@
 // USDO in place of the SDO; USDO aborts are reported as SDO aborts
 // (errors.As finds a *canopen.AbortError). Listen and Sender use CANopen
 // FD PDOs.
+//
+// # Close
+//
+// [Master.Close] stops the services, the boot procedures, the listeners
+// and the clients, and waits for them; it is safe to call more than once
+// and from several goroutines. Operations in progress end with an error
+// that matches canopen.ErrClosed (a network boot-up, a boot slave
+// process, a scan; SDO and USDO transfers), and operations started
+// afterwards fail with it and send nothing: NMT commands, [Master.Scan],
+// [Master.BootNetwork], [Master.BootSlave], [Master.Sender] and the
+// senders it returned, the SYNC and TIME producers.
 package master

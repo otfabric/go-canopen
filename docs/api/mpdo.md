@@ -184,7 +184,7 @@ ProtectPDO installs write hooks on TPDO (transmit) or RPDO n of d with the MPDO 
   - mapping sub-indices 01h..: any write while sub 00h is 0xFE or 0xFF: [canopen.AbortUnsupported](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortUnsupported) (Lely: entries change only while sub 00h is 0).
   - communication sub-index 02h: a type other than 254/255 while the PDO is an MPDO: [canopen.AbortInvalidValue](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortInvalidValue) (MPDOs are event-driven only).
 
-Note that pdo.Protect itself (v0.2.0) refuses 0xFE/0xFF in sub 00h with [canopen.AbortPDOLength](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortPDOLength); where both are installed, a PDO can only be made an MPDO by a local write until pdo accepts the two values. The returned function removes the hooks (later calls do nothing).
+pdo.Protect accepts 0xFE and 0xFF in sub 00h as it accepts 0, while the PDO is inactive and without checking entries, so both can be installed on one PDO: pdo.Protect's rules for the communication parameter and the mapping entries still apply, and a PDO is made an MPDO by a remote write of sub 00h. The returned function removes the hooks (later calls do nothing).
 
 ### func Scanned
 
@@ -205,6 +205,8 @@ type Consumer struct {
 	// 0x8210 active
 	// 0x8230 active
 
+	// identifier of the service goroutine
+
 }
 ```
 
@@ -224,7 +226,7 @@ NewConsumer returns the MPDO consumer of RPDO n (1..512) of d. It installs the M
 func (c *Consumer) Close() error
 ```
 
-Close stops the goroutine, waits for it and removes the hooks and the watcher. It is idempotent.
+Close stops the goroutine, waits for it and removes the hooks and the watcher. It is safe to call more than once and from several goroutines: every call returns only when the goroutine has ended. Called from a handler of the consumer it does not wait for that goroutine, which ends when the handler returns.
 
 #### func (Consumer) Mode
 
@@ -248,7 +250,7 @@ Number returns the RPDO number.
 func (c *Consumer) SetEnabled(on bool)
 ```
 
-SetEnabled enables (NMT operational) or disables the consumer.
+SetEnabled enables (NMT operational) or disables the consumer. A closed consumer stays disabled.
 
 #### func (Consumer) Start
 
@@ -460,7 +462,7 @@ Option configures a [Producer](#type-producer) or a [Consumer](#type-consumer).
 func WithErrorHandler(f func(pdo.ErrorEvent)) Option
 ```
 
-WithErrorHandler sets the function a [Consumer](#type-consumer) reports the emergencies 0x8230 (EMCYDAMNoObject) and 0x8210 (pdo.EMCYPDOLength) to, once when one appears (Active true) and once when it is resolved. The PDO field is the RPDO number. It is called from the service goroutine.
+WithErrorHandler sets the function a [Consumer](#type-consumer) reports the emergencies 0x8230 (EMCYDAMNoObject) and 0x8210 (pdo.EMCYPDOLength) to, once when one appears (Active true) and once when it is resolved. The PDO field is the RPDO number. It is called from the service goroutine, one call at a time, and must not block for long: no MPDO is received while it runs. It may call the consumer's methods, and [Consumer.Close](#func-consumer-close), which then does not wait for that goroutine. A handler that does not return normally is logged with its stack, and the consumer goes on.
 
 #### func WithLogger
 
@@ -476,19 +478,25 @@ WithLogger sets the logger (default: discard).
 func WithReceiveHandler(f func(Event)) Option
 ```
 
-WithReceiveHandler sets a function a [Consumer](#type-consumer) calls, from its goroutine, after it has written a received value to the dictionary.
+WithReceiveHandler sets a function a [Consumer](#type-consumer) calls, from its goroutine, after it has written a received value to the dictionary. The rules of [WithErrorHandler](#func-witherrorhandler) apply; the event's Data is the handler's own.
 
 ### type Producer
 
 ```go
 type Producer struct {
 
-	// serialises transmissions
+	// closed by Close: a transmission waiting for the inhibit time ends
+
+	// sendSem serialises transmissions. It is a channel so that a
+	// transmission waiting for its turn ends with its context and at
+	// Close.
+
+	// guarded by sendSem
 
 }
 ```
 
-Producer is an MPDO producer: TPDO n of a dictionary whose mapping sub-index 00h is 0xFE (SAM) or 0xFF (DAM). It reads the COB-ID, transmission type and inhibit time at every transmission, so it follows changes of the parameters. Transmissions are serialised and respect the inhibit time: a transmission that comes too early waits (Lely refuses it with EAGAIN instead). The producer has no goroutine.
+Producer is an MPDO producer: TPDO n of a dictionary whose mapping sub-index 00h is 0xFE (SAM) or 0xFF (DAM). It reads the COB-ID, transmission type and inhibit time at every transmission, so it follows changes of the parameters. Transmissions are serialised and respect the inhibit time: a transmission that comes too early waits (Lely refuses it with EAGAIN instead), until its context ends or the producer is closed. The producer has no goroutine.
 
 #### func NewProducer
 
@@ -504,7 +512,7 @@ NewProducer returns the MPDO producer of TPDO n (1..512) of d. It installs the M
 func (p *Producer) Close() error
 ```
 
-Close stops the producer and removes its hooks. It is idempotent.
+Close stops the producer and removes its hooks: a transmission waiting for the inhibit time ends with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed), and nothing is sent afterwards. It is safe to call more than once and from several goroutines.
 
 #### func (Producer) Mode
 

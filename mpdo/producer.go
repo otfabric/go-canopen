@@ -29,7 +29,8 @@ type ProducerStats struct {
 // transmission type and inhibit time at every transmission, so it follows
 // changes of the parameters. Transmissions are serialised and respect the
 // inhibit time: a transmission that comes too early waits (Lely refuses it
-// with EAGAIN instead). The producer has no goroutine.
+// with EAGAIN instead), until its context ends or the producer is closed.
+// The producer has no goroutine.
 type Producer struct {
 	bus   canopen.Bus
 	d     *od.Dictionary
@@ -41,9 +42,13 @@ type Producer struct {
 	started bool
 	closed  bool
 	enabled bool
+	done    chan struct{} // closed by Close: a transmission waiting for the inhibit time ends
 
-	sendMu   sync.Mutex // serialises transmissions
-	lastSent time.Time
+	// sendSem serialises transmissions. It is a channel so that a
+	// transmission waiting for its turn ends with its context and at
+	// Close.
+	sendSem  chan struct{}
+	lastSent time.Time // guarded by sendSem
 
 	st struct{ sent, sendErrors, refused, inhibited atomic.Uint64 }
 }
@@ -61,7 +66,7 @@ func NewProducer(bus canopen.Bus, d *od.Dictionary, n int, opts ...Option) (*Pro
 		return nil, err
 	}
 	o := buildOptions(opts)
-	return &Producer{bus: bus, d: d, n: n, unpro: unpro, log: o.log.With("mpdo", fmt.Sprintf("TPDO%d", n))}, nil
+	return &Producer{bus: bus, d: d, n: n, unpro: unpro, done: make(chan struct{}), sendSem: make(chan struct{}, 1), log: o.log.With("mpdo", fmt.Sprintf("TPDO%d", n))}, nil
 }
 
 // Number returns the TPDO number.
@@ -85,7 +90,10 @@ func (p *Producer) Start() error {
 	return nil
 }
 
-// Close stops the producer and removes its hooks. It is idempotent.
+// Close stops the producer and removes its hooks: a transmission waiting
+// for the inhibit time ends with [canopen.ErrClosed], and nothing is
+// sent afterwards. It is safe to call more than once and from several
+// goroutines.
 func (p *Producer) Close() error {
 	p.mu.Lock()
 	if p.closed {
@@ -93,6 +101,7 @@ func (p *Producer) Close() error {
 		return nil
 	}
 	p.closed = true
+	close(p.done)
 	p.mu.Unlock()
 	p.unpro()
 	return nil
@@ -196,6 +205,8 @@ func (p *Producer) sample(index uint16, sub uint8) ([]byte, error) {
 	if !v.PDOMappable || !v.Access.Readable() {
 		return nil, canopen.AbortNotMappable
 	}
+	// The read runs the dictionary's read hooks on the caller's
+	// goroutine.
 	data, err := p.d.Read(index, sub)
 	if err != nil {
 		return nil, err
@@ -209,8 +220,14 @@ func (p *Producer) sample(index uint16, sub uint8) ([]byte, error) {
 // transmit sends a message no sooner than the inhibit time after the
 // previous one.
 func (p *Producer) transmit(ctx context.Context, c config, m Message) error {
-	p.sendMu.Lock()
-	defer p.sendMu.Unlock()
+	select {
+	case p.sendSem <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.done:
+		return canopen.ErrClosed
+	}
+	defer func() { <-p.sendSem }()
 	if c.inhibit > 0 && !p.lastSent.IsZero() {
 		if wait := time.Until(p.lastSent.Add(c.inhibit)); wait > 0 {
 			p.st.inhibited.Add(1)
@@ -219,9 +236,19 @@ func (p *Producer) transmit(ctx context.Context, c config, m Message) error {
 			case <-ctx.Done():
 				t.Stop()
 				return ctx.Err()
+			case <-p.done:
+				t.Stop()
+				return canopen.ErrClosed
 			case <-t.C:
 			}
 		}
+	}
+	select {
+	case <-p.done:
+		// Closed: the turn can come to a transmission at the moment the
+		// producer is closed.
+		return canopen.ErrClosed
+	default:
 	}
 	b := m.Bytes()
 	var f canbus.Frame

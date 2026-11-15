@@ -2,6 +2,21 @@
 
 Release notes with details are in [RELEASE.md](RELEASE.md).
 
+## v0.6.1 (2026-11-14)
+
+Fixes from the policy 1.6 review, no API change. Input bounds: an SDO
+client transfer that makes no progress ends, a USDO bulk download waits at
+most the response timeout between two segments, EDS/DCF files and the
+sub-objects of a dictionary are bounded, a NaN limit and a REAL32 value
+beyond its range are refused. `node`: the services follow the NMT state
+that holds, and the error behaviour of 0x1029 applies from Pre-operational
+and Operational only. `lss`: `Configure` and `AssignAll` are one sequence.
+Every `Close` waits for its goroutine, may be called from the service's
+own handlers, and leaves services that send nothing and fail with
+`ErrClosed`; `master`: `BootNetwork` after `Close` sends nothing,
+`BootSlave` is cancelled by a network boot-up. Handlers, hooks and the
+logger that do not return normally are logged and the service goes on.
+
 ## v0.5.2 (2026-11-14)
 
 `sdo`: an abort for another object (a server's answer to a repeated or

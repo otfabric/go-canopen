@@ -36,7 +36,11 @@ func FuzzParseCommand(f *testing.F) {
 				t.Fatalf("round trip %v %v", fr, g)
 			}
 		}
-		s := &Slave{cfg: newConfig(nil), node: 5, state: canopen.StatePreOperational, bus: nopBus{}}
+		s, err := NewSlave(nopBus{}, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.state = canopen.StatePreOperational
 		s.handle(context.Background(), &fr)
 	})
 }

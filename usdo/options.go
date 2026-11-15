@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
 )
 
 // Option configures a [Client] or a [Server]. Each option names the side
@@ -38,6 +39,7 @@ func newConfig(opts []Option) config {
 	if c.log == nil {
 		c.log = discard
 	}
+	c.log = callback.Logger(c.log)
 	return c
 }
 
@@ -106,7 +108,9 @@ func WithProcessingTime(d time.Duration) Option { return func(c *config) { c.tpr
 // WithTProcUnit sets the unit of the t_proc field (both sides; default
 // 100 µs). CiA's poster defines the field ("server's time for processing
 // consecutive segments; which may be considered by the client") but its
-// unit is not public, so client and server must agree on it.
+// unit is not public, so client and server must agree on it. A [Client]
+// waits at most its response timeout between two segments, whatever
+// t_proc a server reports.
 func WithTProcUnit(d time.Duration) Option { return func(c *config) { c.tunit = d } }
 
 // CallOption configures one client transfer.

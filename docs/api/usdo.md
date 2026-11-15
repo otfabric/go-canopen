@@ -76,7 +76,7 @@ ErrCommand reports a message with an unknown command specifier.
 var ErrNotStarted = errors.New("usdo: client not started")
 ```
 
-ErrNotStarted reports a transfer on a client that was not started.
+ErrNotStarted reports a transfer on a client that was not started. A transfer on a closed client fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed).
 
 ```go
 var ErrSessions = errors.New("usdo: no free session-ID")
@@ -335,7 +335,7 @@ NewClient returns the USDO client of node (its node-ID: the CAN-ID of its reques
 func (c *Client) Close() error
 ```
 
-Close stops the client and waits for its goroutine; running transfers time out. It is idempotent.
+Close stops the client and waits for its goroutine. Transfers in progress end with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed), and so do transfers started afterwards. It is safe to call more than once and from several goroutines.
 
 #### func (Client) Download
 
@@ -351,7 +351,7 @@ Download writes an object of a server: expedited up to MaxExpedited bytes, segme
 func (c *Client) DownloadMulti(ctx context.Context, dest Address, index uint16, sub uint8, data []byte, opts ...CallOption) (map[canopen.NodeID]error, error)
 ```
 
-DownloadMulti writes an object of every server dest addresses (broadcast, a group, or one node) and returns the outcome per server that answered: nil, or the error. Up to MaxExpedited bytes are sent expedited; more by bulk transfer (CiA's example of a broadcast bulk download): the servers that answer the initiate request take part, the segments are paced by the largest t\_proc they report, and each confirms or aborts at the end. Without [Expect](#func-expect) the call collects responses for the whole response timeout. The error is for the transfer as a whole (a send failure, the context).
+DownloadMulti writes an object of every server dest addresses (broadcast, a group, or one node) and returns the outcome per server that answered: nil, or the error. Up to MaxExpedited bytes are sent expedited; more by bulk transfer (CiA's example of a broadcast bulk download): the servers that answer the initiate request take part, the segments are paced by the largest t\_proc they report (at most the response timeout apart), and each confirms or aborts at the end. Without [Expect](#func-expect) the call collects responses for the whole response timeout. The error is for the transfer as a whole (a send failure, the context).
 
 #### func (Client) NodeID
 
@@ -589,7 +589,7 @@ WithProcessingTime sets the time a [Server](#type-server) needs between two segm
 func WithTProcUnit(d time.Duration) Option
 ```
 
-WithTProcUnit sets the unit of the t\_proc field (both sides; default 100 µs). CiA's poster defines the field ("server's time for processing consecutive segments; which may be considered by the client") but its unit is not public, so client and server must agree on it.
+WithTProcUnit sets the unit of the t\_proc field (both sides; default 100 µs). CiA's poster defines the field ("server's time for processing consecutive segments; which may be considered by the client") but its unit is not public, so client and server must agree on it. A [Client](#type-client) waits at most its response timeout between two segments, whatever t\_proc a server reports.
 
 #### func WithTimeout
 
@@ -625,6 +625,8 @@ Server is a USDO server (CiA 1301): it serves an object dictionary to every USDO
 
 Remote accesses go through [od.Dictionary.Read](https://pkg.go.dev/github.com/otfabric/go-canopen/od#Dictionary.Read) and [od.Dictionary.Write](https://pkg.go.dev/github.com/otfabric/go-canopen/od#Dictionary.Write), so access rights, limits and hooks apply; a refusal reaches the client as the USDO abort code of the dictionary's SDO abort code ([FromSDO](#func-fromsdo)). Downloads of more than MaxExpedited bytes are buffered and written once, when complete.
 
+The hooks and watchers of the dictionary run on the server's goroutine: while one runs the server answers nothing. A hook may call the server's methods and [Server.Close](#func-server-close) (see there). A hook or watcher that does not return normally is logged with its stack ("callback did not return normally"), the transfer is aborted, and the server goes on.
+
 #### func NewServer
 
 ```go
@@ -639,7 +641,7 @@ NewServer returns a USDO server for d. It does not receive until [Server.Start](
 func (s *Server) Close() error
 ```
 
-Close stops the server and waits for its goroutine. It is idempotent.
+Close stops the server and waits for its goroutine. It is safe to call more than once and from several goroutines: every call returns only when the goroutine has ended, that is, when a dictionary hook the server was running has returned. Called from such a hook it does not wait for that goroutine, which ends when the hook returns.
 
 #### func (Server) NodeID
 

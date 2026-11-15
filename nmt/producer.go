@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -26,7 +27,9 @@ type HeartbeatProducerStats struct {
 //
 // The state comes from a function, usually [Slave.State]; no heartbeat is
 // sent while it returns Initialising (the slave is resetting and will
-// send a boot-up message) or Unknown.
+// send a boot-up message) or Unknown. The function is called on the
+// producer's goroutine and must not call [HeartbeatProducer.Close]; one
+// that does not return normally counts as Unknown.
 //
 // Periods are kept by a time.Ticker: heartbeats do not drift, but each one
 // may be late by the scheduling latency of the Go runtime (typically well
@@ -34,7 +37,7 @@ type HeartbeatProducerStats struct {
 type HeartbeatProducer struct {
 	bus   canopen.Bus
 	cfg   config
-	lc    lifecycle
+	lc    lifecycle.Service
 	state func() canopen.NMTState
 	wake  chan struct{}
 
@@ -74,7 +77,7 @@ func NewHeartbeatProducer(bus canopen.Bus, node canopen.NodeID, state func() can
 // Start starts producing; with a dictionary it follows writes of 0x1017
 // from then on.
 func (p *HeartbeatProducer) Start() error {
-	return p.lc.start(func(context.Context) (func(context.Context), error) {
+	return p.lc.Start(func(context.Context) (func(context.Context), error) {
 		var unwatch func()
 		if d := p.cfg.dict; d != nil {
 			unwatch = d.Watch(func(v *od.Variable, data []byte) {
@@ -130,7 +133,7 @@ func (p *HeartbeatProducer) run(ctx context.Context) {
 }
 
 func (p *HeartbeatProducer) send(ctx context.Context) {
-	st := p.state()
+	st := stateOf(p.cfg.log, p.state)
 	p.mu.Lock()
 	node := p.node
 	if st == canopen.StateInitialising || st == canopen.StateUnknown {
@@ -188,9 +191,10 @@ func (p *HeartbeatProducer) SetNodeID(node canopen.NodeID) error {
 	return nil
 }
 
-// Close stops producing and waits for the goroutine.
+// Close stops producing and waits for the goroutine. It is safe to call
+// more than once and from several goroutines.
 func (p *HeartbeatProducer) Close() error {
-	p.lc.close()
+	p.lc.Close()
 	return nil
 }
 

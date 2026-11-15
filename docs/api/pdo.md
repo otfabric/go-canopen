@@ -431,7 +431,9 @@ ErrorEvent reports a receive error of an RPDO, to be turned into an EMCY by the 
 
 ```go
 type Listener struct {
-	// contains filtered or unexported fields
+
+	// identifier of the listener goroutine
+
 }
 ```
 
@@ -443,7 +445,7 @@ Listener receives a remote node's PDO and delivers its decoded values: a master'
 func NewListener(bus canopen.Bus, cob canopen.COBID, dec *Decoder, handler func(f *canbus.Frame, values []Value), opts ...Option) *Listener
 ```
 
-NewListener returns a listener for PDOs on a COB-ID. The handler is called from the listener goroutine with each received frame and its decoded values. Of the options only [WithLogger](#func-withlogger) applies.
+NewListener returns a listener for PDOs on a COB-ID. The handler is called from the listener goroutine with each received frame and its decoded values, one call at a time; it must not block for long, may call the listener's methods and may call [Listener.Close](#func-listener-close). A handler that does not return normally is logged with its stack, and the listener goes on. Of the options only [WithLogger](#func-withlogger) applies.
 
 #### func (Listener) Close
 
@@ -451,7 +453,7 @@ NewListener returns a listener for PDOs on a COB-ID. The handler is called from 
 func (l *Listener) Close() error
 ```
 
-Close stops the listener and waits for its goroutine. It is idempotent.
+Close stops the listener and waits for its goroutine. It is safe to call more than once and from several goroutines: every call returns only when the goroutine has ended. Called from the listener's handler it does not wait for that goroutine, which ends when the handler returns.
 
 #### func (Listener) Request
 
@@ -459,7 +461,7 @@ Close stops the listener and waits for its goroutine. It is idempotent.
 func (l *Listener) Request(ctx context.Context) error
 ```
 
-Request sends a remote transmission request for the PDO. It fails with ErrNoRTR for a CANopen FD PDO (a decoder made [WithFD](#func-withfd)).
+Request sends a remote transmission request for the PDO. It fails with ErrNoRTR for a CANopen FD PDO (a decoder made [WithFD](#func-withfd)) and with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed) after Close.
 
 #### func (Listener) Start
 
@@ -558,7 +560,7 @@ WithClock sets the clock the SYNC window (0x1007) is measured with (default time
 func WithErrorHandler(f func(ErrorEvent)) Option
 ```
 
-WithErrorHandler sets the function an [RPDO](#type-rpdo) reports receive errors to. It is called from the service goroutine.
+WithErrorHandler sets the function an [RPDO](#type-rpdo) reports receive errors to. It is called from the service goroutine, one call at a time, and must not block for long: no PDO is received while it runs. It may call the RPDO's methods, and [RPDO.Close](#func-rpdo-close), which then does not wait for that goroutine. A handler that does not return normally is logged with its stack, and the service goes on.
 
 #### func WithFD
 
@@ -582,7 +584,7 @@ WithLogger sets the logger (default: discard).
 func WithReceiveHandler(f func(data []byte)) Option
 ```
 
-WithReceiveHandler sets a function an [RPDO](#type-rpdo) calls after it has written the data of a received PDO to the dictionary (for synchronous types, on the SYNC that applies it), with the PDO data. It is called from the goroutine that wrote the dictionary: the service goroutine, or the caller of [RPDO.OnSync](#func-rpdo-onsync).
+WithReceiveHandler sets a function an [RPDO](#type-rpdo) calls after it has written the data of a received PDO to the dictionary (for synchronous types, on the SYNC that applies it), with the PDO data. It is called from the goroutine that wrote the dictionary: the service goroutine, or the caller of [RPDO.OnSync](#func-rpdo-onsync). The same rules as for [WithErrorHandler](#func-witherrorhandler) apply; the data is the handler's own copy.
 
 ### type RPDO
 
@@ -622,7 +624,7 @@ NewRPDO returns RPDO n (1..512) of a device with the dictionary d. It installs t
 func (r *RPDO) Close() error
 ```
 
-Close stops the service and waits for its goroutine. It is idempotent.
+Close disables the RPDO, stops the service and waits for its goroutine: a buffered synchronous PDO is dropped, and nothing is written to the dictionary after it. It is safe to call more than once and from several goroutines; called from a handler of the RPDO on its service goroutine it does not wait for that goroutine, which ends when the handler returns.
 
 #### func (RPDO) Config
 
@@ -779,7 +781,7 @@ NewTPDO returns TPDO n (1..512) of a device with the dictionary d. It installs t
 func (t *TPDO) Close() error
 ```
 
-Close stops the service and waits for its goroutine. It is idempotent.
+Close disables the TPDO, stops the service and waits for its goroutine: nothing is sent after it, by [TPDO.Transmit](#func-tpdo-transmit) (which fails with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed), also when it was in progress), a SYNC or an event. It is safe to call more than once and from several goroutines.
 
 #### func (TPDO) Config
 
@@ -843,7 +845,7 @@ Stats returns a snapshot of the counters.
 func (t *TPDO) Transmit(ctx context.Context) error
 ```
 
-Transmit reads the mapped objects and sends the TPDO now, whatever its transmission type and inhibit time. It fails with ErrDisabled or ErrInactive when the TPDO cannot be sent.
+Transmit reads the mapped objects and sends the TPDO now, whatever its transmission type and inhibit time. It fails with ErrDisabled or ErrInactive when the TPDO cannot be sent, and with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed) after Close.
 
 #### func (TPDO) Trigger
 

@@ -3,6 +3,7 @@
 package pdo
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
@@ -269,6 +270,15 @@ func FuzzUnpack(f *testing.F) {
 			}
 			if len(packed) != m.Len() {
 				t.Fatalf("repacked %d bytes, mapping %d", len(packed), m.Len())
+			}
+			// Repacking gives the mapped bits back unchanged; the bits
+			// of the last byte above Bits() are not mapped and pack as 0.
+			want := append([]byte(nil), data[:m.Len()]...)
+			if r := m.Bits() % 8; r != 0 {
+				want[len(want)-1] &= byte(1)<<r - 1
+			}
+			if !bytes.Equal(packed, want) {
+				t.Fatalf("Pack(Unpack(% X)) = % X, want % X (mapping %v)", data, packed, want, m)
 			}
 		}
 		if dec, err := NewDecoder(m, d); err == nil {

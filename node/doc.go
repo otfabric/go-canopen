@@ -118,7 +118,8 @@
 //
 // With [WithFD] the node is a CANopen FD device (CiA 1301): PDOs of up to
 // 64 bytes, SYNC, EMCY (20 bytes), boot-up and heartbeat in CAN FD
-// frames, and a USDO server (package usdo) in place of the SDO server.
+// frames, and a USDO server (package usdo) in place of the SDO server,
+// which like it answers nothing before the node's boot-up message.
 // Node guarding is left out (CAN FD has no remote frames).
 //
 // # Program download
@@ -128,10 +129,25 @@
 // application software identification, 0x1F57 flash status) and leaves
 // the flashing to a program.Handler; see package program.
 //
+// # Close and callbacks
+//
 // [Node.Close] closes every service, and the services remove the hooks
 // and watchers they installed on the dictionary: a dictionary may be
-// given to successive nodes (see [od.Dictionary.HookCount]).
+// given to successive nodes (see [od.Dictionary.HookCount]). Close is
+// safe to call more than once and from several goroutines; every call
+// returns only when the node's goroutines have ended. After it the node
+// sends nothing: [Node.SetState], [Node.Reset] and [Node.SendTime] fail
+// with canopen.ErrClosed, as the methods of its services do, and a reset
+// in progress sends no boot-up message.
 //
-// Callbacks (the options' handlers) run on the goroutines of the
-// services and must not block for long.
+// Callbacks (the options' handlers, and the dictionary's hooks and
+// watchers when a service accesses the dictionary) run on the goroutines
+// of the services, one call at a time per service, and must not block
+// for long: the service does nothing else meanwhile. A callback may call
+// the node's methods, and Close: Close then does not wait for the
+// goroutine the callback runs on, which ends when the callback returns.
+// A callback that does not return normally is logged at error level with
+// its stack ("callback did not return normally", [WithLogger]), and the
+// node goes on: a request whose hook did so is refused with
+// canopen.AbortGeneral.
 package node

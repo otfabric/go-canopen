@@ -171,7 +171,7 @@ type Client struct {
 
 Client is an SDO client for one SDO channel (one server). Transfers on a client are serialized; clients of different channels work concurrently. A Client is safe for concurrent use.
 
-Errors: an abort from the server is a \*[canopen.AbortError](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortError) with Remote set. When the server does not answer in time the client sends the abort [canopen.AbortTimeout](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortTimeout) and returns an error matching both [canopen.ErrTimeout](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrTimeout) (errors.Is) and \*[canopen.AbortError](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortError) (errors.As, Remote false). A protocol violation by the server makes the client abort with the matching code and return an error matching [canopen.ErrProtocol](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrProtocol) and \*[canopen.AbortError](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortError) (Remote false). When the context ends during a transfer, the client aborts it with [canopen.AbortGeneral](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortGeneral) and returns the context's error.
+Errors: an abort from the server is a \*[canopen.AbortError](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortError) with Remote set. When the server does not answer in time the client sends the abort [canopen.AbortTimeout](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortTimeout) and returns an error matching both [canopen.ErrTimeout](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrTimeout) (errors.Is) and \*[canopen.AbortError](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortError) (errors.As, Remote false). A protocol violation by the server makes the client abort with the matching code and return an error matching [canopen.ErrProtocol](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrProtocol) and \*[canopen.AbortError](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortError) (Remote false); so do more than four responses in a row that move the transfer no further (upload segments without data that are not the last, block acknowledgements of no segment). When the context ends during a transfer, the client aborts it with [canopen.AbortGeneral](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortGeneral) and returns the context's error.
 
 Received SDO frames shorter than 8 bytes are zero-padded (some devices send short frames); the client always sends 8-byte frames.
 
@@ -197,7 +197,7 @@ COBIDs returns the client's COB-IDs: client to server (sent) and server to clien
 func (c *Client) Close() error
 ```
 
-Close aborts a transfer in progress, waits for it to end, releases the client's subscription and makes later transfers fail with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed). It is safe to call more than once.
+Close aborts a transfer in progress, waits for it to end, releases the client's subscription and makes later transfers fail with [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed). It is safe to call more than once and from several goroutines: every call returns only when the transfer has ended.
 
 #### func (Client) Download
 
@@ -425,12 +425,16 @@ type Server struct {
 	// Fence: requests received earlier (Unix ns) are ignored
 	// WithResetFence: a reset of the node was received
 
+	// identifier of the server goroutine
+
 }
 ```
 
 Server is an SDO server (CiA 301 7.2.4): it serves an object dictionary on one SDO channel to one client at a time, with expedited, segmented and block transfer.
 
 Remote accesses go through [od.Dictionary.Read](https://pkg.go.dev/github.com/otfabric/go-canopen/od#Dictionary.Read) and [od.Dictionary.Write](https://pkg.go.dev/github.com/otfabric/go-canopen/od#Dictionary.Write), so access rights, limits and hooks apply, and a refusal reaches the client as the dictionary's abort code. Segmented and block downloads are buffered and written once, when complete.
+
+The hooks and watchers of the dictionary run on the server's goroutine: while one runs the server answers nothing. A hook may call the server's methods and [Server.Close](#func-server-close) (see there). A hook or watcher that does not return normally is logged with its stack ("callback did not return normally"), the transfer is aborted with [canopen.AbortGeneral](https://pkg.go.dev/github.com/otfabric/go-canopen#AbortGeneral), and the server goes on.
 
 #### func NewServer
 
@@ -454,7 +458,7 @@ COBIDs returns the COB-IDs the server uses: client to server (received) and serv
 func (s *Server) Close() error
 ```
 
-Close stops the server and waits for it. It is safe to call more than once.
+Close stops the server and waits for it. It is safe to call more than once and from several goroutines: every call returns only when the server's goroutine has ended, that is, when a dictionary hook the server was running has returned. Called from such a hook (on the server's goroutine) it does not wait for that goroutine, which ends when the hook returns.
 
 #### func (Server) Enabled
 

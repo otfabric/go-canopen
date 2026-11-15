@@ -129,7 +129,7 @@ Attach adds the program download objects to d where missing ([AddObjects](#func-
 func (dev *Device) Close()
 ```
 
-Close removes the device's hooks from the dictionary.
+Close removes the device's hooks from the dictionary. It is safe to call more than once and from several goroutines.
 
 #### func (Device) FlashStatus
 

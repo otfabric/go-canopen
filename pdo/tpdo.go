@@ -12,6 +12,7 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
 	"github.com/otfabric/go-canopen/od"
 )
 
@@ -112,7 +113,10 @@ func (t *TPDO) Start() error {
 	return nil
 }
 
-// Close stops the service and waits for its goroutine. It is idempotent.
+// Close disables the TPDO, stops the service and waits for its
+// goroutine: nothing is sent after it, by [TPDO.Transmit] (which fails
+// with [canopen.ErrClosed], also when it was in progress), a SYNC or an
+// event. It is safe to call more than once and from several goroutines.
 func (t *TPDO) Close() error { return t.close() }
 
 // Config returns the current configuration.
@@ -257,12 +261,15 @@ func (t *TPDO) transmitInWindow(c canopen.COBID, data []byte, end time.Time) {
 
 // Transmit reads the mapped objects and sends the TPDO now, whatever its
 // transmission type and inhibit time. It fails with [ErrDisabled] or
-// [ErrInactive] when the TPDO cannot be sent.
+// [ErrInactive] when the TPDO cannot be sent, and with
+// [canopen.ErrClosed] after Close.
 func (t *TPDO) Transmit(ctx context.Context) error {
 	t.mu.Lock()
-	cfg, enabled, act := t.cfg, t.enabled, t.active
+	cfg, enabled, act, closed := t.cfg, t.enabled, t.active, t.closed
 	t.mu.Unlock()
 	switch {
+	case closed:
+		return canopen.ErrClosed
 	case !enabled:
 		return ErrDisabled
 	case !act:
@@ -272,6 +279,10 @@ func (t *TPDO) Transmit(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Close ends a transmission in progress.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer context.AfterFunc(t.ctx, cancel)()
 	return t.transmit(ctx, cfg.COBID, data)
 }
 
@@ -279,7 +290,11 @@ func (t *TPDO) Transmit(ctx context.Context) error {
 func (t *TPDO) read(m Mapping) ([]byte, error) {
 	vals := make([][]byte, len(m))
 	for i, e := range m {
-		b, err := t.d.Read(e.Index, e.SubIndex)
+		// The read runs the dictionary's read hooks, which are the
+		// application's code.
+		var b []byte
+		err := error(canopen.AbortGeneral)
+		callback.Do(t.log, "dictionary hook", func() { b, err = t.d.Read(e.Index, e.SubIndex) })
 		if err != nil {
 			t.st.readErrors.Add(1)
 			t.log.Warn("read mapped object", "object", e, "err", err)
@@ -304,6 +319,11 @@ func (t *TPDO) transmit(ctx context.Context, c canopen.COBID, data []byte) error
 // as a send error.
 func (t *TPDO) transmitCounted(ctx context.Context, c canopen.COBID, data []byte, countErr bool) error {
 	t.mu.Lock()
+	if t.closed {
+		// Closed since the transmission was decided: nothing is sent.
+		t.mu.Unlock()
+		return canopen.ErrClosed
+	}
 	now := time.Now()
 	t.lastSent, t.lastData = now, data
 	if et := t.cfg.EventTimer; et > 0 && t.cfg.TransmissionType.EventDriven() {
@@ -316,10 +336,21 @@ func (t *TPDO) transmitCounted(ctx context.Context, c canopen.COBID, data []byte
 			t.st.sendErrors.Add(1)
 		}
 		t.log.Debug("send", "err", err)
+		if t.ctx.Err() != nil {
+			return canopen.ErrClosed // ended by Close
+		}
 		return err
 	}
 	t.st.sent.Add(1)
 	return nil
+}
+
+// armEventTimerLocked restarts the event timer from now when it is not
+// running and the TPDO, as it is configured now, has one. mu held.
+func (t *TPDO) armEventTimerLocked(now time.Time) {
+	if et := t.cfg.EventTimer; et > 0 && t.evDue.IsZero() && t.enabled && t.active && t.cfg.TransmissionType.EventDriven() {
+		t.evDue = now.Add(time.Duration(et) * time.Millisecond)
+	}
 }
 
 // inhibitEnd returns when the inhibit time after the last transmission
@@ -381,6 +412,12 @@ func (t *TPDO) step() time.Time {
 			}
 		}
 		t.mu.Lock()
+		if err != nil {
+			// Nothing was sent, so nothing restarted the event timer:
+			// restart it here, or a cyclic PDO stays silent until a
+			// mapped object changes.
+			t.armEventTimerLocked(now)
+		}
 	}
 	at := t.evDue
 	if t.evForce || t.evChange {

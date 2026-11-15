@@ -13,9 +13,11 @@ import (
 
 	"github.com/otfabric/go-canbus"
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/lifecycle"
 )
 
-// ErrNotStarted reports a transfer on a client that was not started.
+// ErrNotStarted reports a transfer on a client that was not started. A
+// transfer on a closed client fails with [canopen.ErrClosed].
 var ErrNotStarted = errors.New("usdo: client not started")
 
 // ErrSessions reports a client with 256 transfers in progress: every
@@ -59,7 +61,7 @@ type Client struct {
 	bus  canopen.Bus
 	node canopen.NodeID
 	cfg  config
-	lc   lifecycle
+	lc   lifecycle.Service
 	st   clientStats
 
 	mu    sync.Mutex
@@ -90,7 +92,7 @@ func (c *Client) NodeID() canopen.NodeID { return c.node }
 // Start subscribes to the responses (580h..5FFh) and starts dispatching
 // them to the transfers.
 func (c *Client) Start() error {
-	return c.lc.start(func(context.Context) (func(context.Context), error) {
+	return c.lc.Start(func(context.Context) (func(context.Context), error) {
 		sub, err := c.bus.Subscribe(canbus.WithFilters(filter(canopen.FuncSDOTx)))
 		if err != nil {
 			return nil, fmt.Errorf("usdo: subscribe: %w", err)
@@ -108,10 +110,12 @@ func (c *Client) Start() error {
 	})
 }
 
-// Close stops the client and waits for its goroutine; running transfers
-// time out. It is idempotent.
+// Close stops the client and waits for its goroutine. Transfers in
+// progress end with [canopen.ErrClosed], and so do transfers started
+// afterwards. It is safe to call more than once and from several
+// goroutines.
 func (c *Client) Close() error {
-	c.lc.close()
+	c.lc.Close()
 	return nil
 }
 
@@ -157,7 +161,10 @@ func (c *Client) dispatch(f *canbus.Frame) {
 
 // openSession allocates a session-ID.
 func (c *Client) openSession() (uint8, chan resp, error) {
-	if !c.lc.running() {
+	switch {
+	case c.lc.Closed():
+		return 0, nil, canopen.ErrClosed
+	case !c.lc.Running():
 		return 0, nil, ErrNotStarted
 	}
 	c.mu.Lock()
@@ -193,6 +200,9 @@ type busLink struct {
 }
 
 func (l *busLink) send(ctx context.Context, m Message) error {
+	if l.c.lc.Closed() {
+		return canopen.ErrClosed
+	}
 	f, err := Frame(m, l.c.node, false, l.c.cfg.brs)
 	if err != nil {
 		return err
@@ -211,6 +221,9 @@ func (l *busLink) recv(ctx context.Context, d time.Duration) (resp, error) {
 	select {
 	case <-ctx.Done():
 		return resp{}, ctx.Err()
+	case <-l.c.lc.Done():
+		// The client is closed: the transfer ends.
+		return resp{}, canopen.ErrClosed
 	case <-t.C:
 		return resp{}, errRecvTimeout
 	case r := <-l.ch:
@@ -540,7 +553,7 @@ func (x *xfer) downloadBulk(data []byte, cl call) error {
 	if err := x.checkObject(r); err != nil {
 		return x.fail(err)
 	}
-	if err := sendBulk(x.ctx, x.l, x.dest, x.sid, data, time.Duration(r.TProc)*x.tunit); err != nil {
+	if err := sendBulk(x.ctx, x.l, x.dest, x.sid, data, bulkPace(r.TProc, x.tunit, x.timeout)); err != nil {
 		return x.fail(err)
 	}
 	if _, err := x.expect(CmdBulkLastOK); err != nil {
@@ -548,6 +561,14 @@ func (x *xfer) downloadBulk(data []byte, cl call) error {
 	}
 	x.downloaded(len(data))
 	return nil
+}
+
+// bulkPace is the time between the segments of a bulk transfer: the
+// processing time a server reported (tproc units of unit), at most the
+// response timeout, so that a server cannot make the client wait longer
+// per segment than it waits for a response.
+func bulkPace(tproc uint16, unit, timeout time.Duration) time.Duration {
+	return min(time.Duration(tproc)*unit, timeout)
 }
 
 // sendBulk sends the segments of a bulk transfer, pace apart.
@@ -655,7 +676,8 @@ func (mu *multi) remoteAbort(from canopen.NodeID, m Message) error {
 // that answered: nil, or the error. Up to [MaxExpedited] bytes are sent
 // expedited; more by bulk transfer (CiA's example of a broadcast bulk
 // download): the servers that answer the initiate request take part, the
-// segments are paced by the largest t_proc they report, and each confirms
+// segments are paced by the largest t_proc they report (at most the
+// response timeout apart), and each confirms
 // or aborts at the end. Without [Expect] the call collects responses for
 // the whole response timeout. The error is for the transfer as a whole (a
 // send failure, the context).
@@ -715,7 +737,7 @@ func (c *Client) DownloadMulti(ctx context.Context, dest Address, index uint16, 
 		switch r.m.Cmd {
 		case CmdBulkInitOK:
 			part[r.from] = true
-			pace = max(pace, time.Duration(r.m.TProc)*c.cfg.tunit)
+			pace = max(pace, bulkPace(r.m.TProc, c.cfg.tunit, mu.timeout))
 			// answered for the collection; replaced by the final result
 			out[r.from] = nil
 		case CmdAbort:

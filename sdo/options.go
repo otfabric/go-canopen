@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/otfabric/go-canopen"
+	"github.com/otfabric/go-canopen/internal/callback"
 )
 
 // Defaults.
@@ -98,6 +99,7 @@ func (c *config) check() error {
 	if c.log == nil {
 		c.log = slog.New(discardHandler{})
 	}
+	c.log = callback.Logger(c.log)
 	return nil
 }
 

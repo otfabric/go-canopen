@@ -12,7 +12,7 @@ A [TimeOfDay](#type-timeofday) is milliseconds after midnight (28 bits) and days
 
 A [Producer](#type-producer) sends TIME messages on the COB-ID TIME (0x1012; with a dictionary only while bit 30 "produce" is set), on request or every period. A [Consumer](#type-consumer) receives them (with a dictionary only while bit 31 "consume" is set) and reports the time to a handler.
 
-Long-running services have Start, which subscribes before it returns, and Close, which stops them and waits for their goroutine. Callbacks run on the service's goroutine and must not block for long.
+Long-running services have Start, which subscribes before it returns, and Close, which stops them and waits for their goroutine; Close is safe to call more than once and from several goroutines, and after it the services send nothing ([canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed)). Callbacks run on the service's goroutine, one call at a time, and must not block for long. A callback may call the service's methods, and its Close, which then does not wait for the goroutine the callback runs on. A callback that does not return normally is logged with its stack ("callback did not return normally"), and the service goes on.
 
 ## Constants
 
@@ -84,7 +84,7 @@ NewConsumer returns a TIME consumer. Options: [WithLogger](#func-withlogger), [W
 func (c *Consumer) Close() error
 ```
 
-Close stops the consumer and waits for it. It removes the write hook the consumer installed on the dictionary.
+Close stops the consumer and waits for it. It removes the write hook the consumer installed on the dictionary. It is safe to call more than once and from several goroutines; called from the handler it does not wait for the goroutine the handler runs on.
 
 #### func (Consumer) Last
 
@@ -159,7 +159,7 @@ WithCOBID sets the COB-ID TIME (both services; default 0x100, produced and consu
 func WithClock(clock func() time.Time) Option
 ```
 
-WithClock sets the time source of a [Producer](#type-producer)'s periodic messages (default time.Now).
+WithClock sets the time source of a [Producer](#type-producer)'s periodic messages (default time.Now). It is called on the producer's goroutine; when it does not return normally, that message is not sent.
 
 #### func WithDictionary
 
@@ -175,7 +175,7 @@ WithDictionary takes the COB-ID TIME from 0x1012 (which must exist) and follows 
 func WithHandler(h func(Event)) Option
 ```
 
-WithHandler calls h for every TIME message a [Consumer](#type-consumer) receives, on its goroutine; h must not block for long.
+WithHandler calls h for every TIME message a [Consumer](#type-consumer) receives, on its goroutine, one call at a time; h must not block for long. It may call the consumer's methods, and [Consumer.Close](#func-consumer-close), which then does not wait for that goroutine. A handler that does not return normally is logged with its stack, and the next message is delivered.
 
 #### func WithLogger
 
@@ -217,7 +217,7 @@ NewProducer returns a TIME producer. Options: [WithLogger](#func-withlogger), [W
 func (p *Producer) Close() error
 ```
 
-Close stops the periodic messages and waits for the goroutine. It removes the write hook the producer installed on the dictionary.
+Close stops the periodic messages and waits for the goroutine. It removes the write hook the producer installed on the dictionary. It is safe to call more than once and from several goroutines.
 
 #### func (Producer) Send
 
@@ -225,7 +225,7 @@ Close stops the periodic messages and waits for the goroutine. It removes the wr
 func (p *Producer) Send(ctx context.Context, t time.Time) error
 ```
 
-Send sends a TIME message with t. It returns ErrNotProducer when the COB-ID's produce bit is clear.
+Send sends a TIME message with t. It returns ErrNotProducer when the COB-ID's produce bit is clear, and [canopen.ErrClosed](https://pkg.go.dev/github.com/otfabric/go-canopen#ErrClosed) after Close.
 
 #### func (Producer) Start
 

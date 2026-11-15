@@ -15,6 +15,12 @@
 // "consume" is set) and reports the time to a handler.
 //
 // Long-running services have Start, which subscribes before it returns,
-// and Close, which stops them and waits for their goroutine. Callbacks run
-// on the service's goroutine and must not block for long.
+// and Close, which stops them and waits for their goroutine; Close is
+// safe to call more than once and from several goroutines, and after it
+// the services send nothing ([canopen.ErrClosed]). Callbacks run on the
+// service's goroutine, one call at a time, and must not block for long.
+// A callback may call the service's methods, and its Close, which then
+// does not wait for the goroutine the callback runs on. A callback that
+// does not return normally is logged with its stack ("callback did not
+// return normally"), and the service goes on.
 package timestamp

@@ -124,13 +124,15 @@ func Snapshot(d *od.Dictionary, first, last uint16) []cdcf.Entry {
 }
 
 // Merge returns saved with the entries in [first, last] replaced by
-// current (which should only hold entries in that range).
+// current (which should only hold entries in that range). The slice is
+// new; the entries share their Data with saved and current.
 func Merge(saved, current []cdcf.Entry, first, last uint16) []cdcf.Entry {
 	out := Without(saved, first, last)
 	return append(out, current...)
 }
 
-// Without returns the entries outside [first, last].
+// Without returns the entries outside [first, last]. The slice is new;
+// the entries share their Data with entries.
 func Without(entries []cdcf.Entry, first, last uint16) []cdcf.Entry {
 	out := make([]cdcf.Entry, 0, len(entries))
 	for _, e := range entries {
