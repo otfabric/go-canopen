@@ -3,7 +3,18 @@
 Releases are made with the Release workflow (Actions → Release → bump):
 it computes the version, tags it and publishes this file's section of
 that version as the release notes. Add the section, headed exactly
-`## vX.Y.Z` and closed by a line `---`, before running it.
+`## v0.6.3
+
+**Date:** 2026-11-15
+**Previous release:** v0.6.2
+
+### Changed
+
+- Requires go-canbus v0.11.0 (was v0.10.1). go-canopen does not use the kernel ISO-TP connection, so its behaviour is unchanged.
+
+---
+
+## vX.Y.Z` and closed by a line `---`, before running it.
 
 ## v0.6.2
 
