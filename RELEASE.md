@@ -16,6 +16,19 @@ that version as the release notes. Add the section, headed exactly
 
 ## vX.Y.Z` and closed by a line `---`, before running it.
 
+## v0.6.4
+
+**Date:** 2026-11-16
+**Previous release:** v0.6.3
+
+No library code changes.
+
+### Changed
+
+- Built on go-canbus v0.11.1 (was v0.11.0) (go-canbus RELEASE.md, v0.11.1).
+
+---
+
 ## v0.6.2
 
 **Date:** 2026-11-15
